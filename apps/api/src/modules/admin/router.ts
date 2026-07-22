@@ -157,13 +157,29 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
   router.post('/tag-assignments', async (request, response) => {
     const input = parse(tagAssignmentSchema, request.body);
     const created = await options.store.transaction(async (transactionStore) => {
+      const definition = (await transactionStore.tagDefinitions.list({ query: input.tagKey })).find(
+        (candidate) => candidate.key === input.tagKey,
+      );
+      if (definition === undefined) {
+        throw new HttpError(400, 'tag_definition_not_found', 'Tag definition is not registered');
+      }
+      if (definition.status !== 'active') {
+        throw new HttpError(409, 'tag_definition_inactive', 'Tag definition is not active');
+      }
+      const assignmentScope = input.scope ?? { type: 'public', id: '*' };
+      if (
+        definition.requiredScopeType !== null &&
+        assignmentScope.type !== definition.requiredScopeType
+      ) {
+        throw new HttpError(400, 'invalid_tag_scope', 'Tag scope does not match its definition');
+      }
       const assignment = await transactionStore.tagAssignments.create({
         subjectUid: input.subjectUid,
         tagKey: input.tagKey,
         expiresAt: input.expiresAt ?? null,
         status: 'active',
         ownerUid: actor(response).uid,
-        scope: input.scope ?? { type: 'public', id: '*' },
+        scope: assignmentScope,
       });
       await recordAuditEvent(transactionStore, {
         actorUid: actor(response).uid,

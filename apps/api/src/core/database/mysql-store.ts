@@ -15,6 +15,7 @@ import {
   encodeUtcDateTime,
 } from './date-codec.js';
 import { loadMySqlConfig, type MySqlConfig } from './migrate.js';
+import { RecordConflictError } from './record-conflict-error.js';
 import type {
   ActivityRecord,
   ActivityRegistrationRecord,
@@ -74,6 +75,7 @@ interface RepositoryDefinition {
   table: string;
   fields: FieldDefinition[];
   searchColumns: string[];
+  conflictMessage?: string;
 }
 
 const field = (
@@ -148,6 +150,7 @@ const definitions = {
   },
   roleAssignments: {
     table: 'role_assignments',
+    conflictMessage: 'Assignment already exists',
     fields: [
       field('subjectUid', 'subject_uid'),
       field('roleKey', 'role_key'),
@@ -157,11 +160,18 @@ const definitions = {
   },
   tagDefinitions: {
     table: 'tag_definitions',
-    fields: [field('key', 'tag_key'), field('name', 'name'), field('description', 'description')],
+    fields: [
+      field('key', 'tag_key'),
+      field('name', 'name'),
+      field('description', 'description'),
+      field('requiredScopeType', 'required_scope_type'),
+      jsonField('metadata', 'metadata'),
+    ],
     searchColumns: ['tag_key', 'name', 'description'],
   },
   tagAssignments: {
     table: 'tag_assignments',
+    conflictMessage: 'Assignment already exists',
     fields: [
       field('subjectUid', 'subject_uid'),
       field('tagKey', 'tag_key'),
@@ -282,6 +292,12 @@ function escapeLikeQuery(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
 
+function isDuplicateEntryError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { code?: unknown; errno?: unknown };
+  return candidate.code === 'ER_DUP_ENTRY' || candidate.errno === 1062;
+}
+
 class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
   constructor(
     private readonly executor: Executor,
@@ -315,10 +331,17 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
       now,
     ];
     const placeholders = columns.map(() => '?').join(', ');
-    await this.executor.execute(
-      `INSERT INTO ${this.definition.table} (${columns.join(', ')}) VALUES (${placeholders})`,
-      values,
-    );
+    try {
+      await this.executor.execute(
+        `INSERT INTO ${this.definition.table} (${columns.join(', ')}) VALUES (${placeholders})`,
+        values,
+      );
+    } catch (error) {
+      if (this.definition.conflictMessage !== undefined && isDuplicateEntryError(error)) {
+        throw new RecordConflictError(this.definition.conflictMessage, { cause: error });
+      }
+      throw error;
+    }
     const created = await this.get(id);
     if (!created) throw new Error(`Failed to read created ${this.definition.table} record`);
     return created;

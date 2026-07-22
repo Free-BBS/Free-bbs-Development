@@ -19,10 +19,10 @@ VALUES
   ('assignment-sports-lead', 'demo-sports-lead', 'domain.sports_lead', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3));
 
 INSERT INTO tag_definitions
-  (id, tag_key, name, description, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+  (id, tag_key, name, description, required_scope_type, metadata, status, owner_uid, scope_type, scope_id, created_at, updated_at)
 VALUES
-  ('tag-captain', 'sports.team_captain', '体育代表队队长', '仅在绑定代表队内生效。', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
-  ('tag-extension', 'extension.custom', '扩展权限标签', '为后续模块保留的标签接口。', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3));
+  ('tag-captain', 'sports.team_captain', '体育代表队队长', '仅在绑定代表队内生效。', 'sports_team', JSON_OBJECT('resourceTypes', JSON_ARRAY('sports_team')), 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('tag-extension', 'extension.custom', '扩展权限标签', '为后续模块保留的标签接口。', NULL, JSON_OBJECT('resourceTypes', JSON_ARRAY()), 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3));
 
 INSERT INTO tag_assignments
   (id, subject_uid, tag_key, expires_at, status, owner_uid, scope_type, scope_id, created_at, updated_at)

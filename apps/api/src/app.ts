@@ -9,6 +9,7 @@ import { createAuthMiddleware } from './core/auth/auth-middleware.js';
 import { DemoAuthClient } from './core/auth/demo-auth-client.js';
 import { MainSiteAuthClient } from './core/auth/main-site-auth-client.js';
 import { createMemoryStore } from './core/database/memory-store.js';
+import { RecordConflictError } from './core/database/record-conflict-error.js';
 import type { DataMode } from './core/database/create-store.js';
 import type { DevelopmentStore } from './core/database/types.js';
 import { HttpError } from './core/errors/http-error.js';
@@ -22,6 +23,18 @@ const API_VERSION = '0.1.0';
 
 interface ApiErrorData {
   error: { code: string; message: string };
+}
+
+function bodyParserHttpError(error: unknown): HttpError | undefined {
+  if (typeof error !== 'object' || error === null) return undefined;
+  const candidate = error as { type?: unknown; status?: unknown };
+  if (candidate.type === 'entity.parse.failed' && candidate.status === 400) {
+    return new HttpError(400, 'invalid_json', 'Request body contains invalid JSON');
+  }
+  if (candidate.type === 'entity.too.large' && candidate.status === 413) {
+    return new HttpError(413, 'payload_too_large', 'Request body is too large');
+  }
+  return undefined;
 }
 
 export interface CreateAppOptions {
@@ -153,7 +166,12 @@ export function createApp(options: CreateAppOptions = {}) {
   });
   const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
     void _next;
-    const httpError = error instanceof HttpError ? error : undefined;
+    const httpError =
+      error instanceof HttpError
+        ? error
+        : error instanceof RecordConflictError
+          ? new HttpError(409, 'conflict', error.message)
+          : bodyParserHttpError(error);
     sendEnvelope<ApiErrorData>(response, httpError?.status ?? 500, {
       error: {
         code: httpError?.code ?? 'internal_error',

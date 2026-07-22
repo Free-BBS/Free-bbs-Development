@@ -1,4 +1,4 @@
-import { MODULE_IDS, ROLE_KEYS, validateTagScope } from '@freebbs-development/contracts';
+import { MODULE_IDS, ROLE_KEYS } from '@freebbs-development/contracts';
 import { z } from 'zod';
 
 const identifier = z.string().trim().min(1).max(128);
@@ -33,15 +33,6 @@ export const tagAssignmentSchema = z
     expiresAt,
     scope: scopeSchema.optional(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (!validateTagScope(value.tagKey, value.scope)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['scope'],
-        message: 'This tag requires a valid scoped resource',
-      });
-    }
-  });
+  .strict();
 
 export const assignmentIdSchema = identifier;

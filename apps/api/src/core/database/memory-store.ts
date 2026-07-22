@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { encodeDateOnly, encodeUtcDateTime } from './date-codec.js';
+import { RecordConflictError } from './record-conflict-error.js';
 
 import type {
   ActivityRecord,
@@ -225,6 +226,8 @@ function createDemoState(): MemoryState {
   state.tagDefinitions = [
     stored('tag-captain-definition', {
       key: 'sports.team_captain',
+      requiredScopeType: 'sports_team',
+      metadata: { resourceTypes: ['sports_team'] },
       name: '体育代表队队长',
       description: '仅在绑定代表队内生效。',
       status: 'active',
@@ -233,6 +236,8 @@ function createDemoState(): MemoryState {
     }),
     stored('tag-extension-definition', {
       key: 'extension.custom',
+      requiredScopeType: null,
+      metadata: { resourceTypes: [] },
       name: '扩展权限标签',
       description: '为后续模块保留的标签接口。',
       status: 'active',
@@ -479,6 +484,12 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
 
   async create(input: NewRecord<T>): Promise<T> {
     return withWriteLock(this.holder, async () => {
+      if (
+        (this.collection === 'roleAssignments' || this.collection === 'tagAssignments') &&
+        this.hasAssignmentConflict(input)
+      ) {
+        throw new RecordConflictError('Assignment already exists');
+      }
       const now = new Date().toISOString();
       const record = {
         ...normalizedValues(input),
@@ -540,6 +551,25 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       if (index === -1) return false;
       records.splice(index, 1);
       return true;
+    });
+  }
+
+  private hasAssignmentConflict(input: NewRecord<T>): boolean {
+    const candidate = input as unknown as {
+      subjectUid: string;
+      roleKey?: string;
+      tagKey?: string;
+      scope: { type: string; id: string };
+    };
+    const assignmentKey = this.collection === 'roleAssignments' ? 'roleKey' : 'tagKey';
+    return this.records().some((record) => {
+      const existing = record as unknown as typeof candidate;
+      return (
+        existing.subjectUid === candidate.subjectUid &&
+        existing[assignmentKey] === candidate[assignmentKey] &&
+        existing.scope.type === candidate.scope.type &&
+        existing.scope.id === candidate.scope.id
+      );
     });
   }
 

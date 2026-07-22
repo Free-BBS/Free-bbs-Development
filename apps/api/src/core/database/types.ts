@@ -60,6 +60,8 @@ export interface TagDefinitionRecord extends StoredRecord {
   key: string;
   name: string;
   description: string;
+  requiredScopeType: string | null;
+  metadata: Record<string, unknown>;
 }
 
 export interface TagAssignmentRecord extends StoredRecord {

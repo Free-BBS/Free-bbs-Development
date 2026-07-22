@@ -130,4 +130,34 @@ describe('development API core', () => {
       else process.env.AUTH_MODE = previousAuthMode;
     }
   });
+  it('maps malformed JSON to a stable 400 envelope without parser details', async () => {
+    const app = createApp({ store: createMemoryStore(), databaseMode: 'memory' });
+    const response = await request(app)
+      .post('/api/development/v1/admin/role-assignments')
+      .set('Content-Type', 'application/json')
+      .send('{"subjectUid":')
+      .expect(400);
+
+    expect(response.body).toEqual({
+      data: { error: { code: 'invalid_json', message: 'Request body contains invalid JSON' } },
+      requestId: expect.any(String),
+    });
+    expect(response.headers['x-request-id']).toBe(response.body.requestId);
+    expect(JSON.stringify(response.body)).not.toMatch(/unexpected|syntax|position/i);
+  });
+
+  it('maps JSON bodies over 64kb to a stable 413 envelope', async () => {
+    const app = createApp({ store: createMemoryStore(), databaseMode: 'memory' });
+    const response = await request(app)
+      .post('/api/development/v1/admin/role-assignments')
+      .set('Content-Type', 'application/json')
+      .send(JSON.stringify({ value: 'x'.repeat(70 * 1024) }))
+      .expect(413);
+
+    expect(response.body).toEqual({
+      data: { error: { code: 'payload_too_large', message: 'Request body is too large' } },
+      requestId: expect.any(String),
+    });
+    expect(response.headers['x-request-id']).toBe(response.body.requestId);
+  });
 });

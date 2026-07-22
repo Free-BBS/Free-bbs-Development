@@ -103,6 +103,8 @@ describe('memory store regressions', () => {
         store.tagDefinitions,
         {
           key: 'extension.test',
+          requiredScopeType: null,
+          metadata: { resourceTypes: [] },
           name: '测试标签',
           description: '测试扩展标签。',
           status: 'active',

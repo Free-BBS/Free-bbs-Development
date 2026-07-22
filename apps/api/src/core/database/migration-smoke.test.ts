@@ -10,7 +10,11 @@ const databaseDirectory = fileURLToPath(new URL('../../../../../database/', impo
 describe('database migrations', () => {
   it('defines every core and domain table in explicit migrations', async () => {
     const migrations = await discoverMigrations(`${databaseDirectory}/migrations`);
-    expect(migrations.map(({ name }) => name)).toEqual(['001_core.sql', '002_domains.sql']);
+    expect(migrations.map(({ name }) => name)).toEqual([
+      '001_core.sql',
+      '002_domains.sql',
+      '003_tag_definition_contract.sql',
+    ]);
 
     const sql = (await Promise.all(migrations.map(({ path }) => readFile(path, 'utf8')))).join(
       '\n',
