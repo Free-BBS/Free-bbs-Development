@@ -616,6 +616,26 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
         return 'Registration already exists';
       }
     }
+    if (this.collection === 'sportsCheckins') {
+      const candidate = input as unknown as {
+        teamId: string;
+        memberUid: string;
+        checkinDate: string;
+      };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return (
+            current.teamId === candidate.teamId &&
+            current.memberUid === candidate.memberUid &&
+            current.checkinDate === candidate.checkinDate
+          );
+        })
+      ) {
+        return 'Check-in already exists';
+      }
+    }
     return undefined;
   }
 

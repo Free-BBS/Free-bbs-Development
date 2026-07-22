@@ -262,6 +262,7 @@ const definitions = {
   },
   sportsCheckins: {
     table: 'sports_checkins',
+    conflictMessage: 'Check-in already exists',
     fields: [
       field('teamId', 'team_id'),
       field('memberUid', 'member_uid'),

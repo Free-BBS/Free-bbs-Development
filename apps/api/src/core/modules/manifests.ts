@@ -5,6 +5,7 @@ import { FINANCE_MANIFEST } from '../../modules/finance/manifest.js';
 import { INFORMATION_MANIFEST } from '../../modules/information/manifest.js';
 import { KNOWLEDGE_MANIFEST } from '../../modules/knowledge/manifest.js';
 import { LIAISON_MANIFEST } from '../../modules/liaison/manifest.js';
+import { SPORTS_MANIFEST } from '../../modules/sports/manifest.js';
 
 export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
   {
@@ -28,17 +29,7 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
 
   LIAISON_MANIFEST,
 
-  {
-    id: 'sports',
-    name: '体育代表队',
-    description: '管理代表队、队员和训练签到。',
-    route: '/sports',
-    icon: 'sports',
-    ownerTeam: 'sports',
-    status: 'enabled',
-    requiredPermissions: ['sports.team.read'],
-    order: 70,
-  },
+  SPORTS_MANIFEST,
   FINANCE_MANIFEST,
 
   {

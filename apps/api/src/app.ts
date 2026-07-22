@@ -21,6 +21,7 @@ import { createFinanceRouter } from './modules/finance/router.js';
 import { createInformationRouter } from './modules/information/router.js';
 import { createKnowledgeRouter } from './modules/knowledge/router.js';
 import { createLiaisonRouter } from './modules/liaison/router.js';
+import { createSportsRouter } from './modules/sports/router.js';
 
 import type { ErrorRequestHandler, NextFunction, Request, Response } from 'express';
 
@@ -172,6 +173,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.use(`${API_BASE_PATH}/knowledge`, createKnowledgeRouter({ store, authenticate }));
   app.use(`${API_BASE_PATH}/information`, createInformationRouter({ store, authenticate }));
   app.use(`${API_BASE_PATH}/liaison`, createLiaisonRouter({ store, authenticate }));
+  app.use(`${API_BASE_PATH}/sports`, createSportsRouter({ store, authenticate }));
 
   app.use((_request, _response, next) => {
     next(new HttpError(404, 'not_found', 'Route not found'));
