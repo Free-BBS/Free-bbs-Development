@@ -106,6 +106,8 @@ export class ApiClient {
       headers,
     });
 
+    if (response.status === 204) return undefined as T;
+
     let envelope: ApiEnvelope<T>;
     try {
       envelope = (await response.json()) as ApiEnvelope<T>;

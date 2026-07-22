@@ -90,6 +90,15 @@ describe('ApiClient authentication', () => {
     expect(() => client.setDemoUser('not-allowlisted')).toThrow(/allowlist/i);
   });
 
+  it('accepts a successful 204 response without trying to parse JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    await expect(
+      new ApiClient({ authMode: 'main' }).request<void>('/clubs/example/memberships', {
+        method: 'DELETE',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
   it('unwraps the API error envelope with status, code, message and request ID', async () => {
     vi.stubGlobal(
       'fetch',

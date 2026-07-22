@@ -2,6 +2,15 @@ import type { ModuleManifest } from '@freebbs-development/contracts';
 import { Navigate, RouterProvider, createBrowserRouter, useLoaderData } from 'react-router-dom';
 
 import { createApiClient } from '../core/api/client.js';
+import { AdminPage } from '../modules/admin/AdminPage.js';
+import { ClubsPage } from '../modules/clubs/ClubsPage.js';
+import { DashboardPage } from '../modules/dashboard/DashboardPage.js';
+import { EventsPage } from '../modules/events/EventsPage.js';
+import { FinancePage } from '../modules/finance/FinancePage.js';
+import { InformationPage } from '../modules/information/InformationPage.js';
+import { KnowledgePage } from '../modules/knowledge/KnowledgePage.js';
+import { LiaisonPage } from '../modules/liaison/LiaisonPage.js';
+import { SportsPage } from '../modules/sports/SportsPage.js';
 import { AppShell } from './AppShell.js';
 import { MODULE_MANIFESTS, type ModuleStateOverrides } from './module-manifests.js';
 
@@ -22,17 +31,8 @@ export async function loadModuleStates(): Promise<ModuleStateOverrides> {
 }
 
 function AppShellRoute() {
-  const moduleStates = useLoaderData() as ModuleStateOverrides | undefined;
+  const moduleStates = useLoaderData() as ModuleStateOverrides;
   return <AppShell moduleStates={moduleStates} />;
-}
-
-function ModulePlaceholder({ description, name }: { description: string; name: string }) {
-  return (
-    <section aria-labelledby="module-placeholder-title">
-      <h2 id="module-placeholder-title">{name}</h2>
-      <p>{description}</p>
-    </section>
-  );
 }
 
 export const appRouter = createBrowserRouter(
@@ -43,10 +43,15 @@ export const appRouter = createBrowserRouter(
       loader: loadModuleStates,
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
-        ...MODULE_MANIFESTS.map((module) => ({
-          path: module.route.slice(1),
-          element: <ModulePlaceholder name={module.name} description={module.description} />,
-        })),
+        { path: 'dashboard', element: <DashboardPage /> },
+        { path: 'knowledge', element: <KnowledgePage /> },
+        { path: 'information', element: <InformationPage /> },
+        { path: 'clubs', element: <ClubsPage /> },
+        { path: 'events', element: <EventsPage /> },
+        { path: 'liaison', element: <LiaisonPage /> },
+        { path: 'sports', element: <SportsPage /> },
+        { path: 'finance', element: <FinancePage /> },
+        { path: 'admin', element: <AdminPage /> },
         { path: '*', element: <Navigate to="/dashboard" replace /> },
       ],
     },
