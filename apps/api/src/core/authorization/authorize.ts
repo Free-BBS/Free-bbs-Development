@@ -102,7 +102,7 @@ export function authorize(
   }
 
   for (const role of context.roles) {
-    if (ROLE_PERMISSION_CATALOG[role].some((rule) => matchesRule(rule, request))) {
+    if (ROLE_PERMISSION_CATALOG[role]?.some((rule) => matchesRule(rule, request))) {
       return allow('role-grant', `role:${role}`);
     }
   }

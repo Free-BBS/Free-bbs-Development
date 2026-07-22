@@ -17,8 +17,9 @@ const deterministicDemoUserIds = [
 ] as const;
 
 function readNodeEnvironment(value: string | undefined): NodeEnvironment {
-  if (value === 'production' || value === 'test') return value;
-  return 'development';
+  if (value === undefined || value.trim() === '') return 'development';
+  if (value === 'production' || value === 'test' || value === 'development') return value;
+  throw new Error('NODE_ENV must be development, test or production');
 }
 
 function readPositiveInteger(value: string | undefined, fallback: number): number {

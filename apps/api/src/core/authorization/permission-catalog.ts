@@ -15,6 +15,7 @@ export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = rules(
   ['events.register', 'activity_registration'],
   ['events.cancel_registration', 'activity_registration'],
   ['sports.team.read', 'sports_team'],
+  ['liaison.resource.read', 'liaison_resource'],
 );
 
 export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
@@ -83,6 +84,10 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
   'affiliation.tuanwei_member': rules(
     ['events.approve', 'activity'],
     ['information.announcement.publish', 'announcement'],
+    ['finance.record.read', 'finance_record'],
+    ['finance.record.create', 'finance_record'],
+    ['finance.record.update', 'finance_record'],
+    ['finance.record.approve', 'finance_record'],
   ),
   'affiliation.sast_member': rules(
     ['events.technical_support', 'activity'],

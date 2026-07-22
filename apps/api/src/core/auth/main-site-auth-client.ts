@@ -70,8 +70,9 @@ export class MainSiteAuthClient implements AuthClient {
       // platform's non-elevated base role. It never grants platform permissions.
       return {
         uid,
-        displayName: stringField(identity, 'displayName', 'nickname', 'name', 'username') ?? uid,
-        avatarUrl: stringField(identity, 'avatarUrl', 'avatar'),
+        displayName:
+          stringField(identity, 'fullName', 'displayName', 'nickname', 'name', 'username') ?? uid,
+        avatarUrl: stringField(identity, 'avatarPath', 'avatarUrl', 'avatar'),
         baseRole: 'student',
         roles: [],
         tags: [],
