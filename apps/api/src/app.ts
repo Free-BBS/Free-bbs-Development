@@ -1,0 +1,172 @@
+import { randomUUID } from 'node:crypto';
+
+import express from 'express';
+
+import type { ApiEnvelope } from '@freebbs-development/contracts';
+import { loadEnvironment, type AuthMode } from './config/env.js';
+import type { AuthClient } from './core/auth/auth-client.js';
+import { createAuthMiddleware } from './core/auth/auth-middleware.js';
+import { DemoAuthClient } from './core/auth/demo-auth-client.js';
+import { MainSiteAuthClient } from './core/auth/main-site-auth-client.js';
+import { createMemoryStore } from './core/database/memory-store.js';
+import type { DataMode } from './core/database/create-store.js';
+import type { DevelopmentStore } from './core/database/types.js';
+import { HttpError } from './core/errors/http-error.js';
+import { listModuleManifests } from './core/modules/registry.js';
+import { createAdminRouter } from './modules/admin/router.js';
+
+import type { ErrorRequestHandler, NextFunction, Request, Response } from 'express';
+
+const API_BASE_PATH = '/api/development/v1';
+const API_VERSION = '0.1.0';
+
+interface ApiErrorData {
+  error: { code: string; message: string };
+}
+
+export interface CreateAppOptions {
+  store?: DevelopmentStore;
+  databaseMode?: DataMode;
+  authMode?: AuthMode;
+  authClient?: AuthClient;
+  allowedOrigins?: readonly string[];
+  version?: string;
+}
+
+function requestId(response: Response): string {
+  return response.locals.requestId as string;
+}
+
+function sendEnvelope<T>(response: Response, status: number, data: T): void {
+  const envelope: ApiEnvelope<T> = { data, requestId: requestId(response) };
+  response.status(status).json(envelope);
+}
+
+function parseAllowedOrigins(value: string | undefined): string[] {
+  if (value === undefined) return [];
+  return [
+    ...new Set(
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function resolveAuthClient(mode: AuthMode, options: CreateAppOptions): AuthClient {
+  if (options.authClient !== undefined) return options.authClient;
+  const environment = loadEnvironment();
+  return mode === 'demo'
+    ? new DemoAuthClient(environment.demoUserIds)
+    : new MainSiteAuthClient({
+        apiBaseUrl: environment.mainSiteApiBaseUrl,
+        timeoutMs: environment.authTimeoutMs,
+      });
+}
+
+export function createApp(options: CreateAppOptions = {}) {
+  const environment = loadEnvironment();
+  const store = options.store ?? createMemoryStore();
+  const databaseMode = options.databaseMode ?? 'memory';
+  const authMode = options.authMode ?? environment.authMode;
+  if (environment.nodeEnv === 'production' && authMode === 'demo') {
+    throw new Error('Demo authentication is disabled in production');
+  }
+  const authenticate = createAuthMiddleware({
+    authClient: resolveAuthClient(authMode, options),
+    mode: authMode,
+    store,
+  });
+  const allowedOrigins = new Set(
+    options.allowedOrigins ?? parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
+  );
+  const app = express();
+
+  app.disable('x-powered-by');
+  app.use((_request, response, next) => {
+    const id = randomUUID();
+    response.locals.requestId = id;
+    response.setHeader('X-Request-Id', id);
+    response.setHeader(
+      'Content-Security-Policy',
+      "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+    );
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    response.setHeader('X-Frame-Options', 'DENY');
+    response.setHeader('Referrer-Policy', 'no-referrer');
+    response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+  });
+  app.use((request, response, next) => {
+    const origin = request.headers.origin;
+    if (origin !== undefined && allowedOrigins.has(origin)) {
+      response.vary('Origin');
+      response.setHeader('Access-Control-Allow-Origin', origin);
+      response.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+      response.setHeader(
+        'Access-Control-Allow-Headers',
+        'Authorization,Content-Type,X-Demo-User,X-Request-Id',
+      );
+      if (request.method === 'OPTIONS') {
+        response.status(204).end();
+        return;
+      }
+    }
+    next();
+  });
+  app.use(express.json({ limit: '64kb', type: 'application/json' }));
+
+  app.get(`${API_BASE_PATH}/health`, (_request, response) => {
+    sendEnvelope(response, 200, {
+      status: 'ok',
+      version: options.version ?? API_VERSION,
+      databaseMode,
+    });
+  });
+  app.get(`${API_BASE_PATH}/modules`, async (_request, response, next) => {
+    try {
+      sendEnvelope(response, 200, await listModuleManifests(store));
+    } catch (error) {
+      next(error);
+    }
+  });
+  app.get(`${API_BASE_PATH}/me`, async (request, response, next) => {
+    try {
+      const result = await authenticate(request.headers);
+      if (result.status !== 200) {
+        sendEnvelope<ApiErrorData>(response, result.status, {
+          error: { code: result.code, message: result.message },
+        });
+        return;
+      }
+      sendEnvelope(response, 200, result.user);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.use(`${API_BASE_PATH}/admin`, createAdminRouter({ store, authenticate }));
+
+  app.use((_request, _response, next) => {
+    next(new HttpError(404, 'not_found', 'Route not found'));
+  });
+  const errorHandler: ErrorRequestHandler = (error, _request, response, _next) => {
+    void _next;
+    const httpError = error instanceof HttpError ? error : undefined;
+    sendEnvelope<ApiErrorData>(response, httpError?.status ?? 500, {
+      error: {
+        code: httpError?.code ?? 'internal_error',
+        message: httpError?.message ?? 'An unexpected error occurred',
+      },
+    });
+  };
+  app.use(errorHandler);
+
+  return app;
+}
+
+export type ApiRequest = Request;
+export type ApiResponse = Response;
+export type ApiNextFunction = NextFunction;
+export { API_BASE_PATH };
