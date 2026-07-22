@@ -10,6 +10,13 @@ export default defineConfig({
           environment: 'node',
         },
       },
+      {
+        test: {
+          name: 'operations',
+          include: ['tests/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
       './apps/web/vite.config.ts',
     ],
   },
