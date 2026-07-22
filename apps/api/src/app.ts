@@ -15,6 +15,9 @@ import type { DevelopmentStore } from './core/database/types.js';
 import { HttpError } from './core/errors/http-error.js';
 import { listModuleManifests } from './core/modules/registry.js';
 import { createAdminRouter } from './modules/admin/router.js';
+import { createInformationRouter } from './modules/information/router.js';
+import { createKnowledgeRouter } from './modules/knowledge/router.js';
+import { createLiaisonRouter } from './modules/liaison/router.js';
 
 import type { ErrorRequestHandler, NextFunction, Request, Response } from 'express';
 
@@ -160,6 +163,9 @@ export function createApp(options: CreateAppOptions = {}) {
   });
 
   app.use(`${API_BASE_PATH}/admin`, createAdminRouter({ store, authenticate }));
+  app.use(`${API_BASE_PATH}/knowledge`, createKnowledgeRouter({ store, authenticate }));
+  app.use(`${API_BASE_PATH}/information`, createInformationRouter({ store, authenticate }));
+  app.use(`${API_BASE_PATH}/liaison`, createLiaisonRouter({ store, authenticate }));
 
   app.use((_request, _response, next) => {
     next(new HttpError(404, 'not_found', 'Route not found'));

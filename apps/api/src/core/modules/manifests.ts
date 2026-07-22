@@ -1,4 +1,7 @@
 import type { ModuleManifest } from '@freebbs-development/contracts';
+import { INFORMATION_MANIFEST } from '../../modules/information/manifest.js';
+import { KNOWLEDGE_MANIFEST } from '../../modules/knowledge/manifest.js';
+import { LIAISON_MANIFEST } from '../../modules/liaison/manifest.js';
 
 export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
   {
@@ -12,28 +15,10 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
     requiredPermissions: ['dashboard.read'],
     order: 10,
   },
-  {
-    id: 'knowledge',
-    name: '经验库',
-    description: '沉淀流程、问答、联系人和活动复盘。',
-    route: '/knowledge',
-    icon: 'knowledge',
-    ownerTeam: 'platform-core',
-    status: 'enabled',
-    requiredPermissions: ['knowledge.read'],
-    order: 20,
-  },
-  {
-    id: 'information',
-    name: '信息与咨询',
-    description: '发布透明信息并承接同学咨询。',
-    route: '/information',
-    icon: 'information',
-    ownerTeam: 'liaison-rights',
-    status: 'enabled',
-    requiredPermissions: ['information.announcement.read'],
-    order: 30,
-  },
+  KNOWLEDGE_MANIFEST,
+
+  INFORMATION_MANIFEST,
+
   {
     id: 'clubs',
     name: '社群与俱乐部',
@@ -56,17 +41,8 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
     requiredPermissions: ['events.read'],
     order: 50,
   },
-  {
-    id: 'liaison',
-    name: '联络资源',
-    description: '维护公开、组织内与受限联络资源。',
-    route: '/liaison',
-    icon: 'liaison',
-    ownerTeam: 'liaison',
-    status: 'enabled',
-    requiredPermissions: ['liaison.resource.read'],
-    order: 60,
-  },
+  LIAISON_MANIFEST,
+
   {
     id: 'sports',
     name: '体育代表队',
