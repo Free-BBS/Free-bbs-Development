@@ -5,6 +5,10 @@ import { pathToFileURL } from 'node:url';
 
 import { createPool, type Pool, type PoolConnection, type RowDataPacket } from 'mysql2/promise';
 
+import { splitSqlStatements } from './sql-splitter.js';
+
+export { splitSqlStatements } from './sql-splitter.js';
+
 export interface MigrationFile {
   name: string;
   path: string;
@@ -56,19 +60,15 @@ export function loadMySqlConfig(environment: NodeJS.ProcessEnv = process.env): M
   };
 }
 
-function migrationStatements(contents: string): string[] {
-  return contents
-    .split(';')
-    .map((statement) => statement.trim())
-    .filter(Boolean);
-}
-
 interface AppliedMigrationRow extends RowDataPacket {
   name: string;
   checksum: string;
 }
 
-async function applyMigration(connection: PoolConnection, migration: MigrationFile): Promise<void> {
+export async function applyMigration(
+  connection: PoolConnection,
+  migration: MigrationFile,
+): Promise<void> {
   const [rows] = await connection.execute<AppliedMigrationRow[]>(
     'SELECT name, checksum FROM schema_migrations WHERE name = ?',
     [migration.name],
@@ -84,7 +84,7 @@ async function applyMigration(connection: PoolConnection, migration: MigrationFi
   const contents = await readFile(migration.path, 'utf8');
   await connection.beginTransaction();
   try {
-    for (const statement of migrationStatements(contents)) {
+    for (const statement of splitSqlStatements(contents)) {
       await connection.execute(statement);
     }
     await connection.execute(

@@ -8,6 +8,12 @@ import {
   type RowDataPacket,
 } from 'mysql2/promise';
 
+import {
+  decodeDateOnly,
+  decodeUtcDateTime,
+  encodeDateOnly,
+  encodeUtcDateTime,
+} from './date-codec.js';
 import { loadMySqlConfig, type MySqlConfig } from './migrate.js';
 import type {
   ActivityRecord,
@@ -78,6 +84,21 @@ const field = (
 
 const booleanField = (key: string, column: string) =>
   field(key, column, { encode: (value) => (value ? 1 : 0), decode: (value) => Boolean(value) });
+const utcDateTimeField = (key: string, column: string) =>
+  field(key, column, {
+    encode: (value) => encodeUtcDateTime(value as string | Date | null | undefined),
+    decode: (value) => (value === null || value === undefined ? null : decodeUtcDateTime(value)),
+  });
+const dateOnlyField = (key: string, column: string) =>
+  field(key, column, {
+    encode: (value) => encodeDateOnly(String(value)),
+    decode: (value) => decodeDateOnly(String(value)),
+  });
+const safeIntegerField = (key: string, column: string) =>
+  field(key, column, {
+    encode: (value) => safeInteger(value),
+    decode: (value) => safeInteger(value),
+  });
 const jsonField = (key: string, column: string) =>
   field(key, column, {
     encode: (value) => JSON.stringify(value ?? {}),
@@ -86,6 +107,14 @@ const jsonField = (key: string, column: string) =>
       return JSON.parse(value) as Record<string, unknown>;
     },
   });
+function safeInteger(value: unknown): number {
+  const number =
+    typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : (value as number);
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new TypeError('amountCents must be a non-negative safe integer');
+  }
+  return number;
+}
 
 const definitions = {
   subjects: {
@@ -122,7 +151,7 @@ const definitions = {
     fields: [
       field('subjectUid', 'subject_uid'),
       field('roleKey', 'role_key'),
-      field('expiresAt', 'expires_at'),
+      utcDateTimeField('expiresAt', 'expires_at'),
     ],
     searchColumns: ['subject_uid', 'role_key'],
   },
@@ -136,7 +165,7 @@ const definitions = {
     fields: [
       field('subjectUid', 'subject_uid'),
       field('tagKey', 'tag_key'),
-      field('expiresAt', 'expires_at'),
+      utcDateTimeField('expiresAt', 'expires_at'),
     ],
     searchColumns: ['subject_uid', 'tag_key'],
   },
@@ -205,7 +234,7 @@ const definitions = {
       field('title', 'title'),
       field('description', 'description'),
       field('clubId', 'club_id'),
-      field('startsAt', 'starts_at'),
+      utcDateTimeField('startsAt', 'starts_at'),
     ],
     searchColumns: ['title', 'description'],
   },
@@ -224,7 +253,7 @@ const definitions = {
     fields: [
       field('teamId', 'team_id'),
       field('memberUid', 'member_uid'),
-      field('checkinDate', 'checkin_date'),
+      dateOnlyField('checkinDate', 'checkin_date'),
     ],
     searchColumns: ['team_id', 'member_uid'],
   },
@@ -243,17 +272,14 @@ const definitions = {
     fields: [
       field('title', 'title'),
       field('kind', 'record_kind'),
-      field('amountCents', 'amount_cents', { decode: (value) => Number(value) }),
+      safeIntegerField('amountCents', 'amount_cents'),
       field('activityId', 'activity_id'),
     ],
     searchColumns: ['title', 'record_kind'],
   },
 } satisfies Record<string, RepositoryDefinition>;
-
-function normalizeDate(value: unknown): string {
-  if (value instanceof Date) return value.toISOString();
-  if (typeof value === 'string') return new Date(`${value.replace(' ', 'T')}Z`).toISOString();
-  return new Date(String(value)).toISOString();
+function escapeLikeQuery(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
 }
 
 class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
@@ -323,8 +349,10 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
       values.push(filters.scopeId);
     }
     if (filters.query?.trim() && this.definition.searchColumns.length > 0) {
-      clauses.push(`LOWER(CONCAT_WS(' ', ${this.definition.searchColumns.join(', ')})) LIKE ?`);
-      values.push(`%${filters.query.trim().toLocaleLowerCase()}%`);
+      clauses.push(
+        `LOWER(CONCAT_WS(' ', ${this.definition.searchColumns.join(', ')})) LIKE ? ESCAPE '\\\\'`,
+      );
+      values.push(`%${escapeLikeQuery(filters.query.trim().toLocaleLowerCase())}%`);
     }
     const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '';
     const [rows] = await this.executor.execute<RowDataPacket[]>(
@@ -379,8 +407,8 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
       status: String(row.status),
       ownerUid: String(row.owner_uid),
       scope: { type: String(row.scope_type), id: String(row.scope_id) },
-      createdAt: normalizeDate(row.created_at),
-      updatedAt: normalizeDate(row.updated_at),
+      createdAt: decodeUtcDateTime(row.created_at),
+      updatedAt: decodeUtcDateTime(row.updated_at),
     };
     for (const { key, column, decode } of this.definition.fields) {
       record[key] = decode?.(row[column]) ?? row[column];
@@ -396,13 +424,15 @@ function buildMySqlStore(executor: Executor, pool: Pool, inTransaction: boolean)
     async transaction<T>(operation: (transactionStore: DevelopmentStore) => Promise<T>) {
       if (inTransaction) return operation(store);
       const connection = await pool.getConnection();
-      await connection.beginTransaction();
+      let transactionStarted = false;
       try {
+        await connection.beginTransaction();
+        transactionStarted = true;
         const result = await operation(buildMySqlStore(connection, pool, true));
         await connection.commit();
         return result;
       } catch (error) {
-        await connection.rollback();
+        if (transactionStarted) await connection.rollback();
         throw error;
       } finally {
         connection.release();
@@ -447,14 +477,13 @@ export interface MySqlStoreHandle {
   close(): Promise<void>;
 }
 
+export function buildMySqlPoolOptions(config: MySqlConfig) {
+  return { ...config, connectionLimit: 10, dateStrings: true, timezone: 'Z' as const };
+}
 export function createMySqlStore(options: MySqlStoreOptions = {}): MySqlStoreHandle {
   const pool =
     options.pool ??
-    createPool({
-      ...(options.config ?? loadMySqlConfig(options.environment)),
-      connectionLimit: 10,
-      dateStrings: true,
-    });
+    createPool(buildMySqlPoolOptions(options.config ?? loadMySqlConfig(options.environment)));
   return {
     store: buildMySqlStore(pool, pool, false),
     pool,

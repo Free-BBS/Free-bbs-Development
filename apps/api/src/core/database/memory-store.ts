@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
+import { encodeDateOnly, encodeUtcDateTime } from './date-codec.js';
+
 import type {
   ActivityRecord,
   ActivityRegistrationRecord,
@@ -55,8 +57,52 @@ interface MemoryState {
 }
 
 type CollectionName = keyof MemoryState;
-type StateHolder = { current: MemoryState };
+interface StateHolder {
+  current: MemoryState;
+  transactionTail: Promise<void>;
+}
 
+const searchFields: Record<CollectionName, string[]> = {
+  subjects: ['uid', 'displayName'],
+  roles: ['key', 'name'],
+  permissions: ['action', 'resource'],
+  rolePermissions: ['roleKey', 'action', 'resource'],
+  roleAssignments: ['subjectUid', 'roleKey'],
+  tagDefinitions: ['key', 'name', 'description'],
+  tagAssignments: ['subjectUid', 'tagKey'],
+  modules: ['moduleId', 'name', 'description'],
+  moduleOwners: ['moduleId', 'ownerType', 'ownerId'],
+  auditLogs: ['actorUid', 'action', 'resourceType', 'resourceId'],
+  knowledge: ['title', 'body'],
+  announcements: ['title', 'body'],
+  consultations: ['title', 'body', 'requesterUid'],
+  clubs: ['name', 'description'],
+  clubMemberships: ['clubId', 'memberUid'],
+  activities: ['title', 'description'],
+  activityRegistrations: ['activityId', 'participantUid'],
+  sportsTeams: ['name', 'description'],
+  sportsCheckins: ['teamId', 'memberUid'],
+  liaisonResources: ['name', 'description', 'category'],
+  financeRecords: ['title', 'kind'],
+};
+
+function normalizedValues<T extends object>(value: T): T {
+  const result = structuredClone(value) as Record<string, unknown>;
+  for (const key of ['expiresAt', 'startsAt']) {
+    if (!Object.hasOwn(result, key) || result[key] === null || result[key] === undefined) continue;
+    const encoded = encodeUtcDateTime(result[key] as string);
+    result[key] = encoded?.toISOString() ?? null;
+  }
+  if (typeof result.checkinDate === 'string')
+    result.checkinDate = encodeDateOnly(result.checkinDate);
+  if (
+    typeof result.amountCents === 'number' &&
+    (!Number.isSafeInteger(result.amountCents) || result.amountCents < 0)
+  ) {
+    throw new TypeError('amountCents must be a non-negative safe integer');
+  }
+  return result as T;
+}
 const publicScope = { type: 'public', id: '*' } as const;
 const seedTime = '2026-07-22T00:00:00.000Z';
 
@@ -421,7 +467,7 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
   async create(input: NewRecord<T>): Promise<T> {
     const now = new Date().toISOString();
     const record = {
-      ...structuredClone(input),
+      ...normalizedValues(input),
       id: randomUUID(),
       createdAt: now,
       updatedAt: now,
@@ -441,7 +487,15 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       .filter((record) => !filters.status || record.status === filters.status)
       .filter((record) => !filters.scopeType || record.scope.type === filters.scopeType)
       .filter((record) => !filters.scopeId || record.scope.id === filters.scopeId)
-      .filter((record) => !query || JSON.stringify(record).toLocaleLowerCase().includes(query))
+      .filter((record) => {
+        if (!query) return true;
+        const searchable = record as unknown as Record<string, unknown>;
+        return searchFields[this.collection]
+          .map((key) => String(searchable[key] ?? ''))
+          .join(' ')
+          .toLocaleLowerCase()
+          .includes(query);
+      })
       .map((record) => structuredClone(record));
   }
 
@@ -453,7 +507,7 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
     if (!existing) return null;
     const updated = {
       ...existing,
-      ...structuredClone(patch),
+      ...normalizedValues(patch),
       id: existing.id,
       createdAt: existing.createdAt,
       updatedAt: new Date().toISOString(),
@@ -480,10 +534,23 @@ function buildStore(holder: StateHolder): DevelopmentStore {
     new MemoryRepository<T>(holder, collection);
   const store: DevelopmentStore = {
     async transaction<T>(operation: (transactionStore: DevelopmentStore) => Promise<T>) {
-      const transactionHolder = { current: structuredClone(holder.current) };
-      const result = await operation(buildStore(transactionHolder));
-      holder.current = transactionHolder.current;
-      return result;
+      const previous = holder.transactionTail;
+      let release: () => void = () => {};
+      holder.transactionTail = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await previous;
+      try {
+        const transactionHolder: StateHolder = {
+          current: structuredClone(holder.current),
+          transactionTail: Promise.resolve(),
+        };
+        const result = await operation(buildStore(transactionHolder));
+        holder.current = transactionHolder.current;
+        return result;
+      } finally {
+        release();
+      }
     },
     subjects: repository('subjects'),
     roles: repository('roles'),
@@ -515,5 +582,8 @@ export interface MemoryStoreOptions {
 }
 
 export function createMemoryStore(options: MemoryStoreOptions = {}): DevelopmentStore {
-  return buildStore({ current: options.seed === false ? createEmptyState() : createDemoState() });
+  return buildStore({
+    current: options.seed === false ? createEmptyState() : createDemoState(),
+    transactionTail: Promise.resolve(),
+  });
 }
