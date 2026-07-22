@@ -29,6 +29,7 @@ export interface AuthContextValue {
   authMode: AuthMode;
   demoUser: DemoUserId | null;
   setDemoUser: (userId: string) => void;
+  client: ApiClient;
 }
 
 export interface AuthProviderProps {
@@ -105,8 +106,9 @@ export function AuthProvider({ children, client }: AuthProviderProps) {
       authMode: activeClient.authMode,
       demoUser,
       setDemoUser,
+      client: activeClient,
     }),
-    [activeClient.authMode, demoUser, error, reload, setDemoUser, status, user],
+    [activeClient, demoUser, error, reload, setDemoUser, status, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

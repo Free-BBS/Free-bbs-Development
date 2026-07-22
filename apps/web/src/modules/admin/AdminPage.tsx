@@ -6,7 +6,7 @@ import {
 } from '@freebbs-development/contracts';
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
-import { createApiClient } from '../../core/api/client.js';
+import { createApiClient, type ApiClient } from '../../core/api/client.js';
 
 interface AssignmentBase {
   id: string;
@@ -42,8 +42,12 @@ function statusOf(error: unknown): number | null {
     : null;
 }
 
-export function AdminPage() {
-  const client = useMemo(createApiClient, []);
+export interface AdminPageProps {
+  client?: Pick<ApiClient, 'request'>;
+}
+
+export function AdminPage({ client: suppliedClient }: AdminPageProps = {}) {
+  const client = useMemo(() => suppliedClient ?? createApiClient(), [suppliedClient]);
   const [data, setData] = useState<AdminData | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);

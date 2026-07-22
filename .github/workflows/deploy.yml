@@ -1,0 +1,95 @@
+name: Production release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: ${{ github.ref == 'refs/heads/main' && github.ref_protected == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test
+
+  release:
+    needs: verify
+    if: ${{ github.ref == 'refs/heads/main' && github.ref_protected == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ vars.PRODUCTION_URL }}
+
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Build immutable release archive
+        shell: bash
+        run: |
+          tar -czf "freebbs-development-${GITHUB_SHA}.tar.gz" \
+            package.json package-lock.json \
+            apps/api/package.json apps/api/dist \
+            apps/web/package.json apps/web/dist \
+            packages/contracts/package.json packages/contracts/dist \
+            database scripts deploy
+      - name: Preserve release archive
+        uses: actions/upload-artifact@v5
+        with:
+          name: freebbs-development-${{ github.sha }}
+          path: freebbs-development-${{ github.sha }}.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+      - name: Install SSH credentials
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          for required in DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS; do
+            if [[ -z "${!required}" ]]; then
+              echo "Required production secret is not configured: ${required}" >&2
+              exit 1
+            fi
+          done
+          install -d -m 0700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 0600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+      - name: Publish verified release
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        shell: bash
+        run: |
+          for required in DEPLOY_HOST DEPLOY_USER; do
+            if [[ -z "${!required}" ]]; then
+              echo "Required production secret is not configured: ${required}" >&2
+              exit 1
+            fi
+          done
+          archive="freebbs-development-${GITHUB_SHA}.tar.gz"
+          remote_archive="/tmp/${archive}"
+          scp -o BatchMode=yes "$archive" "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_archive}"
+          ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "sudo /usr/local/sbin/deploy-freebbs-development --archive '${remote_archive}' --sha '${GITHUB_SHA}'"

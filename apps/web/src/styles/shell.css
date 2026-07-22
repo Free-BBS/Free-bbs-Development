@@ -358,8 +358,15 @@
 @media (max-width: 680px) {
   .titlebar {
     min-height: 72px;
-    align-items: flex-start;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
     padding: 14px 16px;
+  }
+
+  .titlebar .demo-switcher {
+    width: 100%;
+    margin-left: 0;
   }
 
   .titlebar h1 {

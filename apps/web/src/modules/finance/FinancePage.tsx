@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
-import { createApiClient } from '../../core/api/client.js';
+import { createApiClient, type ApiClient } from '../../core/api/client.js';
 
 type FinanceStatus = 'draft' | 'submitted' | 'approved' | 'settled' | 'rejected';
 type FinanceKind = 'budget' | 'settlement';
@@ -38,8 +38,12 @@ export function parseAmountToCents(value: string): number | null {
   return Number.isSafeInteger(cents) ? cents : null;
 }
 
-export function FinancePage() {
-  const client = useMemo(createApiClient, []);
+export interface FinancePageProps {
+  client?: Pick<ApiClient, 'request'>;
+}
+
+export function FinancePage({ client: suppliedClient }: FinancePageProps = {}) {
+  const client = useMemo(() => suppliedClient ?? createApiClient(), [suppliedClient]);
   const [records, setRecords] = useState<FinanceRecord[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [title, setTitle] = useState('');

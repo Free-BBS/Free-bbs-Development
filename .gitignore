@@ -8,3 +8,6 @@ coverage/
 !.env.example
 *.tsbuildinfo
 !apps/web/.env.development
+test-results/
+playwright-report/
+blob-report/

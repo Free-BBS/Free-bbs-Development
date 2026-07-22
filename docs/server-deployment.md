@@ -31,6 +31,30 @@ docker compose build
 只有上述命令通过且数据库备份完成后，才进入迁移和切换。保存待发布 commit SHA 与当前线上
 commit SHA，后者是回滚目标。
 
+## GitHub Actions 发布前置条件
+
+`.github/workflows/deploy.yml` 只在受保护的 `main` 分支上运行，并要求 GitHub `production` environment
+批准。仓库或组织管理员必须配置：
+
+- environment variable：`PRODUCTION_URL`；
+- secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`。
+
+发布工作流上传不可变的 commit SHA 归档后，只调用服务器预置的受审计入口：
+
+```text
+/usr/local/sbin/deploy-freebbs-development
+```
+
+该入口不由工作流自动创建。部署负责人必须以 root 所有、普通部署账号不可写的方式安装它，并在独立
+评审中确认它会校验 `--sha` 与归档名、拒绝路径穿越、解压到新的版本目录、安装生产依赖、原子切换
+`/opt/freebbs-development/current`、安装 Web 静态产物、执行 `nginx -t`、重启/重载服务、完成健康检查，
+且失败时切回上一个版本。入口不得自动运行 seed，也不得把 SSH 或数据库凭据写入归档或日志。
+
+数据库迁移使用单独的 `production-database` environment 和人工输入 `RUN` 的工作流。它需要
+`MYSQL_HOST`、`MYSQL_PORT`、`MYSQL_DATABASE`、`MYSQL_MIGRATION_USER`、`MYSQL_MIGRATION_PASSWORD`
+secrets；应为 environment 配置审批人，并把迁移账号与 API 运行账号分离。普通 pull request 只运行
+CI，不会触发发布或迁移。
+
 ## 生产环境文件
 
 systemd 单元统一读取：

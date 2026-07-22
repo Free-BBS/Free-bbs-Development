@@ -75,7 +75,7 @@ export class ApiClient {
       this.authMode === 'demo'
         ? requireDemoUserId(options.selectedDemoUserId ?? DEMO_USER_IDS[0])
         : null;
-    this.fetchImplementation = options.fetch ?? globalThis.fetch;
+    this.fetchImplementation = options.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
   get demoUser(): DemoUserId | null {

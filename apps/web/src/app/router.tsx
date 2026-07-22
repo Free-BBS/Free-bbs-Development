@@ -2,6 +2,7 @@ import type { ModuleManifest } from '@freebbs-development/contracts';
 import { Navigate, RouterProvider, createBrowserRouter, useLoaderData } from 'react-router-dom';
 
 import { createApiClient } from '../core/api/client.js';
+import { useAuth } from '../core/auth/AuthProvider.js';
 import { AdminPage } from '../modules/admin/AdminPage.js';
 import { ClubsPage } from '../modules/clubs/ClubsPage.js';
 import { DashboardPage } from '../modules/dashboard/DashboardPage.js';
@@ -35,6 +36,51 @@ function AppShellRoute() {
   return <AppShell moduleStates={moduleStates} />;
 }
 
+function DashboardRoute() {
+  const auth = useAuth();
+  return <DashboardPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function KnowledgeRoute() {
+  const auth = useAuth();
+  return <KnowledgePage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function InformationRoute() {
+  const auth = useAuth();
+  return <InformationPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function ClubsRoute() {
+  const auth = useAuth();
+  return <ClubsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function EventsRoute() {
+  const auth = useAuth();
+  return <EventsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function LiaisonRoute() {
+  const auth = useAuth();
+  return <LiaisonPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function SportsRoute() {
+  const auth = useAuth();
+  return <SportsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function FinanceRoute() {
+  const auth = useAuth();
+  return <FinancePage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function AdminRoute() {
+  const auth = useAuth();
+  return <AdminPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
 export const appRouter = createBrowserRouter(
   [
     {
@@ -43,15 +89,15 @@ export const appRouter = createBrowserRouter(
       loader: loadModuleStates,
       children: [
         { index: true, element: <Navigate to="/dashboard" replace /> },
-        { path: 'dashboard', element: <DashboardPage /> },
-        { path: 'knowledge', element: <KnowledgePage /> },
-        { path: 'information', element: <InformationPage /> },
-        { path: 'clubs', element: <ClubsPage /> },
-        { path: 'events', element: <EventsPage /> },
-        { path: 'liaison', element: <LiaisonPage /> },
-        { path: 'sports', element: <SportsPage /> },
-        { path: 'finance', element: <FinancePage /> },
-        { path: 'admin', element: <AdminPage /> },
+        { path: 'dashboard', element: <DashboardRoute /> },
+        { path: 'knowledge', element: <KnowledgeRoute /> },
+        { path: 'information', element: <InformationRoute /> },
+        { path: 'clubs', element: <ClubsRoute /> },
+        { path: 'events', element: <EventsRoute /> },
+        { path: 'liaison', element: <LiaisonRoute /> },
+        { path: 'sports', element: <SportsRoute /> },
+        { path: 'finance', element: <FinanceRoute /> },
+        { path: 'admin', element: <AdminRoute /> },
         { path: '*', element: <Navigate to="/dashboard" replace /> },
       ],
     },

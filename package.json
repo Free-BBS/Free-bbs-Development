@@ -16,15 +16,17 @@
     "build": "npm run build -ws --if-present",
     "test": "vitest run",
     "test:operations": "node --test tests/scripts/operational-scripts.test.mjs",
+    "test:workflows": "node --test tests/workflows/release-workflows.test.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed.mjs",
     "typecheck": "npm run typecheck -ws --if-present",
     "lint": "eslint .",
     "format:check": "prettier . --check",
-    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run test:operations && npm run build"
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run test:operations && npm run test:workflows && npm run build"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^20.0.0",
     "concurrently": "^9.0.0",
     "eslint": "^9.0.0",
