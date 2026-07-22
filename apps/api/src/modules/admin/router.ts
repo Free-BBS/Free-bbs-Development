@@ -169,7 +169,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       const assignmentScope = input.scope ?? { type: 'public', id: '*' };
       if (
         definition.requiredScopeType !== null &&
-        assignmentScope.type !== definition.requiredScopeType
+        (assignmentScope.type !== definition.requiredScopeType || assignmentScope.id === '*')
       ) {
         throw new HttpError(400, 'invalid_tag_scope', 'Tag scope does not match its definition');
       }
