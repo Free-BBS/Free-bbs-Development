@@ -1,0 +1,96 @@
+import type { PermissionRule, RolePermissionCatalog } from './policy.js';
+
+const rules = (...entries: Array<readonly [string, string]>): PermissionRule[] =>
+  entries.map(([action, resource]) => ({ action, resource }));
+
+export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = rules(
+  ['dashboard.read', 'dashboard'],
+  ['knowledge.read', 'knowledge_entry'],
+  ['information.announcement.read', 'announcement'],
+  ['information.consultation.create', 'consultation'],
+  ['clubs.read', 'club'],
+  ['clubs.join', 'club_membership'],
+  ['clubs.leave', 'club_membership'],
+  ['events.read', 'activity'],
+  ['events.register', 'activity_registration'],
+  ['events.cancel_registration', 'activity_registration'],
+  ['sports.team.read', 'sports_team'],
+);
+
+export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
+  'platform.super_admin': rules(['*', '*']),
+  'domain.arts_lead': rules(['clubs.*', '*'], ['events.*', '*'], ['knowledge.*', '*']),
+  'domain.sports_lead': rules(['sports.*', '*'], ['events.*', '*']),
+  'domain.liaison_lead': rules(
+    ['liaison.*', '*'],
+    ['information.*', '*'],
+    ['events.read', 'activity'],
+  ),
+  'domain.rights_development_lead': rules(
+    ['finance.*', '*'],
+    ['information.consultation.*', 'consultation'],
+    ['knowledge.*', '*'],
+  ),
+  'department.arts_director': rules(
+    ['clubs.create', 'club'],
+    ['clubs.update', 'club'],
+    ['events.create', 'activity'],
+    ['events.update', 'activity'],
+    ['knowledge.create', 'knowledge_entry'],
+    ['knowledge.publish', 'knowledge_entry'],
+  ),
+  'department.sports_director': rules(
+    ['sports.team.create', 'sports_team'],
+    ['sports.team.update', 'sports_team'],
+    ['sports.checkin.read', 'sports_checkin'],
+    ['sports.checkin.create', 'sports_checkin'],
+    ['events.create', 'activity'],
+    ['events.update', 'activity'],
+  ),
+  'department.liaison_director': rules(
+    ['liaison.resource.create', 'liaison_resource'],
+    ['liaison.resource.update', 'liaison_resource'],
+    ['information.announcement.create', 'announcement'],
+    ['information.announcement.publish', 'announcement'],
+    ['information.consultation.triage', 'consultation'],
+  ),
+  'department.rights_development_director': rules(
+    ['finance.record.read', 'finance_record'],
+    ['finance.record.create', 'finance_record'],
+    ['finance.record.update', 'finance_record'],
+    ['information.consultation.triage', 'consultation'],
+  ),
+  'department.arts_member': rules(
+    ['clubs.create', 'club'],
+    ['events.create', 'activity'],
+    ['knowledge.create', 'knowledge_entry'],
+  ),
+  'department.sports_member': rules(
+    ['sports.team.read', 'sports_team'],
+    ['sports.checkin.read', 'sports_checkin'],
+    ['events.create', 'activity'],
+  ),
+  'department.liaison_member': rules(
+    ['liaison.resource.read', 'liaison_resource'],
+    ['liaison.resource.create', 'liaison_resource'],
+    ['information.announcement.create', 'announcement'],
+  ),
+  'department.rights_development_member': rules(
+    ['information.consultation.read', 'consultation'],
+    ['information.consultation.triage', 'consultation'],
+    ['knowledge.create', 'knowledge_entry'],
+  ),
+  'affiliation.tuanwei_member': rules(
+    ['events.approve', 'activity'],
+    ['information.announcement.publish', 'announcement'],
+  ),
+  'affiliation.sast_member': rules(
+    ['events.technical_support', 'activity'],
+    ['clubs.technical_support', 'club'],
+  ),
+};
+
+export const SPORTS_CAPTAIN_RULES: readonly PermissionRule[] = rules(
+  ['sports.checkin.read', 'sports_checkin'],
+  ['sports.checkin.create', 'sports_checkin'],
+);
