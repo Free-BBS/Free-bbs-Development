@@ -1,0 +1,16 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    projects: [
+      {
+        test: {
+          name: 'api',
+          include: ['apps/api/src/**/*.test.ts'],
+          environment: 'node',
+        },
+      },
+      './apps/web/vite.config.ts',
+    ],
+  },
+});

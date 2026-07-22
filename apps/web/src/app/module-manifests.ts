@@ -1,0 +1,134 @@
+import type { ModuleId, ModuleManifest, ModuleStatus } from '@freebbs-development/contracts';
+
+import adminIcon from '../assets/icons/admin.svg';
+import clubsIcon from '../assets/icons/clubs.svg';
+import dashboardIcon from '../assets/icons/dashboard.svg';
+import eventsIcon from '../assets/icons/events.svg';
+import financeIcon from '../assets/icons/finance.svg';
+import informationIcon from '../assets/icons/information.svg';
+import knowledgeIcon from '../assets/icons/knowledge.svg';
+import liaisonIcon from '../assets/icons/liaison.svg';
+import sportsIcon from '../assets/icons/sports.svg';
+
+export type ModuleStateOverrides = Partial<
+  Record<ModuleId, ModuleStatus | boolean | { enabled: boolean }>
+>;
+
+export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
+  {
+    id: 'dashboard',
+    name: '工作台',
+    description: '集中查看平台动态、待办事项与常用入口。',
+    route: '/dashboard',
+    icon: dashboardIcon,
+    ownerTeam: '平台核心组',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 1,
+  },
+  {
+    id: 'knowledge',
+    name: '经验库',
+    description: '沉淀组织经验、工作流程与培养资料。',
+    route: '/knowledge',
+    icon: knowledgeIcon,
+    ownerTeam: '平台核心组',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 2,
+  },
+  {
+    id: 'information',
+    name: '信息与咨询',
+    description: '公开信息、接受咨询并跟踪反馈处理。',
+    route: '/information',
+    icon: informationIcon,
+    ownerTeam: '权益发展团队',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 3,
+  },
+  {
+    id: 'clubs',
+    name: '社群与俱乐部',
+    description: '浏览和维护社群、俱乐部及其协作信息。',
+    route: '/clubs',
+    icon: clubsIcon,
+    ownerTeam: '社群与俱乐部团队',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 4,
+  },
+  {
+    id: 'events',
+    name: '活动',
+    description: '发起活动、报名参与并跟踪活动流程。',
+    route: '/events',
+    icon: eventsIcon,
+    ownerTeam: '活动团队',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 5,
+  },
+  {
+    id: 'liaison',
+    name: '联络资源',
+    description: '维护组织通讯录与校内外联络资源。',
+    route: '/liaison',
+    icon: liaisonIcon,
+    ownerTeam: '联络团队',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 6,
+  },
+  {
+    id: 'sports',
+    name: '体育代表队',
+    description: '管理代表队信息、成员与日常协作。',
+    route: '/sports',
+    icon: sportsIcon,
+    ownerTeam: '体育团队',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 7,
+  },
+  {
+    id: 'finance',
+    name: '财务治理',
+    description: '记录预决算并支持财务汇总与治理。',
+    route: '/finance',
+    icon: financeIcon,
+    ownerTeam: '财务治理团队',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 8,
+  },
+  {
+    id: 'admin',
+    name: '权限与模块管理',
+    description: '管理平台权限、身份标签与模块状态。',
+    route: '/admin',
+    icon: adminIcon,
+    ownerTeam: '平台核心组',
+    status: 'enabled',
+    requiredPermissions: [],
+    order: 9,
+  },
+] as const;
+
+export function resolveModuleStatus(
+  manifest: ModuleManifest,
+  overrides?: ModuleStateOverrides,
+): ModuleStatus {
+  const override = overrides?.[manifest.id];
+
+  if (typeof override === 'boolean') {
+    return override ? 'enabled' : 'disabled';
+  }
+
+  if (typeof override === 'object') {
+    return override.enabled ? 'enabled' : 'disabled';
+  }
+
+  return override ?? manifest.status;
+}

@@ -1,0 +1,120 @@
+:root {
+  color-scheme: light;
+
+  --color-sidebar: #063641;
+  --color-active: #278898;
+  --color-page: #f4f6f8;
+  --color-line: #dde3e8;
+  --color-text: #07090b;
+  --color-muted: rgba(7, 9, 11, 0.58);
+  --color-sidebar-text: #f5fbfd;
+  --color-paper: #ffffff;
+  --color-paper-muted: #eef2f4;
+  --color-focus: #66d9e8;
+  --color-danger: #a23d38;
+  --color-warning: #8a5d0a;
+  --color-success: #176b56;
+
+  --font-ui:
+    'Syne', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  --font-serif: 'Noto Serif SC', 'Songti SC', SimSun, serif;
+
+  --sidebar-width: 344px;
+  --titlebar-height: 96px;
+  --content-max-width: 1440px;
+  --mobile-nav-height: 76px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --shadow-card: 0 1px 1px rgba(7, 9, 11, 0.03), 0 12px 32px rgba(6, 54, 65, 0.06);
+  --shadow-raised: 0 18px 45px rgba(6, 54, 65, 0.12);
+  --transition-fast: 160ms ease;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  background: var(--color-page);
+  font-family: var(--font-ui);
+  scroll-behavior: smooth;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--color-page);
+  color: var(--color-text);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-focus);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgba(39, 136, 152, 0.24);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+@media (forced-colors: active) {
+  :root {
+    --color-line: CanvasText;
+  }
+
+  :focus-visible {
+    outline-color: Highlight;
+  }
+}
