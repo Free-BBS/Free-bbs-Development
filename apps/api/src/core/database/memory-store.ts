@@ -61,6 +61,19 @@ interface StateHolder {
   current: MemoryState;
   transactionTail: Promise<void>;
 }
+async function withWriteLock<T>(holder: StateHolder, operation: () => Promise<T>): Promise<T> {
+  const previous = holder.transactionTail;
+  let release: () => void = () => {};
+  holder.transactionTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
 
 const searchFields: Record<CollectionName, string[]> = {
   subjects: ['uid', 'displayName'],
@@ -465,15 +478,17 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
   ) {}
 
   async create(input: NewRecord<T>): Promise<T> {
-    const now = new Date().toISOString();
-    const record = {
-      ...normalizedValues(input),
-      id: randomUUID(),
-      createdAt: now,
-      updatedAt: now,
-    } as T;
-    this.records().push(record);
-    return structuredClone(record);
+    return withWriteLock(this.holder, async () => {
+      const now = new Date().toISOString();
+      const record = {
+        ...normalizedValues(input),
+        id: randomUUID(),
+        createdAt: now,
+        updatedAt: now,
+      } as T;
+      this.records().push(record);
+      return structuredClone(record);
+    });
   }
 
   async get(id: string): Promise<T | null> {
@@ -500,28 +515,32 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
   }
 
   async update(id: string, patch: RecordPatch<T>): Promise<T | null> {
-    const records = this.records();
-    const index = records.findIndex((record) => record.id === id);
-    if (index === -1) return null;
-    const existing = records[index];
-    if (!existing) return null;
-    const updated = {
-      ...existing,
-      ...normalizedValues(patch),
-      id: existing.id,
-      createdAt: existing.createdAt,
-      updatedAt: new Date().toISOString(),
-    } as T;
-    records[index] = updated;
-    return structuredClone(updated);
+    return withWriteLock(this.holder, async () => {
+      const records = this.records();
+      const index = records.findIndex((record) => record.id === id);
+      if (index === -1) return null;
+      const existing = records[index];
+      if (!existing) return null;
+      const updated = {
+        ...existing,
+        ...normalizedValues(patch),
+        id: existing.id,
+        createdAt: existing.createdAt,
+        updatedAt: new Date().toISOString(),
+      } as T;
+      records[index] = updated;
+      return structuredClone(updated);
+    });
   }
 
   async delete(id: string): Promise<boolean> {
-    const records = this.records();
-    const index = records.findIndex((record) => record.id === id);
-    if (index === -1) return false;
-    records.splice(index, 1);
-    return true;
+    return withWriteLock(this.holder, async () => {
+      const records = this.records();
+      const index = records.findIndex((record) => record.id === id);
+      if (index === -1) return false;
+      records.splice(index, 1);
+      return true;
+    });
   }
 
   private records(): T[] {
@@ -534,13 +553,7 @@ function buildStore(holder: StateHolder): DevelopmentStore {
     new MemoryRepository<T>(holder, collection);
   const store: DevelopmentStore = {
     async transaction<T>(operation: (transactionStore: DevelopmentStore) => Promise<T>) {
-      const previous = holder.transactionTail;
-      let release: () => void = () => {};
-      holder.transactionTail = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      await previous;
-      try {
+      return withWriteLock(holder, async () => {
         const transactionHolder: StateHolder = {
           current: structuredClone(holder.current),
           transactionTail: Promise.resolve(),
@@ -548,9 +561,7 @@ function buildStore(holder: StateHolder): DevelopmentStore {
         const result = await operation(buildStore(transactionHolder));
         holder.current = transactionHolder.current;
         return result;
-      } finally {
-        release();
-      }
+      });
     },
     subjects: repository('subjects'),
     roles: repository('roles'),

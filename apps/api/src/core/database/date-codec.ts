@@ -1,19 +1,70 @@
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
 const MYSQL_DATETIME = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?$/;
-const ZONED_INSTANT = /^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/i;
+const ZONED_INSTANT =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/i;
 
 function validDate(date: Date, message: string): Date {
   if (Number.isNaN(date.getTime())) throw new TypeError(message);
   return date;
 }
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) {
+    const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+    return leap ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
 
 export function encodeUtcDateTime(value: string | Date | null | undefined): Date | null {
   if (value === null || value === undefined) return null;
   if (value instanceof Date) return new Date(validDate(value, 'Invalid UTC date-time').getTime());
-  if (!ZONED_INSTANT.test(value)) {
+  const match = ZONED_INSTANT.exec(value);
+  if (!match) {
     throw new TypeError('UTC date-time must include Z or an explicit numeric offset');
   }
-  return validDate(new Date(value), 'Invalid UTC date-time');
+  const [
+    ,
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+    fraction = '',
+    zone,
+    offsetSign,
+    offsetHourText = '0',
+    offsetMinuteText = '0',
+  ] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const milliseconds = Number(fraction.padEnd(3, '0').slice(0, 3));
+  const offsetHour = Number(offsetHourText);
+  const offsetMinute = Number(offsetMinuteText);
+  if (
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    throw new TypeError('Invalid UTC date-time components');
+  }
+  const local = new Date(0);
+  local.setUTCFullYear(year, month - 1, day);
+  local.setUTCHours(hour, minute, second, milliseconds);
+  const offsetDirection = offsetSign === '-' ? -1 : 1;
+  const offsetMilliseconds =
+    zone.toUpperCase() === 'Z' ? 0 : offsetDirection * (offsetHour * 60 + offsetMinute) * 60_000;
+  return validDate(new Date(local.getTime() - offsetMilliseconds), 'Invalid UTC date-time');
 }
 
 export function decodeUtcDateTime(value: unknown): string {

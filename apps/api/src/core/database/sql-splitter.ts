@@ -10,6 +10,13 @@ export function splitSqlStatements(contents: string): string[] {
     const next = contents[index + 1] ?? '';
 
     if (state === 'normal') {
+      const previous = contents[index - 1] ?? '';
+      if (
+        !/[A-Za-z0-9_$]/.test(previous) &&
+        /^DELIMITER(?![A-Za-z0-9_$])/i.test(contents.slice(index))
+      ) {
+        throw new Error('DELIMITER directives are not supported by the migration CLI');
+      }
       if (atLineStart && !/\s/.test(character)) {
         if (/^DELIMITER\b/i.test(contents.slice(index))) {
           throw new Error('DELIMITER directives are not supported by the migration CLI');
