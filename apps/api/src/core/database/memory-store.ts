@@ -480,16 +480,13 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
   constructor(
     private readonly holder: StateHolder,
     private readonly collection: CollectionName,
+    private readonly allowRowLock: boolean,
   ) {}
 
   async create(input: NewRecord<T>): Promise<T> {
     return withWriteLock(this.holder, async () => {
-      if (
-        (this.collection === 'roleAssignments' || this.collection === 'tagAssignments') &&
-        this.hasAssignmentConflict(input)
-      ) {
-        throw new RecordConflictError('Assignment already exists');
-      }
+      const conflictMessage = this.conflictMessage(input);
+      if (conflictMessage !== undefined) throw new RecordConflictError(conflictMessage);
       const now = new Date().toISOString();
       const record = {
         ...normalizedValues(input),
@@ -505,6 +502,11 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
   async get(id: string): Promise<T | null> {
     const record = this.records().find((candidate) => candidate.id === id);
     return record ? structuredClone(record) : null;
+  }
+
+  async getForUpdate(id: string): Promise<T | null> {
+    if (!this.allowRowLock) throw new Error('Row locking requires a store transaction');
+    return this.get(id);
   }
 
   async list(filters: ListFilters = {}): Promise<T[]> {
@@ -532,9 +534,15 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       if (index === -1) return null;
       const existing = records[index];
       if (!existing) return null;
+      const normalizedPatch = normalizedValues(patch);
+      const conflictMessage = this.conflictMessage(
+        { ...existing, ...normalizedPatch } as NewRecord<T>,
+        existing.id,
+      );
+      if (conflictMessage !== undefined) throw new RecordConflictError(conflictMessage);
       const updated = {
         ...existing,
-        ...normalizedValues(patch),
+        ...normalizedPatch,
         id: existing.id,
         createdAt: existing.createdAt,
         updatedAt: new Date().toISOString(),
@@ -554,7 +562,7 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
     });
   }
 
-  private hasAssignmentConflict(input: NewRecord<T>): boolean {
+  private hasAssignmentConflict(input: NewRecord<T>, excludeId?: string): boolean {
     const candidate = input as unknown as {
       subjectUid: string;
       roleKey?: string;
@@ -563,6 +571,7 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
     };
     const assignmentKey = this.collection === 'roleAssignments' ? 'roleKey' : 'tagKey';
     return this.records().some((record) => {
+      if (record.id === excludeId) return false;
       const existing = record as unknown as typeof candidate;
       return (
         existing.subjectUid === candidate.subjectUid &&
@@ -573,14 +582,51 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
     });
   }
 
+  private conflictMessage(input: NewRecord<T>, excludeId?: string): string | undefined {
+    if (
+      (this.collection === 'roleAssignments' || this.collection === 'tagAssignments') &&
+      this.hasAssignmentConflict(input, excludeId)
+    ) {
+      return 'Assignment already exists';
+    }
+    if (this.collection === 'clubMemberships') {
+      const candidate = input as unknown as { clubId: string; memberUid: string };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return current.clubId === candidate.clubId && current.memberUid === candidate.memberUid;
+        })
+      ) {
+        return 'Membership already exists';
+      }
+    }
+    if (this.collection === 'activityRegistrations') {
+      const candidate = input as unknown as { activityId: string; participantUid: string };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return (
+            current.activityId === candidate.activityId &&
+            current.participantUid === candidate.participantUid
+          );
+        })
+      ) {
+        return 'Registration already exists';
+      }
+    }
+    return undefined;
+  }
+
   private records(): T[] {
     return this.holder.current[this.collection] as unknown as T[];
   }
 }
 
-function buildStore(holder: StateHolder): DevelopmentStore {
+function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStore {
   const repository = <T extends StoredRecord>(collection: CollectionName) =>
-    new MemoryRepository<T>(holder, collection);
+    new MemoryRepository<T>(holder, collection, inTransaction);
   const store: DevelopmentStore = {
     async transaction<T>(operation: (transactionStore: DevelopmentStore) => Promise<T>) {
       return withWriteLock(holder, async () => {
@@ -588,7 +634,7 @@ function buildStore(holder: StateHolder): DevelopmentStore {
           current: structuredClone(holder.current),
           transactionTail: Promise.resolve(),
         };
-        const result = await operation(buildStore(transactionHolder));
+        const result = await operation(buildStore(transactionHolder, true));
         holder.current = structuredClone(transactionHolder.current);
         return result;
       });

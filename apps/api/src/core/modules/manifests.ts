@@ -1,4 +1,7 @@
 import type { ModuleManifest } from '@freebbs-development/contracts';
+import { CLUBS_MANIFEST } from '../../modules/clubs/manifest.js';
+import { EVENTS_MANIFEST } from '../../modules/events/manifest.js';
+import { FINANCE_MANIFEST } from '../../modules/finance/manifest.js';
 import { INFORMATION_MANIFEST } from '../../modules/information/manifest.js';
 import { KNOWLEDGE_MANIFEST } from '../../modules/knowledge/manifest.js';
 import { LIAISON_MANIFEST } from '../../modules/liaison/manifest.js';
@@ -19,28 +22,10 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
 
   INFORMATION_MANIFEST,
 
-  {
-    id: 'clubs',
-    name: '社群与俱乐部',
-    description: '建设和维护学生社群与俱乐部。',
-    route: '/clubs',
-    icon: 'clubs',
-    ownerTeam: 'arts',
-    status: 'enabled',
-    requiredPermissions: ['clubs.read'],
-    order: 40,
-  },
-  {
-    id: 'events',
-    name: '活动',
-    description: '规范活动创建、报名与复盘流程。',
-    route: '/events',
-    icon: 'events',
-    ownerTeam: 'cross-domain',
-    status: 'enabled',
-    requiredPermissions: ['events.read'],
-    order: 50,
-  },
+  CLUBS_MANIFEST,
+
+  EVENTS_MANIFEST,
+
   LIAISON_MANIFEST,
 
   {
@@ -54,17 +39,8 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
     requiredPermissions: ['sports.team.read'],
     order: 70,
   },
-  {
-    id: 'finance',
-    name: '财务治理',
-    description: '以可审计方式管理预算与结算。',
-    route: '/finance',
-    icon: 'finance',
-    ownerTeam: 'rights-development',
-    status: 'enabled',
-    requiredPermissions: ['finance.record.read'],
-    order: 80,
-  },
+  FINANCE_MANIFEST,
+
   {
     id: 'admin',
     name: '权限与模块管理',

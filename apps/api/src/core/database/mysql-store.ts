@@ -235,6 +235,7 @@ const definitions = {
   },
   clubMemberships: {
     table: 'club_memberships',
+    conflictMessage: 'Membership already exists',
     fields: [field('clubId', 'club_id'), field('memberUid', 'member_uid')],
     searchColumns: ['club_id', 'member_uid'],
   },
@@ -250,6 +251,7 @@ const definitions = {
   },
   activityRegistrations: {
     table: 'activity_registrations',
+    conflictMessage: 'Registration already exists',
     fields: [field('activityId', 'activity_id'), field('participantUid', 'participant_uid')],
     searchColumns: ['activity_id', 'participant_uid'],
   },
@@ -302,6 +304,7 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
   constructor(
     private readonly executor: Executor,
     private readonly definition: RepositoryDefinition,
+    private readonly allowRowLock: boolean,
   ) {}
 
   async create(input: NewRecord<T>): Promise<T> {
@@ -350,6 +353,16 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
   async get(id: string): Promise<T | null> {
     const [rows] = await this.executor.execute<RowDataPacket[]>(
       `SELECT * FROM ${this.definition.table} WHERE id = ? LIMIT 1`,
+      [id],
+    );
+    const row = rows[0];
+    return row ? this.decode(row) : null;
+  }
+
+  async getForUpdate(id: string): Promise<T | null> {
+    if (!this.allowRowLock) throw new Error('Row locking requires a store transaction');
+    const [rows] = await this.executor.execute<RowDataPacket[]>(
+      `SELECT * FROM ${this.definition.table} WHERE id = ? LIMIT 1 FOR UPDATE`,
       [id],
     );
     const row = rows[0];
@@ -409,11 +422,18 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
     if (assignments.length === 0) return this.get(id);
     assignments.push('updated_at = ?');
     values.push(new Date(), id);
-    const [result] = await this.executor.execute<ResultSetHeader>(
-      `UPDATE ${this.definition.table} SET ${assignments.join(', ')} WHERE id = ?`,
-      values,
-    );
-    return result.affectedRows > 0 ? this.get(id) : null;
+    try {
+      const [result] = await this.executor.execute<ResultSetHeader>(
+        `UPDATE ${this.definition.table} SET ${assignments.join(', ')} WHERE id = ?`,
+        values,
+      );
+      return result.affectedRows > 0 ? this.get(id) : null;
+    } catch (error) {
+      if (this.definition.conflictMessage !== undefined && isDuplicateEntryError(error)) {
+        throw new RecordConflictError(this.definition.conflictMessage, { cause: error });
+      }
+      throw error;
+    }
   }
 
   async delete(id: string): Promise<boolean> {
@@ -442,7 +462,7 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
 
 function buildMySqlStore(executor: Executor, pool: Pool, inTransaction: boolean): DevelopmentStore {
   const repository = <T extends StoredRecord>(definition: RepositoryDefinition) =>
-    new MySqlRepository<T>(executor, definition);
+    new MySqlRepository<T>(executor, definition, inTransaction);
   const store: DevelopmentStore = {
     async transaction<T>(operation: (transactionStore: DevelopmentStore) => Promise<T>) {
       if (inTransaction) return operation(store);

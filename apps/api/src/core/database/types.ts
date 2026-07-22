@@ -22,6 +22,7 @@ export interface ListFilters {
 export interface RecordRepository<T extends StoredRecord> {
   create(input: NewRecord<T>): Promise<T>;
   get(id: string): Promise<T | null>;
+  getForUpdate(id: string): Promise<T | null>;
   list(filters?: ListFilters): Promise<T[]>;
   update(id: string, patch: RecordPatch<T>): Promise<T | null>;
   delete(id: string): Promise<boolean>;
