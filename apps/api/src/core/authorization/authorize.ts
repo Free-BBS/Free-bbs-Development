@@ -102,12 +102,20 @@ export function authorize(
   }
 
   for (const role of context.roles) {
-    if (ROLE_PERMISSION_CATALOG[role]?.some((rule) => matchesRule(rule, request))) {
+    if (
+      ROLE_PERMISSION_CATALOG[role]?.some(
+        (rule) => matchesRule(rule, request) && matchesScope(rule.scope, request.scope),
+      )
+    ) {
       return allow('role-grant', `role:${role}`);
     }
   }
 
-  if (BASE_STUDENT_PERMISSIONS.some((rule) => matchesRule(rule, request))) {
+  if (
+    BASE_STUDENT_PERMISSIONS.some(
+      (rule) => matchesRule(rule, request) && matchesScope(rule.scope, request.scope),
+    )
+  ) {
     return allow('base-role-grant', 'base-role:student');
   }
 

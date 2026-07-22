@@ -62,7 +62,7 @@ function isGlobalScope(scope: ScopeRef): boolean {
 }
 
 function tagIdentity(tag: PermissionTag): string {
-  return `${tag.key}|${tag.scope?.type ?? ''}|${tag.scope?.id ?? ''}`;
+  return JSON.stringify([tag.key, tag.scope?.type ?? null, tag.scope?.id ?? null]);
 }
 
 function expiryRank(expiresAt: string | null | undefined): number {

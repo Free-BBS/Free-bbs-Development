@@ -3,21 +3,26 @@ import type { PermissionRule, RolePermissionCatalog } from './policy.js';
 const rules = (...entries: Array<readonly [string, string]>): PermissionRule[] =>
   entries.map(([action, resource]) => ({ action, resource }));
 
-export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = rules(
-  ['dashboard.read', 'dashboard'],
-  ['knowledge.read', 'knowledge_entry'],
-  ['information.announcement.read', 'announcement'],
-  ['information.consultation.create', 'consultation'],
-  ['clubs.read', 'club'],
-  ['clubs.join', 'club_membership'],
-  ['clubs.leave', 'club_membership'],
-  ['events.read', 'activity'],
-  ['events.register', 'activity_registration'],
-  ['events.cancel_registration', 'activity_registration'],
-  ['sports.team.read', 'sports_team'],
-  ['liaison.resource.read', 'liaison_resource'],
-);
-
+export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = [
+  ...rules(
+    ['dashboard.read', 'dashboard'],
+    ['knowledge.read', 'knowledge_entry'],
+    ['information.announcement.read', 'announcement'],
+    ['information.consultation.create', 'consultation'],
+    ['clubs.read', 'club'],
+    ['clubs.join', 'club_membership'],
+    ['clubs.leave', 'club_membership'],
+    ['events.read', 'activity'],
+    ['events.register', 'activity_registration'],
+    ['events.cancel_registration', 'activity_registration'],
+    ['sports.team.read', 'sports_team'],
+  ),
+  {
+    action: 'liaison.resource.read',
+    resource: 'liaison_resource',
+    scope: { type: 'public', id: '*' },
+  },
+];
 export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
   'platform.super_admin': rules(['*', '*']),
   'domain.arts_lead': rules(['clubs.*', '*'], ['events.*', '*'], ['knowledge.*', '*']),

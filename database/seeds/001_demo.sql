@@ -16,7 +16,7 @@ INSERT INTO role_assignments
   (id, subject_uid, role_key, expires_at, status, owner_uid, scope_type, scope_id, created_at, updated_at)
 VALUES
   ('assignment-admin', 'demo-admin', 'platform.super_admin', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
-  ('assignment-sports-lead', 'demo-sports-lead', 'domain.sports_lead', NULL, 'active', 'demo-admin', 'department', 'sports', NOW(3), NOW(3));
+  ('assignment-sports-lead', 'demo-sports-lead', 'domain.sports_lead', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3));
 
 INSERT INTO tag_definitions
   (id, tag_key, name, description, status, owner_uid, scope_type, scope_id, created_at, updated_at)

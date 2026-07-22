@@ -18,7 +18,11 @@ function user(roles: RoleKey[] = []): UserContext {
 describe('review regressions: catalog coverage', () => {
   it('allows an ordinary authenticated student to read liaison resources', () => {
     expect(
-      authorize(user(), { action: 'liaison.resource.read', resource: 'liaison_resource' }).allowed,
+      authorize(user(), {
+        action: 'liaison.resource.read',
+        resource: 'liaison_resource',
+        scope: { type: 'public', id: '*' },
+      }).allowed,
     ).toBe(true);
   });
 

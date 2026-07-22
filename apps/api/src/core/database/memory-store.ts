@@ -219,7 +219,7 @@ function createDemoState(): MemoryState {
       expiresAt: null,
       status: 'active',
       ownerUid: 'demo-admin',
-      scope: { type: 'department', id: 'sports' },
+      scope: publicScope,
     }),
   ];
   state.tagDefinitions = [
