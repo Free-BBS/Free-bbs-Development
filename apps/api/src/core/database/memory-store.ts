@@ -559,7 +559,7 @@ function buildStore(holder: StateHolder): DevelopmentStore {
           transactionTail: Promise.resolve(),
         };
         const result = await operation(buildStore(transactionHolder));
-        holder.current = transactionHolder.current;
+        holder.current = structuredClone(transactionHolder.current);
         return result;
       });
     },

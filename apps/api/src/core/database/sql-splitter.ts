@@ -3,26 +3,13 @@ export function splitSqlStatements(contents: string): string[] {
   let buffer = '';
   let state: 'normal' | 'single' | 'double' | 'backtick' | 'line-comment' | 'block-comment' =
     'normal';
-  let atLineStart = true;
+  let statementHasSqlToken = false;
 
   for (let index = 0; index < contents.length; index += 1) {
     const character = contents[index] ?? '';
     const next = contents[index + 1] ?? '';
 
     if (state === 'normal') {
-      const previous = contents[index - 1] ?? '';
-      if (
-        !/[A-Za-z0-9_$]/.test(previous) &&
-        /^DELIMITER(?![A-Za-z0-9_$])/i.test(contents.slice(index))
-      ) {
-        throw new Error('DELIMITER directives are not supported by the migration CLI');
-      }
-      if (atLineStart && !/\s/.test(character)) {
-        if (/^DELIMITER\b/i.test(contents.slice(index))) {
-          throw new Error('DELIMITER directives are not supported by the migration CLI');
-        }
-        atLineStart = false;
-      }
       if (character === '-' && next === '-' && /\s|$/.test(contents[index + 2] ?? '')) {
         state = 'line-comment';
         buffer += character + next;
@@ -40,14 +27,26 @@ export function splitSqlStatements(contents: string): string[] {
         index += 1;
         continue;
       }
-      if (character === "'") state = 'single';
-      else if (character === '"') state = 'double';
-      else if (character === '`') state = 'backtick';
-      else if (character === ';') {
+      if (!statementHasSqlToken && /^DELIMITER(?![A-Za-z0-9_$])/i.test(contents.slice(index))) {
+        throw new Error('DELIMITER directives are not supported by the migration CLI');
+      }
+      if (character === "'") {
+        state = 'single';
+        statementHasSqlToken = true;
+      } else if (character === '"') {
+        state = 'double';
+        statementHasSqlToken = true;
+      } else if (character === '`') {
+        state = 'backtick';
+        statementHasSqlToken = true;
+      } else if (character === ';') {
         const statement = buffer.trim();
-        if (statement) statements.push(statement);
+        if (statementHasSqlToken && statement) statements.push(statement);
         buffer = '';
+        statementHasSqlToken = false;
         continue;
+      } else if (!/\s/.test(character)) {
+        statementHasSqlToken = true;
       }
     } else if (state === 'line-comment') {
       if (character === '\n') state = 'normal';
@@ -74,8 +73,6 @@ export function splitSqlStatements(contents: string): string[] {
     }
 
     buffer += character;
-    if (character === '\n') atLineStart = true;
-    else if (atLineStart && !/\s/.test(character)) atLineStart = false;
   }
 
   if (
@@ -87,6 +84,6 @@ export function splitSqlStatements(contents: string): string[] {
     throw new Error(`Unterminated SQL ${state}`);
   }
   const trailing = buffer.trim();
-  if (trailing) statements.push(trailing);
+  if (statementHasSqlToken && trailing) statements.push(trailing);
   return statements;
 }
