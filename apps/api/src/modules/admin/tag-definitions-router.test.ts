@@ -155,13 +155,13 @@ describe('tag definition and permission governance', () => {
     expect(await store.auditLogs.list({ query: 'admin.tag_definition.create' })).toEqual([]);
   });
 
-  it('does not allow a built-in Tag key to be renamed or made inactive', async () => {
+  it('keeps a built-in Tag key and required scope immutable', async () => {
     const { app, store } = adminApp();
     const before = (await store.tagDefinitions.list()).find(
       ({ key }) => key === 'sports.team_captain',
     );
 
-    for (const patch of [{ key: 'sports.captain' }, { status: 'inactive' }]) {
+    for (const patch of [{ key: 'sports.captain' }, { requiredScopeType: 'club' }]) {
       const response = await request(app)
         .patch('/api/development/v1/admin/tag-definitions/sports.team_captain')
         .set(adminHeaders)
@@ -174,6 +174,49 @@ describe('tag definition and permission governance', () => {
     expect(await store.auditLogs.list({ query: 'admin.tag_definition.update' })).toEqual([]);
   });
 
+  it('toggles a built-in Tag enabled state with an audit event', async () => {
+    const { app, store } = adminApp();
+
+    const inactive = await request(app)
+      .patch('/api/development/v1/admin/tag-definitions/sports.team_captain')
+      .set(adminHeaders)
+      .send({ status: 'inactive' })
+      .expect(200);
+    expect(inactive.body.data).toMatchObject({
+      key: 'sports.team_captain',
+      status: 'inactive',
+      requiredScopeType: 'sports_team',
+    });
+
+    const active = await request(app)
+      .patch('/api/development/v1/admin/tag-definitions/sports.team_captain')
+      .set(adminHeaders)
+      .send({ status: 'active' })
+      .expect(200);
+    expect(active.body.data).toMatchObject({
+      key: 'sports.team_captain',
+      status: 'active',
+      requiredScopeType: 'sports_team',
+    });
+    expect(await store.auditLogs.list({ query: 'admin.tag_definition.update' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resourceId: 'sports.team_captain',
+          details: expect.objectContaining({
+            oldDefinition: expect.objectContaining({ status: 'active' }),
+            newDefinition: expect.objectContaining({ status: 'inactive' }),
+          }),
+        }),
+        expect.objectContaining({
+          resourceId: 'sports.team_captain',
+          details: expect.objectContaining({
+            oldDefinition: expect.objectContaining({ status: 'inactive' }),
+            newDefinition: expect.objectContaining({ status: 'active' }),
+          }),
+        }),
+      ]),
+    );
+  });
   it('replaces a built-in Tag binding only with exact registered permissions and scope semantics', async () => {
     const { app, store } = adminApp();
 

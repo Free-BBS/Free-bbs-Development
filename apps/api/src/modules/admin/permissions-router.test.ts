@@ -14,7 +14,7 @@ function adminApp() {
     store,
     databaseMode: 'memory',
     authMode: 'demo',
-    authClient: new DemoAuthClient(['demo-admin']),
+    authClient: new DemoAuthClient(['demo-admin', 'demo-sports-lead']),
   });
   return { app, store };
 }
@@ -222,20 +222,147 @@ describe('role permission governance', () => {
     expect(await store.auditLogs.list({ query: 'admin.role_permissions.replace' })).toEqual([]);
   });
 
-  it('does not expose mutation or deletion routes for immutable built-in role keys', async () => {
+  it('toggles an ordinary built-in role with audit and immediate authorization effect', async () => {
+    const { app, store } = adminApp();
+    const sportsHeaders = { 'X-Demo-User': 'demo-sports-lead' };
+
+    await request(app)
+      .post('/api/development/v1/sports/teams')
+      .set(sportsHeaders)
+      .send({ name: 'Before toggle', description: 'Authorized before role deactivation.' })
+      .expect(201);
+
+    const inactive = await request(app)
+      .patch('/api/development/v1/admin/roles/domain.sports_lead')
+      .set(adminHeaders)
+      .send({ status: 'inactive' })
+      .expect(200);
+    expect(inactive.body.data).toMatchObject({
+      key: 'domain.sports_lead',
+      status: 'inactive',
+    });
+    await request(app)
+      .post('/api/development/v1/sports/teams')
+      .set(sportsHeaders)
+      .send({ name: 'While inactive', description: 'Must be denied while role is inactive.' })
+      .expect(403);
+
+    const active = await request(app)
+      .patch('/api/development/v1/admin/roles/domain.sports_lead')
+      .set(adminHeaders)
+      .send({ status: 'active' })
+      .expect(200);
+    expect(active.body.data).toMatchObject({ key: 'domain.sports_lead', status: 'active' });
+    await request(app)
+      .post('/api/development/v1/sports/teams')
+      .set(sportsHeaders)
+      .send({ name: 'After toggle', description: 'Authorized after role reactivation.' })
+      .expect(201);
+
+    expect(await store.auditLogs.list({ query: 'admin.role.update' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resourceId: 'domain.sports_lead',
+          details: { oldStatus: 'active', newStatus: 'inactive' },
+        }),
+        expect.objectContaining({
+          resourceId: 'domain.sports_lead',
+          details: { oldStatus: 'inactive', newStatus: 'active' },
+        }),
+      ]),
+    );
+  });
+
+  it('keeps built-in role keys immutable and exposes no deletion route', async () => {
     const { app, store } = adminApp();
     const before = (await store.roles.list()).find(({ key }) => key === 'domain.arts_lead');
 
     await request(app)
       .patch('/api/development/v1/admin/roles/domain.arts_lead')
       .set(adminHeaders)
-      .send({ key: 'domain.renamed' })
-      .expect(404);
+      .send({ status: 'inactive', key: 'domain.renamed' })
+      .expect(400);
     await request(app)
       .delete('/api/development/v1/admin/roles/domain.arts_lead')
       .set(adminHeaders)
       .expect(404);
 
     expect((await store.roles.list()).find(({ id }) => id === before?.id)).toEqual(before);
+  });
+
+  it.each([
+    ['an empty set', []],
+    [
+      'a non-administrative set',
+      [
+        {
+          action: 'knowledge.publish',
+          resource: 'knowledge_entry',
+          effect: 'allow',
+          scope: publicScope,
+        },
+      ],
+    ],
+    [
+      'an explicit administrative deny',
+      [
+        { action: '*', resource: '*', effect: 'allow', scope: publicScope },
+        {
+          action: 'admin.manage',
+          resource: 'admin',
+          effect: 'deny',
+          scope: publicScope,
+        },
+      ],
+    ],
+  ])('atomically rejects replacing super-admin bindings with %s', async (_label, bindings) => {
+    const { app, store } = adminApp();
+    const before = await store.rolePermissions.list({ query: 'platform.super_admin' });
+
+    const response = await request(app)
+      .put('/api/development/v1/admin/roles/platform.super_admin/permissions')
+      .set(adminHeaders)
+      .send({ bindings })
+      .expect(409);
+
+    expect(response.body.data.error.code).toBe('last_super_admin_access');
+    expect(await store.rolePermissions.list({ query: 'platform.super_admin' })).toEqual(before);
+    expect(await store.auditLogs.list({ query: 'admin.role_permissions.replace' })).toEqual([]);
+  });
+
+  it('accepts a global admin.manage allow and preserves access to the admin router', async () => {
+    const { app } = adminApp();
+
+    await request(app)
+      .put('/api/development/v1/admin/roles/platform.super_admin/permissions')
+      .set(adminHeaders)
+      .send({
+        bindings: [
+          {
+            action: 'admin.manage',
+            resource: 'admin',
+            effect: 'allow',
+            scope: publicScope,
+          },
+        ],
+      })
+      .expect(200);
+
+    await request(app).get('/api/development/v1/admin/roles').set(adminHeaders).expect(200);
+  });
+
+  it('refuses deactivating platform.super_admin without mutation or audit', async () => {
+    const { app, store } = adminApp();
+    const before = (await store.roles.list()).find(({ key }) => key === 'platform.super_admin');
+
+    const response = await request(app)
+      .patch('/api/development/v1/admin/roles/platform.super_admin')
+      .set(adminHeaders)
+      .send({ status: 'inactive' })
+      .expect(409);
+
+    expect(response.body.data.error.code).toBe('last_super_admin_access');
+    expect((await store.roles.list()).find(({ id }) => id === before?.id)).toEqual(before);
+    expect(await store.auditLogs.list({ query: 'admin.role.update' })).toEqual([]);
   });
 });

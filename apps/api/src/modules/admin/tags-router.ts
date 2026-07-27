@@ -123,13 +123,7 @@ async function patchTagDefinition(
     }
 
     const builtIn = builtInTagKeys.has(tagKey as never);
-    if (builtIn && input.status !== undefined && input.status !== 'active') {
-      throw new HttpError(
-        409,
-        'built_in_tag_immutable',
-        'Built-in Tag definitions cannot be disabled',
-      );
-    }
+
     if (
       builtIn &&
       input.requiredScopeType !== undefined &&

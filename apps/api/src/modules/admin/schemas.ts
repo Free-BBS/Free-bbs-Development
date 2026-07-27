@@ -54,6 +54,7 @@ export const tagAssignmentSchema = z
 
 export const assignmentIdSchema = identifier;
 export const roleKeySchema = z.enum(ROLE_KEYS);
+export const roleStatusPatchSchema = z.object({ status: z.enum(['active', 'inactive']) }).strict();
 
 export const permissionBindingSchema = z
   .object({
