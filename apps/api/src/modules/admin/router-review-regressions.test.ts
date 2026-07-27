@@ -18,9 +18,23 @@ function adminApp() {
   return { app, store };
 }
 
+async function createActiveSubject(
+  store: ReturnType<typeof createMemoryStore>,
+  uid: string,
+): Promise<void> {
+  await store.subjects.create({
+    uid,
+    displayName: uid,
+    avatarUrl: null,
+    status: 'active',
+    ownerUid: 'demo-admin',
+    scope: { type: 'public', id: '*' },
+  });
+}
 describe('administration review regressions', () => {
   it('rejects unknown and disabled tag definitions without writing assignments or audits', async () => {
     const { app, store } = adminApp();
+    await createActiveSubject(store, 'main-uid-42');
 
     await request(app)
       .post('/api/development/v1/admin/tag-assignments')
@@ -53,6 +67,7 @@ describe('administration review regressions', () => {
 
   it('validates extension tag scopes from their active registered definitions', async () => {
     const { app, store } = adminApp();
+    await createActiveSubject(store, 'main-uid-42');
     await store.tagDefinitions.create({
       key: 'clubs.coordinator',
       name: 'Club coordinator',

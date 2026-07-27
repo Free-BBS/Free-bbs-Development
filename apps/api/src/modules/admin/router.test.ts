@@ -18,6 +18,20 @@ function adminApp() {
   return { app, store };
 }
 
+async function createActiveSubject(
+  store: ReturnType<typeof createMemoryStore>,
+  uid: string,
+): Promise<void> {
+  await store.subjects.create({
+    uid,
+    displayName: uid,
+    avatarUrl: null,
+    status: 'active',
+    ownerUid: 'demo-admin',
+    scope: { type: 'public', id: '*' },
+  });
+}
+
 describe('administration API', () => {
   it('fails closed with 403 for an ordinary authenticated student', async () => {
     const { app } = adminApp();
@@ -69,7 +83,8 @@ describe('administration API', () => {
   });
 
   it('grants and revokes only known roles and writes an audit record for each mutation', async () => {
-    const { app } = adminApp();
+    const { app, store } = adminApp();
+    await createActiveSubject(store, 'main-uid-42');
     await request(app)
       .post('/api/development/v1/admin/role-assignments')
       .set(adminHeaders)
@@ -94,7 +109,7 @@ describe('administration API', () => {
       .get('/api/development/v1/admin/role-assignments')
       .set(adminHeaders)
       .expect(200);
-    expect(listed.body.data).toEqual(
+    expect(listed.body.data.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: granted.body.data.id, subjectUid: 'main-uid-42' }),
       ]),
@@ -122,7 +137,8 @@ describe('administration API', () => {
   });
 
   it('validates captain scope, supports scoped tag grants and audits grant and revoke', async () => {
-    const { app } = adminApp();
+    const { app, store } = adminApp();
+    await createActiveSubject(store, 'main-uid-42');
     await request(app)
       .post('/api/development/v1/admin/tag-assignments')
       .set(adminHeaders)

@@ -18,6 +18,20 @@ function adminApp() {
   return { app, store };
 }
 
+async function createActiveSubject(
+  store: ReturnType<typeof createMemoryStore>,
+  uid: string,
+): Promise<void> {
+  await store.subjects.create({
+    uid,
+    displayName: uid,
+    avatarUrl: null,
+    status: 'active',
+    ownerUid: 'demo-admin',
+    scope: { type: 'public', id: '*' },
+  });
+}
+
 function expectConflict(response: { body: unknown }) {
   expect(response.body).toEqual({
     data: { error: { code: 'conflict', message: 'Assignment already exists' } },
@@ -33,6 +47,8 @@ describe('administration assignment conflicts', () => {
       roleKey: 'department.sports_director',
       scope: { type: 'department', id: 'sports' },
     };
+
+    await createActiveSubject(store, input.subjectUid);
 
     await request(app)
       .post('/api/development/v1/admin/role-assignments')
@@ -61,6 +77,8 @@ describe('administration assignment conflicts', () => {
       tagKey: 'sports.team_captain',
       scope: { type: 'sports_team', id: 'team-basketball' },
     };
+
+    await createActiveSubject(store, input.subjectUid);
 
     await request(app)
       .post('/api/development/v1/admin/tag-assignments')

@@ -10,6 +10,19 @@ const scopeSchema = z
   .strict();
 const expiresAt = z.string().datetime({ offset: true }).nullable().optional();
 
+export const paginationQuerySchema = z
+  .object({
+    query: identifier.optional(),
+    status: identifier.optional(),
+    scopeType: identifier.optional(),
+    scopeId: identifier.optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+
+export const subjectUidSchema = identifier;
+
 export const modulePatchSchema = z
   .object({
     moduleId: z.enum(MODULE_IDS),

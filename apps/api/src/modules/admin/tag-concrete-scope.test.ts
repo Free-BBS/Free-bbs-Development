@@ -18,6 +18,19 @@ function adminApp() {
   return { app, store };
 }
 
+async function createActiveSubject(
+  store: ReturnType<typeof createMemoryStore>,
+  uid: string,
+): Promise<void> {
+  await store.subjects.create({
+    uid,
+    displayName: uid,
+    avatarUrl: null,
+    status: 'active',
+    ownerUid: 'demo-admin',
+    scope: { type: 'public', id: '*' },
+  });
+}
 async function expectNoGrant(
   store: ReturnType<typeof createMemoryStore>,
   subjectUid: string,
@@ -30,6 +43,7 @@ describe('tag assignment concrete scopes', () => {
   it('rejects a wildcard sports team for the registered captain tag', async () => {
     const { app, store } = adminApp();
     const subjectUid = 'main-uid-wildcard-captain';
+    await createActiveSubject(store, subjectUid);
 
     const response = await request(app)
       .post('/api/development/v1/admin/tag-assignments')
@@ -51,6 +65,7 @@ describe('tag assignment concrete scopes', () => {
   it('rejects a wildcard identifier for any tag with a required scope type', async () => {
     const { app, store } = adminApp();
     const subjectUid = 'main-uid-wildcard-club';
+    await createActiveSubject(store, subjectUid);
     await store.tagDefinitions.create({
       key: 'clubs.coordinator',
       name: 'Club coordinator',
@@ -80,7 +95,8 @@ describe('tag assignment concrete scopes', () => {
   });
 
   it('still permits public wildcard scope for a tag without a required scope type', async () => {
-    const { app } = adminApp();
+    const { app, store } = adminApp();
+    await createActiveSubject(store, 'main-uid-global-extension');
 
     const response = await request(app)
       .post('/api/development/v1/admin/tag-assignments')
