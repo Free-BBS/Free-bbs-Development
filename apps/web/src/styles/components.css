@@ -563,3 +563,388 @@ button:disabled {
   background: rgba(162, 61, 56, 0.08);
   color: var(--color-danger);
 }
+
+/* Governance administration */
+.admin-governance-page {
+  --admin-paper: #fffaf0;
+  --admin-paper-deep: #f7edd9;
+  --admin-ink: #211c17;
+  --admin-gold: #c9952e;
+  --admin-gold-soft: rgba(201, 149, 46, 0.14);
+  --admin-red: #9d3932;
+  color: var(--admin-ink);
+}
+
+.admin-page-heading {
+  padding: clamp(22px, 3vw, 34px);
+  border: 1px solid rgba(201, 149, 46, 0.3);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 88% 10%, rgba(201, 149, 46, 0.18), transparent 34%),
+    linear-gradient(135deg, var(--admin-paper), #fff 68%);
+  box-shadow: var(--shadow-card);
+}
+
+.admin-page-heading .eyebrow,
+.admin-section-heading .eyebrow {
+  color: var(--admin-red);
+}
+
+.admin-tab-nav {
+  position: sticky;
+  z-index: 4;
+  top: 12px;
+  overflow-x: auto;
+  padding: 6px;
+  border: 1px solid rgba(201, 149, 46, 0.26);
+  border-radius: 999px;
+  background: rgba(255, 250, 240, 0.94);
+  box-shadow: 0 12px 32px rgba(80, 52, 16, 0.09);
+  backdrop-filter: blur(14px);
+  scrollbar-width: thin;
+}
+
+.admin-tab-nav [role='tablist'] {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  gap: 4px;
+}
+
+.admin-tab-nav button {
+  min-height: 42px;
+  flex: 1 0 auto;
+  padding: 8px 15px;
+  border-color: transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: rgba(33, 28, 23, 0.68);
+}
+
+.admin-tab-nav button:hover,
+.admin-tab-nav button[aria-selected='true'] {
+  border-color: rgba(201, 149, 46, 0.26);
+  background: var(--admin-gold-soft);
+  color: var(--admin-ink);
+}
+
+.admin-section-layout {
+  display: grid;
+  gap: 20px;
+}
+
+.admin-section-heading {
+  display: grid;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.admin-section-heading h3,
+.admin-section-heading p,
+.panel h4 {
+  margin: 0;
+}
+
+.admin-section-heading h3 {
+  font-family: var(--font-serif);
+  font-size: clamp(24px, 3vw, 34px);
+}
+
+.admin-section-heading > p:last-child {
+  max-width: 760px;
+  color: var(--color-muted);
+  line-height: 1.7;
+}
+
+.admin-governance-page .panel,
+.admin-governance-page .record-card,
+.admin-governance-page .record-list > li {
+  border-color: rgba(143, 101, 38, 0.2);
+  background: var(--admin-paper);
+}
+
+.admin-governance-page .panel h4 {
+  margin-bottom: 16px;
+  font-family: var(--font-serif);
+  font-size: 19px;
+}
+
+.admin-two-column {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  align-items: start;
+}
+
+.admin-form-grid,
+.admin-audit-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.admin-filter-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.5fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.admin-filter-row button,
+.admin-audit-filters button {
+  margin-top: auto;
+}
+
+.admin-page-summary {
+  margin: 14px 0 0;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
+.admin-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.32fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.admin-definition-list {
+  display: grid;
+  gap: 8px;
+  max-height: 720px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid rgba(143, 101, 38, 0.2);
+  border-radius: var(--radius-lg);
+  background: var(--admin-paper-deep);
+}
+
+.admin-definition-list button {
+  display: grid;
+  width: 100%;
+  justify-items: start;
+  gap: 4px;
+  padding: 13px 14px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--admin-ink);
+  text-align: left;
+}
+
+.admin-definition-list button span {
+  overflow-wrap: anywhere;
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+.admin-definition-list button[aria-pressed='true'],
+.admin-definition-list button:hover {
+  border-color: rgba(201, 149, 46, 0.36);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.admin-definition-list .create-definition-button {
+  border-color: rgba(201, 149, 46, 0.4);
+  background: var(--admin-gold-soft);
+  color: #704c12;
+}
+
+.admin-record-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.admin-record-heading h4 {
+  margin-bottom: 8px;
+}
+
+.permission-editor {
+  display: grid;
+  gap: 14px;
+  margin-top: 24px;
+  padding-top: 22px;
+  border-top: 1px solid rgba(143, 101, 38, 0.2);
+}
+
+.permission-editor-fields {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.admin-governance-page button.secondary-button {
+  border-color: rgba(201, 149, 46, 0.52);
+  background: var(--admin-gold-soft);
+  color: #704c12;
+}
+
+.admin-governance-page button.danger-button {
+  border-color: rgba(157, 57, 50, 0.42);
+  background: rgba(157, 57, 50, 0.08);
+  color: var(--admin-red);
+}
+
+.admin-governance-page button.danger-button:hover {
+  border-color: var(--admin-red);
+  background: var(--admin-red);
+  color: #fffaf0;
+}
+
+.admin-stat-grid,
+.system-status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+  margin: 0;
+}
+
+.admin-stat-grid article,
+.system-status-grid > div {
+  display: grid;
+  gap: 8px;
+  min-height: 140px;
+  align-content: center;
+  padding: 22px;
+  border: 1px solid rgba(201, 149, 46, 0.28);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(145deg, var(--admin-paper), #fff);
+  box-shadow: var(--shadow-card);
+}
+
+.admin-stat-grid span,
+.system-status-grid dt {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-stat-grid strong,
+.system-status-grid dd {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(25px, 3vw, 38px);
+}
+
+.admin-stat-grid article[data-tone='danger'] {
+  border-color: rgba(157, 57, 50, 0.32);
+}
+
+.admin-stat-grid article[data-tone='danger'] strong {
+  color: var(--admin-red);
+}
+
+.domain-link-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.domain-link-grid a {
+  display: grid;
+  min-height: 132px;
+  align-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  border: 1px solid rgba(143, 101, 38, 0.2);
+  border-radius: var(--radius-lg);
+  background: var(--admin-paper);
+  color: var(--admin-ink);
+  text-decoration: none;
+  transition:
+    transform var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.domain-link-grid a:hover {
+  border-color: var(--admin-gold);
+  transform: translateY(-2px);
+}
+
+.domain-link-grid a span,
+.governance-note p {
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.governance-note {
+  padding: 18px 20px;
+  border-left: 4px solid var(--admin-gold);
+  background: var(--admin-gold-soft);
+}
+
+.governance-note p {
+  margin: 4px 0 0;
+}
+
+.audit-list pre {
+  max-width: 100%;
+  overflow: auto;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: #251e17;
+  color: #fff7e8;
+  font-size: 12px;
+}
+
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 18px;
+  color: var(--color-muted);
+}
+
+@media (max-width: 920px) {
+  .admin-two-column,
+  .admin-editor-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-definition-list {
+    max-height: none;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 680px) {
+  .admin-page-heading,
+  .admin-record-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-form-grid,
+  .admin-audit-filters,
+  .admin-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-tab-nav {
+    top: 4px;
+    border-radius: var(--radius-md);
+  }
+
+  .admin-pagination {
+    align-items: stretch;
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .admin-pagination button {
+    width: 100%;
+  }
+}
+
+@media (forced-colors: active) {
+  .admin-tab-nav,
+  .admin-definition-list,
+  .admin-stat-grid article,
+  .system-status-grid > div,
+  .domain-link-grid a {
+    border-color: CanvasText;
+  }
+}
