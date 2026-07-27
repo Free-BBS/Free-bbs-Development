@@ -35,6 +35,21 @@ function createFakes() {
 }
 
 describe('MySQL store transactions', () => {
+  it('uses deterministic current reads for transaction list locks', async () => {
+    const { connection, typedPool } = createFakes();
+    connection.execute.mockResolvedValueOnce([[], []]);
+    const handle = createMySqlStore({ pool: typedPool });
+
+    await handle.store.transaction((store) =>
+      store.roleAssignments.listForUpdate({ query: 'platform.super_admin' }),
+    );
+
+    expect(connection.execute.mock.calls[0]?.[0]).toMatch(
+      /SELECT \* FROM role_assignments.*ORDER BY id FOR UPDATE$/,
+    );
+    expect(connection.commit).toHaveBeenCalledOnce();
+  });
+
   it('releases a connection when beginTransaction fails', async () => {
     const { connection, typedPool } = createFakes();
     connection.beginTransaction.mockRejectedValueOnce(new Error('begin failed'));

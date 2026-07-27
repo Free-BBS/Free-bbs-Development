@@ -535,6 +535,11 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
     return this.get(id);
   }
 
+  async listForUpdate(filters: ListFilters = {}): Promise<T[]> {
+    if (!this.allowRowLock) throw new Error('Row locking requires a store transaction');
+    return (await this.list(filters)).sort((left, right) => left.id.localeCompare(right.id));
+  }
+
   async list(filters: ListFilters = {}): Promise<T[]> {
     const query = filters.query?.trim().toLocaleLowerCase();
     return this.records()

@@ -204,6 +204,17 @@ describe('administration subjects and assignments', () => {
       status: 'inactive',
     });
 
+    const restored = await request(app)
+      .post('/api/development/v1/admin/role-assignments')
+      .set(adminHeaders)
+      .send({ ...input, expiresAt: '2098-01-01T00:00:00.000Z' })
+      .expect(201);
+    expect(restored.body.data).toMatchObject({
+      id: granted.body.data.id,
+      status: 'active',
+      expiresAt: '2098-01-01T00:00:00.000Z',
+    });
+
     const audits = await store.auditLogs.list({ query: 'admin.role_assignment' });
     expect(audits).toEqual(
       expect.arrayContaining([
@@ -225,6 +236,16 @@ describe('administration subjects and assignments', () => {
             scope: input.scope,
             previousStatus: 'active',
             status: 'inactive',
+          }),
+        }),
+        expect.objectContaining({
+          action: 'admin.role_assignment.grant',
+          details: expect.objectContaining({
+            subjectUid,
+            roleKey: input.roleKey,
+            previousStatus: 'inactive',
+            status: 'active',
+            restored: true,
           }),
         }),
       ]),
@@ -272,8 +293,28 @@ describe('administration subjects and assignments', () => {
       .delete(`/api/development/v1/admin/tag-assignments/${granted.body.data.id}`)
       .set(adminHeaders)
       .expect(200);
-    expect(await store.tagAssignments.get(granted.body.data.id)).toMatchObject({
-      status: 'inactive',
+
+    const restored = await request(app)
+      .post('/api/development/v1/admin/tag-assignments')
+      .set(adminHeaders)
+      .send({ ...input, expiresAt: '2098-01-01T00:00:00.000Z' })
+      .expect(201);
+    expect(restored.body.data).toMatchObject({
+      id: granted.body.data.id,
+      status: 'active',
+      expiresAt: '2098-01-01T00:00:00.000Z',
     });
+    expect(await store.auditLogs.list({ query: 'admin.tag_assignment.grant' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          resourceId: granted.body.data.id,
+          details: expect.objectContaining({
+            previousStatus: 'inactive',
+            status: 'active',
+            restored: true,
+          }),
+        }),
+      ]),
+    );
   });
 });

@@ -1,6 +1,7 @@
 import type { RoleKey, ScopeRef } from '@freebbs-development/contracts';
 
 import { recordAuditEvent } from '../../core/audit/audit-service.js';
+import { RecordConflictError } from '../../core/database/record-conflict-error.js';
 import type {
   DevelopmentStore,
   RoleAssignmentRecord,
@@ -97,6 +98,43 @@ export async function createRoleAssignment(
       throw new HttpError(409, 'role_definition_inactive', 'Role definition is not active');
     }
 
+    const existing = (
+      await transactionStore.roleAssignments.listForUpdate({ query: input.subjectUid })
+    ).find(
+      (candidate) =>
+        candidate.subjectUid === input.subjectUid &&
+        candidate.roleKey === input.roleKey &&
+        candidate.scope.type === scope.type &&
+        candidate.scope.id === scope.id,
+    );
+    if (existing !== undefined) {
+      if (existing.status === 'active') {
+        throw new RecordConflictError('Assignment already exists');
+      }
+      const restored = await transactionStore.roleAssignments.update(existing.id, {
+        expiresAt: input.expiresAt ?? null,
+        status: 'active',
+        ownerUid: context.actorUid,
+      });
+      if (restored === null) throw new Error('Failed to restore role assignment');
+      await recordAuditEvent(transactionStore, {
+        actorUid: context.actorUid,
+        action: 'admin.role_assignment.grant',
+        resourceType: 'role_assignment',
+        resourceId: restored.id,
+        details: {
+          subjectUid: restored.subjectUid,
+          roleKey: restored.roleKey,
+          scope: restored.scope,
+          expiresAt: restored.expiresAt,
+          previousStatus: existing.status,
+          status: restored.status,
+          restored: true,
+        },
+      });
+      return restored;
+    }
+
     const assignment = await transactionStore.roleAssignments.create({
       subjectUid: input.subjectUid,
       roleKey: input.roleKey,
@@ -151,6 +189,43 @@ export async function createTagAssignment(
     }
     validateScope(scope);
 
+    const existing = (
+      await transactionStore.tagAssignments.listForUpdate({ query: input.subjectUid })
+    ).find(
+      (candidate) =>
+        candidate.subjectUid === input.subjectUid &&
+        candidate.tagKey === input.tagKey &&
+        candidate.scope.type === scope.type &&
+        candidate.scope.id === scope.id,
+    );
+    if (existing !== undefined) {
+      if (existing.status === 'active') {
+        throw new RecordConflictError('Assignment already exists');
+      }
+      const restored = await transactionStore.tagAssignments.update(existing.id, {
+        expiresAt: input.expiresAt ?? null,
+        status: 'active',
+        ownerUid: context.actorUid,
+      });
+      if (restored === null) throw new Error('Failed to restore tag assignment');
+      await recordAuditEvent(transactionStore, {
+        actorUid: context.actorUid,
+        action: 'admin.tag_assignment.grant',
+        resourceType: 'tag_assignment',
+        resourceId: restored.id,
+        details: {
+          subjectUid: restored.subjectUid,
+          tagKey: restored.tagKey,
+          scope: restored.scope,
+          expiresAt: restored.expiresAt,
+          previousStatus: existing.status,
+          status: restored.status,
+          restored: true,
+        },
+      });
+      return restored;
+    }
+
     const assignment = await transactionStore.tagAssignments.create({
       subjectUid: input.subjectUid,
       tagKey: input.tagKey,
@@ -180,16 +255,12 @@ function isCurrent(expiresAt: string | null, now: Date): boolean {
   return expiresAt === null || new Date(expiresAt).getTime() > now.getTime();
 }
 
-async function countEffectiveSuperAdmins(
-  store: DevelopmentStore,
-  roleActive: boolean,
+function countEffectiveSuperAdmins(
+  assignments: readonly RoleAssignmentRecord[],
+  activeSubjectUids: ReadonlySet<string>,
   now: Date,
-): Promise<number> {
-  if (!roleActive) return 0;
-  const activeSubjectUids = new Set(
-    (await store.subjects.list({ status: 'active' })).map(({ uid }) => uid),
-  );
-  return (await store.roleAssignments.list()).filter(
+): number {
+  return assignments.filter(
     (assignment) =>
       assignment.roleKey === SUPER_ADMIN_ROLE_KEY &&
       assignment.status === 'active' &&
@@ -207,28 +278,16 @@ export async function archiveRoleAssignment(
 ): Promise<RoleAssignmentRecord> {
   const now = context.now ?? new Date();
   return store.transaction(async (transactionStore) => {
-    const candidate = await transactionStore.roleAssignments.get(assignmentId);
-    if (candidate === null) {
-      throw new HttpError(404, 'assignment_not_found', 'Role assignment not found');
+    const canonicalSuperAdminRole = (
+      await transactionStore.roles.listForUpdate({ query: SUPER_ADMIN_ROLE_KEY })
+    ).find(({ key }) => key === SUPER_ADMIN_ROLE_KEY);
+    if (canonicalSuperAdminRole === undefined) {
+      throw new Error('Canonical platform super administrator role is missing');
     }
 
-    let canonicalSuperAdminRole;
-    if (candidate.roleKey === SUPER_ADMIN_ROLE_KEY) {
-      const role = exact(
-        await transactionStore.roles.list({ query: SUPER_ADMIN_ROLE_KEY }),
-        ({ key }) => key === SUPER_ADMIN_ROLE_KEY,
-      );
-      if (role === undefined) {
-        throw new Error('Canonical platform super administrator role is missing');
-      }
-      canonicalSuperAdminRole = await transactionStore.roles.getForUpdate(role.id);
-      if (canonicalSuperAdminRole?.key !== SUPER_ADMIN_ROLE_KEY) {
-        throw new Error('Failed to lock canonical platform super administrator role');
-      }
-    }
-
-    const assignment = await transactionStore.roleAssignments.getForUpdate(assignmentId);
-    if (assignment === null) {
+    const assignments = await transactionStore.roleAssignments.listForUpdate();
+    const assignment = assignments.find(({ id }) => id === assignmentId);
+    if (assignment === undefined) {
       throw new HttpError(404, 'assignment_not_found', 'Role assignment not found');
     }
     if (assignment.status !== 'active') {
@@ -236,22 +295,16 @@ export async function archiveRoleAssignment(
     }
 
     if (
-      canonicalSuperAdminRole?.status === 'active' &&
+      canonicalSuperAdminRole.status === 'active' &&
       assignment.roleKey === SUPER_ADMIN_ROLE_KEY &&
       assignment.scope.type === 'public' &&
       assignment.scope.id === '*' &&
       isCurrent(assignment.expiresAt, now)
     ) {
-      const subject = exact(
-        await transactionStore.subjects.list({ query: assignment.subjectUid }),
-        ({ uid }) => uid === assignment.subjectUid,
-      );
-      const effectiveCount = await countEffectiveSuperAdmins(
-        transactionStore,
-        canonicalSuperAdminRole?.status === 'active',
-        now,
-      );
-      if (subject?.status === 'active' && effectiveCount <= 1) {
+      const activeSubjects = await transactionStore.subjects.listForUpdate({ status: 'active' });
+      const activeSubjectUids = new Set(activeSubjects.map(({ uid }) => uid));
+      const effectiveCount = countEffectiveSuperAdmins(assignments, activeSubjectUids, now);
+      if (activeSubjectUids.has(assignment.subjectUid) && effectiveCount <= 1) {
         throw new HttpError(
           409,
           'last_super_admin',
@@ -283,7 +336,6 @@ export async function archiveRoleAssignment(
     return updated;
   });
 }
-
 export async function archiveTagAssignment(
   store: DevelopmentStore,
   assignmentId: string,

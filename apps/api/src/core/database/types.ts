@@ -35,6 +35,7 @@ export interface RecordRepository<T extends StoredRecord> {
   create(input: NewRecord<T>): Promise<T>;
   get(id: string): Promise<T | null>;
   getForUpdate(id: string): Promise<T | null>;
+  listForUpdate(filters?: ListFilters): Promise<T[]>;
   list(filters?: ListFilters): Promise<T[]>;
   page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>>;
   update(id: string, patch: RecordPatch<T>): Promise<T | null>;

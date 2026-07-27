@@ -75,12 +75,14 @@ describe('Task 6 store contracts', () => {
   it('allows row locking only on a transaction connection and emits SELECT FOR UPDATE', async () => {
     const memory = createMemoryStore({ seed: false });
     await expect(memory.activities.getForUpdate('activity-a')).rejects.toThrow('transaction');
+    await expect(memory.activities.listForUpdate()).rejects.toThrow('transaction');
 
     const outside = fakeMySql();
     const outsideHandle = createMySqlStore({ pool: outside.typedPool });
     await expect(outsideHandle.store.activities.getForUpdate('activity-a')).rejects.toThrow(
       'transaction',
     );
+    await expect(outsideHandle.store.activities.listForUpdate()).rejects.toThrow('transaction');
     expect(outside.pool.execute).not.toHaveBeenCalled();
 
     const inside = fakeMySql();

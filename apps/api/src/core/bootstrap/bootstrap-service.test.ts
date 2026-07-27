@@ -46,6 +46,9 @@ function storeWithMalformedSuperAdmin(store: DevelopmentStore): DevelopmentStore
           getForUpdate: transactionStore.roleAssignments.getForUpdate.bind(
             transactionStore.roleAssignments,
           ),
+          listForUpdate: transactionStore.roleAssignments.listForUpdate.bind(
+            transactionStore.roleAssignments,
+          ),
           list: async (filters) => [
             ...(await transactionStore.roleAssignments.list(filters)),
             {
@@ -81,6 +84,7 @@ function storeObservingBootstrapOrder(store: DevelopmentStore, events: string[])
             events.push('role-lock');
             return transactionStore.roles.getForUpdate(id);
           },
+          listForUpdate: transactionStore.roles.listForUpdate.bind(transactionStore.roles),
           list: transactionStore.roles.list.bind(transactionStore.roles),
           page: transactionStore.roles.page.bind(transactionStore.roles),
           update: transactionStore.roles.update.bind(transactionStore.roles),
@@ -95,6 +99,9 @@ function storeObservingBootstrapOrder(store: DevelopmentStore, events: string[])
           },
           get: transactionStore.roleAssignments.get.bind(transactionStore.roleAssignments),
           getForUpdate: transactionStore.roleAssignments.getForUpdate.bind(
+            transactionStore.roleAssignments,
+          ),
+          listForUpdate: transactionStore.roleAssignments.listForUpdate.bind(
             transactionStore.roleAssignments,
           ),
           list: async (filters) => {
@@ -121,6 +128,7 @@ function failingAuditStore(store: DevelopmentStore): DevelopmentStore {
           },
           get: transactionStore.auditLogs.get.bind(transactionStore.auditLogs),
           getForUpdate: transactionStore.auditLogs.getForUpdate.bind(transactionStore.auditLogs),
+          listForUpdate: transactionStore.auditLogs.listForUpdate.bind(transactionStore.auditLogs),
           list: transactionStore.auditLogs.list.bind(transactionStore.auditLogs),
           page: transactionStore.auditLogs.page.bind(transactionStore.auditLogs),
           update: transactionStore.auditLogs.update.bind(transactionStore.auditLogs),

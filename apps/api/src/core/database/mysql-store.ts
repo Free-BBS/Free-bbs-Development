@@ -423,6 +423,16 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
     return row ? this.decode(row) : null;
   }
 
+  async listForUpdate(filters: ListFilters = {}): Promise<T[]> {
+    if (!this.allowRowLock) throw new Error('Row locking requires a store transaction');
+    const { where, values } = buildWhere(this.definition, filters);
+    const [rows] = await this.executor.execute<RowDataPacket[]>(
+      `SELECT * FROM ${this.definition.table}${where} ORDER BY id FOR UPDATE`,
+      values,
+    );
+    return rows.map((row) => this.decode(row));
+  }
+
   async list(filters: ListFilters = {}): Promise<T[]> {
     const { where, values } = buildWhere(this.definition, filters);
     const [rows] = await this.executor.execute<RowDataPacket[]>(

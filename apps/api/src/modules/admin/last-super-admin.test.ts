@@ -9,8 +9,7 @@ import { archiveRoleAssignment } from './assignment-service.js';
 import type {
   DevelopmentStore,
   RecordRepository,
-  RoleAssignmentRecord,
-  RoleRecord,
+  StoredRecord,
 } from '../../core/database/types.js';
 
 const adminHeaders = { 'X-Demo-User': 'demo-admin' };
@@ -44,19 +43,25 @@ async function grantSecondSuperAdmin(store: DevelopmentStore, subjectUid: string
   });
 }
 
-function instrumentRepository<T extends RoleRecord | RoleAssignmentRecord>(
+function instrumentCurrentReads<T extends StoredRecord>(
   repository: RecordRepository<T>,
-  getForUpdate: (id: string) => Promise<T | null>,
+  label: string,
+  readOrder: string[],
 ): RecordRepository<T> {
-  return {
-    create: repository.create.bind(repository),
-    get: repository.get.bind(repository),
-    getForUpdate,
-    list: repository.list.bind(repository),
-    page: repository.page.bind(repository),
-    update: repository.update.bind(repository),
-    delete: repository.delete.bind(repository),
-  };
+  return new Proxy(repository, {
+    get(target, property) {
+      if (property === 'listForUpdate') {
+        return async (filters?: Parameters<RecordRepository<T>['list']>[0]) => {
+          readOrder.push(label);
+          return (await target.list(filters)).sort((left, right) =>
+            left.id.localeCompare(right.id),
+          );
+        };
+      }
+      const value = Reflect.get(target, property, target) as unknown;
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
 }
 
 describe('last platform super administrator protection', () => {
@@ -82,24 +87,23 @@ describe('last platform super administrator protection', () => {
     expect(await store.auditLogs.list({ query: 'admin.role_assignment.revoke' })).toEqual([]);
   });
 
-  it('locks the canonical super-admin role before the target assignment and archives safely', async () => {
+  it('locks the canonical role before assignments and subjects on the HTTP path', async () => {
     const baseStore = createMemoryStore();
     await grantSecondSuperAdmin(baseStore, 'main-second-admin');
-    const lockOrder: string[] = [];
+    const readOrder: string[] = [];
     const store: DevelopmentStore = {
       ...baseStore,
       transaction: (operation) =>
         baseStore.transaction((transactionStore) =>
           operation({
             ...transactionStore,
-            roles: instrumentRepository(transactionStore.roles, async (id) => {
-              lockOrder.push(`role:${id}`);
-              return transactionStore.roles.getForUpdate(id);
-            }),
-            roleAssignments: instrumentRepository(transactionStore.roleAssignments, async (id) => {
-              lockOrder.push(`assignment:${id}`);
-              return transactionStore.roleAssignments.getForUpdate(id);
-            }),
+            roles: instrumentCurrentReads(transactionStore.roles, 'roles', readOrder),
+            roleAssignments: instrumentCurrentReads(
+              transactionStore.roleAssignments,
+              'assignments',
+              readOrder,
+            ),
+            subjects: instrumentCurrentReads(transactionStore.subjects, 'subjects', readOrder),
           }),
         ),
     };
@@ -110,13 +114,36 @@ describe('last platform super administrator protection', () => {
       .set(adminHeaders)
       .expect(200);
 
-    expect(lockOrder[0]).toMatch(/^role:/);
-    expect(lockOrder[1]).toBe('assignment:assignment-admin');
+    expect(readOrder).toEqual(['roles', 'assignments', 'subjects']);
     expect(await baseStore.roleAssignments.get('assignment-admin')).toMatchObject({
       status: 'inactive',
     });
   });
+  it('uses current locking reads in canonical role, assignment, subject order', async () => {
+    const baseStore = createMemoryStore();
+    await grantSecondSuperAdmin(baseStore, 'main-current-read-admin');
+    const readOrder: string[] = [];
+    const store: DevelopmentStore = {
+      ...baseStore,
+      transaction: (operation) =>
+        baseStore.transaction((transactionStore) =>
+          operation({
+            ...transactionStore,
+            roles: instrumentCurrentReads(transactionStore.roles, 'roles', readOrder),
+            roleAssignments: instrumentCurrentReads(
+              transactionStore.roleAssignments,
+              'assignments',
+              readOrder,
+            ),
+            subjects: instrumentCurrentReads(transactionStore.subjects, 'subjects', readOrder),
+          }),
+        ),
+    };
 
+    await archiveRoleAssignment(store, 'assignment-admin', { actorUid: 'demo-admin' });
+
+    expect(readOrder).toEqual(['roles', 'assignments', 'subjects']);
+  });
   it('serializes concurrent revocations of different assignments and leaves one effective admin', async () => {
     const store = createMemoryStore();
     const second = await grantSecondSuperAdmin(store, 'main-concurrent-admin');
