@@ -11,8 +11,10 @@ import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
 import { listModuleManifests } from '../../core/modules/registry.js';
 import { createAssignmentsRouter } from './assignments-router.js';
+import { createPermissionsRouter } from './permissions-router.js';
 import { modulePatchSchema } from './schemas.js';
 import { createSubjectsRouter } from './subjects-router.js';
+import { createTagsRouter } from './tags-router.js';
 
 type Authenticate = (headers: AuthHeaders) => Promise<AuthenticationResult>;
 
@@ -71,6 +73,8 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
 
   router.use('/subjects', createSubjectsRouter(options.store));
   router.use(createAssignmentsRouter(options.store));
+  router.use(createPermissionsRouter(options.store));
+  router.use(createTagsRouter(options.store));
 
   router.get('/modules', async (_request, response) => {
     send(response, 200, await listModuleManifests(options.store));
