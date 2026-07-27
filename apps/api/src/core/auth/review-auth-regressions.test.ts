@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { loadEnvironment } from '../../config/env.js';
 import { authorize } from '../authorization/authorize.js';
+import { bootstrapPlatform } from '../bootstrap/bootstrap-service.js';
 import { createMemoryStore } from '../database/memory-store.js';
 import { createAuthMiddleware } from './auth-middleware.js';
 import { DemoAuthClient } from './demo-auth-client.js';
@@ -13,6 +14,26 @@ import type { AuthClient } from './auth-client.js';
 
 const publicScope = { type: 'public', id: '*' };
 const ownerUid = 'demo-admin';
+const governanceNow = new Date('2026-07-22T00:00:00.000Z');
+
+async function governedDemoStore(uid: string) {
+  const store = createMemoryStore({ seed: false });
+  await bootstrapPlatform(store, {
+    uid: ownerUid,
+    recovery: false,
+    version: 'task-15-review',
+    now: governanceNow,
+  });
+  await store.subjects.create({
+    uid,
+    displayName: uid,
+    avatarUrl: null,
+    status: 'active',
+    ownerUid,
+    scope: publicScope,
+  });
+  return store;
+}
 
 describe('review regressions: main-site identity contract', () => {
   it('prefers fullName and avatarPath from the real main-site user envelope', async () => {
@@ -56,7 +77,7 @@ describe('review regressions: main-site identity contract', () => {
 
 describe('review regressions: role assignment scopes', () => {
   it('keeps a public wildcard assignment as a global role grant', async () => {
-    const store = createMemoryStore({ seed: false });
+    const store = await governedDemoStore('demo-sports-lead');
     await store.roleAssignments.create({
       subjectUid: 'demo-sports-lead',
       roleKey: 'domain.sports_lead',
@@ -73,7 +94,7 @@ describe('review regressions: role assignment scopes', () => {
     const authenticated = await authenticate({ 'x-demo-user': 'demo-sports-lead' });
     if (authenticated.status !== 200) throw new Error('expected authenticated user');
 
-    expect(authenticated.user.roles).toContain('domain.sports_lead');
+    expect(authenticated.user.roles).toEqual([]);
     expect(
       authorize(authenticated.user as AuthorizationContext, {
         action: 'sports.team.manage',
@@ -84,7 +105,7 @@ describe('review regressions: role assignment scopes', () => {
   });
 
   it('expands a scoped role assignment without leaking a bare cross-scope role', async () => {
-    const store = createMemoryStore({ seed: false });
+    const store = await governedDemoStore('demo-student');
     await store.roleAssignments.create({
       subjectUid: 'demo-student',
       roleKey: 'department.sports_director',
@@ -197,13 +218,7 @@ describe('review regressions: tag validation and deterministic deduplication', (
     const authenticated = await authenticate({ 'x-demo-user': 'demo-captain' });
     if (authenticated.status !== 200) throw new Error('expected authenticated user');
 
-    expect(authenticated.user.tags).toEqual([
-      {
-        key: 'sports.team_captain',
-        scope: { type: 'sports_team', id: 'team-a' },
-        expiresAt: null,
-      },
-      { key: 'extension.custom', scope: publicScope, expiresAt: '2029-01-01T00:00:00.000Z' },
-    ]);
+    expect(authenticated.user.tags).toEqual([]);
+    expect(authenticated.user.policies).toEqual([]);
   });
 });

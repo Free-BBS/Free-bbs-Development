@@ -1,10 +1,9 @@
 import { IdentityProviderUnavailableError } from './auth-client.js';
 
-import { validateTagScope } from '@freebbs-development/contracts';
-import type { PermissionTag, ScopeRef, UserContext } from '@freebbs-development/contracts';
-import { ROLE_PERMISSION_CATALOG } from '../authorization/permission-catalog.js';
-import type { AuthorizationContext, AuthorizationPolicy } from '../authorization/policy.js';
-import type { DevelopmentStore } from '../database/types.js';
+import type { UserContext } from '@freebbs-development/contracts';
+import { loadAuthorizationContext } from '../authorization/load-authorization-context.js';
+import type { AuthorizationContext } from '../authorization/policy.js';
+import type { DevelopmentStore, SubjectRecord } from '../database/types.js';
 import type { AuthClient } from './auth-client.js';
 
 export type AuthHeaders = Readonly<Record<string, string | string[] | undefined>>;
@@ -51,99 +50,40 @@ function readCredential(
   return match?.[1] ? { ok: true, value: match[1] } : { ok: false, missing: false };
 }
 
-function isCurrent(expiresAt: string | null | undefined, now: Date): boolean {
-  if (expiresAt === null || expiresAt === undefined) return true;
-  const timestamp = Date.parse(expiresAt);
-  return Number.isFinite(timestamp) && timestamp > now.getTime();
-}
-
-function isGlobalScope(scope: ScopeRef): boolean {
-  return scope.type === 'public' && scope.id === '*';
-}
-
-function tagIdentity(tag: PermissionTag): string {
-  return JSON.stringify([tag.key, tag.scope?.type ?? null, tag.scope?.id ?? null]);
-}
-
-function expiryRank(expiresAt: string | null | undefined): number {
-  if (expiresAt === null || expiresAt === undefined) return Number.POSITIVE_INFINITY;
-  const value = Date.parse(expiresAt);
-  return Number.isFinite(value) ? value : Number.NEGATIVE_INFINITY;
-}
-
-function deduplicateCurrentTags(tags: readonly PermissionTag[], now: Date): PermissionTag[] {
-  const selected = new Map<string, PermissionTag>();
-  for (const tag of tags) {
-    if (!validateTagScope(tag.key, tag.scope) || !isCurrent(tag.expiresAt, now)) continue;
-    const key = tagIdentity(tag);
-    const previous = selected.get(key);
-    if (previous === undefined || expiryRank(tag.expiresAt) > expiryRank(previous.expiresAt)) {
-      selected.set(key, tag);
-    }
-  }
-  return [...selected.values()];
-}
-
-async function hydratePlatformAccess(
-  user: UserContext,
-  store: DevelopmentStore | undefined,
+export async function synchronizeSubject(
+  store: DevelopmentStore,
+  identity: UserContext,
   now: Date,
-): Promise<AuthorizationContext> {
-  const [roleAssignments, tagAssignments] =
-    store === undefined
-      ? [[], []]
-      : await Promise.all([
-          store.roleAssignments.list({ query: user.uid }),
-          store.tagAssignments.list({ query: user.uid }),
-        ]);
-  const activeRoles = roleAssignments.filter(
-    (assignment) =>
-      assignment.subjectUid === user.uid &&
-      assignment.status === 'active' &&
-      isCurrent(assignment.expiresAt, now),
+): Promise<SubjectRecord> {
+  void now;
+  const existing = (await store.subjects.list({ query: identity.uid })).find(
+    ({ uid }) => uid === identity.uid,
   );
-  const roles = [...user.roles];
-  const generatedPolicies: AuthorizationPolicy[] = [];
-  for (const assignment of activeRoles) {
-    const rules = ROLE_PERMISSION_CATALOG[assignment.roleKey];
-    if (rules === undefined) continue;
-    if (isGlobalScope(assignment.scope)) {
-      roles.push(assignment.roleKey);
-      continue;
-    }
-    for (const [ruleIndex, rule] of rules.entries()) {
-      generatedPolicies.push({
-        id: `role-assignment:${assignment.id}:${ruleIndex}`,
-        action: rule.action,
-        resource: rule.resource,
-        effect: 'allow',
-        scope: assignment.scope,
-        expiresAt: assignment.expiresAt,
-      });
-    }
+  if (existing === undefined) {
+    return store.subjects.create({
+      uid: identity.uid,
+      displayName: identity.displayName,
+      avatarUrl: identity.avatarUrl,
+      status: 'active',
+      ownerUid: identity.uid,
+      scope: { type: 'public', id: '*' },
+    });
   }
-  const storedTags = tagAssignments
-    .filter(
-      (assignment) =>
-        assignment.subjectUid === user.uid &&
-        assignment.status === 'active' &&
-        isCurrent(assignment.expiresAt, now) &&
-        validateTagScope(assignment.tagKey, assignment.scope),
-    )
-    .map((assignment) => ({
-      key: assignment.tagKey,
-      scope: assignment.scope,
-      expiresAt: assignment.expiresAt,
-    }));
-  const existingPolicies = (user as AuthorizationContext).policies ?? [];
-
-  return {
-    ...user,
-    roles: [...new Set(roles)],
-    tags: deduplicateCurrentTags([...user.tags, ...storedTags], now),
-    policies: [...existingPolicies, ...generatedPolicies],
-  };
+  if (existing.displayName === identity.displayName && existing.avatarUrl === identity.avatarUrl) {
+    return existing;
+  }
+  const updated = await store.subjects.update(existing.id, {
+    displayName: identity.displayName,
+    avatarUrl: identity.avatarUrl,
+  });
+  if (updated === null) throw new Error('Subject disappeared during synchronization');
+  return updated;
 }
+
+function emptyAuthorizationContext(identity: UserContext): AuthorizationContext {
+  return { ...identity, roles: [], tags: [], policies: [] };
+}
+
 export function createAuthMiddleware(options: AuthMiddlewareOptions) {
   return async (headers: AuthHeaders): Promise<AuthenticationResult> => {
     const credential = readCredential(headers, options.mode);
@@ -158,13 +98,16 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions) {
       if (identity === null) {
         return { status: 401, code: 'invalid_identity', message: 'Authentication is invalid' };
       }
+      const now = (options.now ?? (() => new Date()))();
+      if (options.store === undefined) {
+        return { status: 200, user: emptyAuthorizationContext(identity) };
+      }
+      if (options.mode === 'main') {
+        await synchronizeSubject(options.store, identity, now);
+      }
       return {
         status: 200,
-        user: await hydratePlatformAccess(
-          identity,
-          options.store,
-          (options.now ?? (() => new Date()))(),
-        ),
+        user: await loadAuthorizationContext(options.store, identity, now),
       };
     } catch (error) {
       if (error instanceof IdentityProviderUnavailableError || error instanceof Error) {

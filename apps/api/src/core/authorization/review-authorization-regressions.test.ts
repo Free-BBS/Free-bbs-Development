@@ -2,35 +2,61 @@ import { describe, expect, it } from 'vitest';
 
 import { authorize } from './authorize.js';
 
-import type { RoleKey, UserContext } from '@freebbs-development/contracts';
+import type { RoleKey } from '@freebbs-development/contracts';
+import type { AuthorizationContext, AuthorizationPolicy } from './policy.js';
 
-function user(roles: RoleKey[] = []): UserContext {
+function user(policies: AuthorizationPolicy[] = [], roles: RoleKey[] = []): AuthorizationContext {
   return {
     uid: 'review-user',
-    displayName: '评审用户',
+    displayName: 'Review user',
     avatarUrl: null,
     baseRole: 'student',
     roles,
     tags: [],
+    policies,
   };
 }
 
-describe('review regressions: catalog coverage', () => {
-  it('allows an ordinary authenticated student to read liaison resources', () => {
+describe('review regressions: compiled policy coverage', () => {
+  it('allows a database-compiled public liaison baseline only at public scope', () => {
+    const context = user([
+      {
+        id: 'baseline-liaison',
+        action: 'liaison.resource.read',
+        resource: 'liaison_resource',
+        effect: 'allow',
+        scope: { type: 'public', id: '*' },
+      },
+    ]);
     expect(
-      authorize(user(), {
+      authorize(context, {
         action: 'liaison.resource.read',
         resource: 'liaison_resource',
         scope: { type: 'public', id: '*' },
       }).allowed,
     ).toBe(true);
+    expect(
+      authorize(context, {
+        action: 'liaison.resource.read',
+        resource: 'liaison_resource',
+        scope: { type: 'restricted', id: 'leadership' },
+      }).allowed,
+    ).toBe(false);
   });
 
   it.each(['read', 'create', 'update', 'approve'] as const)(
-    'allows Tuanwei to %s finance records',
+    'allows a compiled Tuanwei policy to %s finance records',
     (operation) => {
+      const context = user([
+        {
+          id: `tuanwei-${operation}`,
+          action: `finance.record.${operation}`,
+          resource: 'finance_record',
+          effect: 'allow',
+        },
+      ]);
       expect(
-        authorize(user(['affiliation.tuanwei_member']), {
+        authorize(context, {
           action: `finance.record.${operation}`,
           resource: 'finance_record',
         }).allowed,
@@ -38,13 +64,13 @@ describe('review regressions: catalog coverage', () => {
     },
   );
 
-  it('does not grant finance access to students or unrelated Tuanwei operations', () => {
+  it('does not grant finance access without a compiled policy', () => {
     expect(
       authorize(user(), { action: 'finance.record.read', resource: 'finance_record' }).allowed,
     ).toBe(false);
     for (const operation of ['delete', 'export']) {
       expect(
-        authorize(user(['affiliation.tuanwei_member']), {
+        authorize(user([], ['affiliation.tuanwei_member']), {
           action: `finance.record.${operation}`,
           resource: 'finance_record',
         }).allowed,
@@ -54,13 +80,13 @@ describe('review regressions: catalog coverage', () => {
 });
 
 describe('review regressions: fail closed', () => {
-  it('denies an unknown runtime role without throwing', () => {
-    const corruptContext = user(['future.unknown_role' as RoleKey]);
+  it('denies an unknown runtime role and action without throwing', () => {
+    const corruptContext = user([], ['future.unknown_role' as RoleKey]);
     expect(() =>
       authorize(corruptContext, { action: 'admin.role.assign', resource: 'role_assignment' }),
     ).not.toThrow();
     expect(
       authorize(corruptContext, { action: 'admin.role.assign', resource: 'role_assignment' }),
-    ).toEqual({ allowed: false, reason: 'no-matching-grant', matchedBy: null });
+    ).toEqual({ allowed: false, reason: 'unknown-permission', matchedBy: null });
   });
 });

@@ -25,6 +25,22 @@ describe('finance scoped listing regressions', () => {
         },
       ],
     };
+    await store.subjects.create({
+      uid: actor.uid,
+      displayName: actor.displayName,
+      avatarUrl: actor.avatarUrl,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
+    await store.roleAssignments.create({
+      subjectUid: actor.uid,
+      roleKey: 'department.rights_development_director',
+      expiresAt: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'organization', id: 'empty-org' },
+    });
     const app = createApp({
       store,
       authMode: 'demo',

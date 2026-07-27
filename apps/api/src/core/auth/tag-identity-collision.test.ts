@@ -6,7 +6,7 @@ import type { UserContext } from '@freebbs-development/contracts';
 import type { AuthClient } from './auth-client.js';
 
 describe('second review: collision-free tag identity', () => {
-  it('keeps distinct key/scope triples that collide under delimiter concatenation', async () => {
+  it('does not trust colliding identity-provider tag triples as authorization input', async () => {
     const client: AuthClient = {
       async introspect(): Promise<UserContext> {
         return {
@@ -26,7 +26,7 @@ describe('second review: collision-free tag identity', () => {
 
     const authenticated = await authenticate({ 'x-demo-user': 'collision-user' });
     if (authenticated.status !== 200) throw new Error('expected authenticated user');
-    expect(authenticated.user.tags).toHaveLength(2);
-    expect(authenticated.user.tags.map(({ key }) => key)).toEqual(['extension.a|b', 'extension.a']);
+    expect(authenticated.user.tags).toEqual([]);
+    expect(authenticated.user.policies).toEqual([]);
   });
 });

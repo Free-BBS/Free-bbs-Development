@@ -104,8 +104,17 @@ export const SPORTS_CAPTAIN_RULES: readonly PermissionRule[] = rules(
   ['sports.checkin.read', 'sports_checkin'],
   ['sports.checkin.create', 'sports_checkin'],
 );
+export const ADMIN_PERMISSION_RULES: readonly PermissionRule[] = rules(
+  ['admin.manage', 'admin'],
+  ['admin.module.update', 'module'],
+  ['admin.role_assignment.grant', 'role_assignment'],
+  ['admin.role_assignment.revoke', 'role_assignment'],
+  ['admin.tag_assignment.grant', 'tag_assignment'],
+  ['admin.tag_assignment.revoke', 'tag_assignment'],
+);
 export const ALL_PERMISSION_RULES: readonly PermissionRule[] = [
   ...BASE_STUDENT_PERMISSIONS,
   ...Object.values(ROLE_PERMISSION_CATALOG).flat(),
   ...SPORTS_CAPTAIN_RULES,
+  ...ADMIN_PERMISSION_RULES,
 ];

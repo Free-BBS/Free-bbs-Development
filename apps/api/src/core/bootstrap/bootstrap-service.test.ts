@@ -2,6 +2,7 @@ import { MODULE_IDS, ROLE_KEYS } from '@freebbs-development/contracts';
 import { describe, expect, it } from 'vitest';
 
 import {
+  ADMIN_PERMISSION_RULES,
   BASE_STUDENT_PERMISSIONS,
   ROLE_PERMISSION_CATALOG,
   SPORTS_CAPTAIN_RULES,
@@ -146,6 +147,7 @@ describe('production governance bootstrap', () => {
       ...BASE_STUDENT_PERMISSIONS,
       ...Object.values(ROLE_PERMISSION_CATALOG).flat(),
       ...SPORTS_CAPTAIN_RULES,
+      ...ADMIN_PERMISSION_RULES,
     ];
     expect(BUILT_IN_PERMISSIONS.map(permissionKey).sort()).toEqual(
       [...new Set(catalogRules.map(permissionKey))].sort(),

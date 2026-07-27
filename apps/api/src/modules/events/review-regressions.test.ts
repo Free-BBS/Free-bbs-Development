@@ -35,6 +35,22 @@ describe('events security regressions', () => {
       roles: ['domain.sports_lead'],
       tags: [],
     };
+    await store.subjects.create({
+      uid: actor.uid,
+      displayName: actor.displayName,
+      avatarUrl: actor.avatarUrl,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
+    await store.roleAssignments.create({
+      subjectUid: actor.uid,
+      roleKey: 'domain.sports_lead',
+      expiresAt: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
     const app = createApp({
       store,
       authMode: 'demo',

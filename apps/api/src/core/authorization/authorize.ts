@@ -1,11 +1,6 @@
-import {
-  BASE_STUDENT_PERMISSIONS,
-  ROLE_PERMISSION_CATALOG,
-  SPORTS_CAPTAIN_RULES,
-} from './permission-catalog.js';
+import { ALL_PERMISSION_RULES } from './permission-catalog.js';
 
-import { validateTagScope } from '@freebbs-development/contracts';
-import type { PermissionTag, ScopeRef } from '@freebbs-development/contracts';
+import type { ScopeRef } from '@freebbs-development/contracts';
 import type {
   AuthorizationContext,
   AuthorizationDecision,
@@ -25,6 +20,19 @@ function matchesRule(rule: PermissionRule, request: AuthorizationRequest): boole
   );
 }
 
+function isKnownRequest(request: AuthorizationRequest): boolean {
+  return ALL_PERMISSION_RULES.some(
+    (rule) => (rule.action !== '*' || rule.resource !== '*') && matchesRule(rule, request),
+  );
+}
+
+function validScope(scope: ScopeRef | undefined): boolean {
+  if (scope === undefined) return true;
+  return (
+    scope.type.length > 0 && scope.id.length > 0 && (scope.id !== '*' || scope.type === 'public')
+  );
+}
+
 function matchesScope(grant: ScopeRef | undefined, requested: ScopeRef | undefined): boolean {
   if (grant === undefined) return true;
   return requested !== undefined && grant.type === requested.type && grant.id === requested.id;
@@ -36,24 +44,18 @@ function isExpired(expiresAt: string | null | undefined, now: Date): boolean {
   return !Number.isFinite(timestamp) || timestamp <= now.getTime();
 }
 
-function deny(
-  reason: AuthorizationDecision['reason'],
-  matchedBy: string | null,
-): AuthorizationDecision {
-  return { allowed: false, reason, matchedBy };
-}
-
-function allow(reason: AuthorizationDecision['reason'], matchedBy: string): AuthorizationDecision {
-  return { allowed: true, reason, matchedBy };
-}
-
-function policySource(policy: AuthorizationPolicy): string {
+function source(policy: AuthorizationPolicy): string {
   return `policy:${policy.id}`;
 }
 
-function tagSource(tag: PermissionTag): string {
-  const scope = tag.scope;
-  return scope === undefined ? `tag:${tag.key}` : `tag:${tag.key}:${scope.type}:${scope.id}`;
+function specificity(policy: AuthorizationPolicy): number {
+  return policy.scope === undefined ? 0 : 1;
+}
+
+function mostSpecific(policies: readonly AuthorizationPolicy[]): AuthorizationPolicy | undefined {
+  return [...policies].sort(
+    (left, right) => specificity(right) - specificity(left) || left.id.localeCompare(right.id),
+  )[0];
 }
 
 export function authorize(
@@ -61,64 +63,38 @@ export function authorize(
   request: AuthorizationRequest,
   now = new Date(),
 ): AuthorizationDecision {
-  const matchingPolicies = (context.policies ?? []).filter((policy) =>
-    matchesRule(policy, request),
-  );
-
-  const explicitDeny = matchingPolicies.find(
-    (policy) => policy.effect === 'deny' && matchesScope(policy.scope, request.scope),
-  );
-  if (explicitDeny !== undefined) return deny('explicit-deny', policySource(explicitDeny));
-
-  const expiredPolicy = matchingPolicies.find(
-    (policy) => isExpired(policy.expiresAt, now) && matchesScope(policy.scope, request.scope),
-  );
-  if (expiredPolicy !== undefined) {
-    return deny('expired-assignment', policySource(expiredPolicy));
+  if (!isKnownRequest(request)) {
+    return { allowed: false, reason: 'unknown-permission', matchedBy: null };
   }
 
-  const policyGrant = matchingPolicies.find(
-    (policy) => policy.effect === 'allow' && matchesScope(policy.scope, request.scope),
+  const matching = (context.policies ?? []).filter(
+    (policy) =>
+      (policy.effect === 'allow' || policy.effect === 'deny') &&
+      validScope(policy.scope) &&
+      matchesRule(policy, request),
   );
-  if (policyGrant !== undefined) return allow('policy-grant', policySource(policyGrant));
+  const compatible = matching.filter((policy) => matchesScope(policy.scope, request.scope));
+  const current = compatible.filter((policy) => !isExpired(policy.expiresAt, now));
 
-  let scopeMismatch: string | null = null;
-  const mismatchedPolicy = matchingPolicies.find(
-    (policy) => policy.effect === 'allow' && !matchesScope(policy.scope, request.scope),
-  );
-  if (mismatchedPolicy !== undefined) scopeMismatch = policySource(mismatchedPolicy);
-
-  for (const tag of context.tags) {
-    if (tag.key !== 'sports.team_captain') continue;
-    if (!validateTagScope(tag.key, tag.scope)) continue;
-    if (!SPORTS_CAPTAIN_RULES.some((rule) => matchesRule(rule, request))) continue;
-    const source = tagSource(tag);
-    if (!matchesScope(tag.scope, request.scope)) {
-      scopeMismatch ??= source;
-      continue;
-    }
-    if (isExpired(tag.expiresAt, now)) return deny('expired-assignment', source);
-    return allow('tag-grant', source);
+  const explicitDeny = mostSpecific(current.filter(({ effect }) => effect === 'deny'));
+  if (explicitDeny !== undefined) {
+    return { allowed: false, reason: 'explicit-deny', matchedBy: source(explicitDeny) };
   }
 
-  for (const role of context.roles) {
-    if (
-      ROLE_PERMISSION_CATALOG[role]?.some(
-        (rule) => matchesRule(rule, request) && matchesScope(rule.scope, request.scope),
-      )
-    ) {
-      return allow('role-grant', `role:${role}`);
-    }
+  const grant = mostSpecific(current.filter(({ effect }) => effect === 'allow'));
+  if (grant !== undefined) {
+    return { allowed: true, reason: 'policy-grant', matchedBy: source(grant) };
   }
 
-  if (
-    BASE_STUDENT_PERMISSIONS.some(
-      (rule) => matchesRule(rule, request) && matchesScope(rule.scope, request.scope),
-    )
-  ) {
-    return allow('base-role-grant', 'base-role:student');
+  const expired = mostSpecific(compatible.filter((policy) => isExpired(policy.expiresAt, now)));
+  if (expired !== undefined) {
+    return { allowed: false, reason: 'expired-assignment', matchedBy: source(expired) };
   }
 
-  if (scopeMismatch !== null) return deny('scope-mismatch', scopeMismatch);
-  return deny('no-matching-grant', null);
+  const mismatch = mostSpecific(matching.filter(({ effect }) => effect === 'allow'));
+  if (mismatch !== undefined) {
+    return { allowed: false, reason: 'scope-mismatch', matchedBy: source(mismatch) };
+  }
+
+  return { allowed: false, reason: 'no-matching-grant', matchedBy: null };
 }

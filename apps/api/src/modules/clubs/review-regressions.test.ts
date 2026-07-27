@@ -25,7 +25,7 @@ function actorWithPolicies(scopeIds: string[]): AuthorizationContext {
 }
 
 describe('clubs security regressions', () => {
-  it('lets the arts domain manager update a club', async () => {
+  it('lets an authoritative arts domain assignment update a club', async () => {
     const store = createMemoryStore();
     const actor: AuthorizationContext = {
       uid: 'arts-lead',
@@ -35,6 +35,22 @@ describe('clubs security regressions', () => {
       roles: ['domain.arts_lead'],
       tags: [],
     };
+    await store.subjects.create({
+      uid: actor.uid,
+      displayName: actor.displayName,
+      avatarUrl: actor.avatarUrl,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
+    await store.roleAssignments.create({
+      subjectUid: actor.uid,
+      roleKey: 'domain.arts_lead',
+      expiresAt: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
     const app = createApp({
       store,
       authMode: 'demo',
@@ -96,6 +112,14 @@ describe('clubs security regressions', () => {
       roles: [],
       tags: [],
     };
+    await store.subjects.create({
+      uid: actor.uid,
+      displayName: actor.displayName,
+      avatarUrl: actor.avatarUrl,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
     const app = createApp({
       store,
       authMode: 'demo',

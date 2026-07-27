@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { loadEnvironment } from '../../config/env.js';
+import { authorize } from '../authorization/authorize.js';
+import { bootstrapPlatform } from '../bootstrap/bootstrap-service.js';
 import { createMemoryStore } from '../database/memory-store.js';
 import { createAuthMiddleware } from './auth-middleware.js';
 import { DemoAuthClient } from './demo-auth-client.js';
@@ -43,27 +45,66 @@ describe('authentication middleware', () => {
     });
   });
 
-  it('hydrates platform role and scoped tag assignments from the development store', async () => {
+  it('loads demo authorization from pre-existing governance data without role or tag grants', async () => {
     const client = new DemoAuthClient(['demo-admin', 'demo-captain']);
-    const store = createMemoryStore();
-    const authenticate = createAuthMiddleware({ authClient: client, mode: 'demo', store });
+    const store = createMemoryStore({ seed: false });
+    const now = new Date('2026-07-27T10:00:00.000Z');
+    await bootstrapPlatform(store, {
+      uid: 'demo-admin',
+      recovery: false,
+      version: 'task-15-test',
+      now,
+    });
+    await store.subjects.create({
+      uid: 'demo-captain',
+      displayName: 'Captain',
+      avatarUrl: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
+    await store.tagAssignments.create({
+      subjectUid: 'demo-captain',
+      tagKey: 'sports.team_captain',
+      expiresAt: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'sports_team', id: 'team-basketball' },
+    });
+    const authenticate = createAuthMiddleware({
+      authClient: client,
+      mode: 'demo',
+      store,
+      now: () => now,
+    });
 
     const admin = await authenticate({ 'x-demo-user': 'demo-admin' });
     const captain = await authenticate({ 'x-demo-user': 'demo-captain' });
 
     expect(admin).toMatchObject({
       status: 200,
-      user: { uid: 'demo-admin', roles: ['platform.super_admin'] },
+      user: { uid: 'demo-admin', roles: [], tags: [], policies: expect.any(Array) },
     });
     expect(captain).toMatchObject({
       status: 200,
-      user: {
-        uid: 'demo-captain',
-        tags: [
-          { key: 'sports.team_captain', scope: { type: 'sports_team', id: 'team-basketball' } },
-        ],
-      },
+      user: { uid: 'demo-captain', roles: [], tags: [], policies: expect.any(Array) },
     });
+    if (admin.status !== 200 || captain.status !== 200) throw new Error('expected authentication');
+    expect(
+      authorize(admin.user, { action: 'knowledge.publish', resource: 'knowledge_entry' }, now)
+        .allowed,
+    ).toBe(true);
+    expect(
+      authorize(
+        captain.user,
+        {
+          action: 'sports.checkin.create',
+          resource: 'sports_checkin',
+          scope: { type: 'sports_team', id: 'team-basketball' },
+        },
+        now,
+      ).allowed,
+    ).toBe(true);
   });
 });
 

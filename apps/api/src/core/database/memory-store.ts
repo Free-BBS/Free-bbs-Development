@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
 import { encodeDateOnly, encodeUtcDateTime } from './date-codec.js';
+import {
+  BUILT_IN_PERMISSIONS,
+  BUILT_IN_ROLES,
+  BUILT_IN_ROLE_PERMISSIONS,
+  BUILT_IN_TAG_PERMISSIONS,
+} from '../bootstrap/built-in-definitions.js';
 import { RecordConflictError } from './record-conflict-error.js';
 
 import type {
@@ -195,22 +201,29 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
   ];
-  state.roles = [
-    stored('role-admin', {
-      key: 'platform.super_admin',
-      name: '最高权限',
+  state.roles = BUILT_IN_ROLES.map((definition, index) =>
+    stored<RoleRecord>(`role-governance-${index}`, {
+      ...definition,
       status: 'active',
       ownerUid: 'demo-admin',
       scope: publicScope,
     }),
-    stored('role-sports-lead', {
-      key: 'domain.sports_lead',
-      name: '体育负责人',
+  );
+  state.permissions = BUILT_IN_PERMISSIONS.map((definition, index) =>
+    stored<PermissionRecord>(`permission-governance-${index}`, {
+      ...definition,
       status: 'active',
       ownerUid: 'demo-admin',
       scope: publicScope,
     }),
-  ];
+  );
+  state.rolePermissions = BUILT_IN_ROLE_PERMISSIONS.map((definition, index) =>
+    stored<RolePermissionRecord>(`role-permission-governance-${index}`, {
+      ...definition,
+      status: 'active',
+      ownerUid: 'demo-admin',
+    }),
+  );
   state.roleAssignments = [
     stored('assignment-admin', {
       subjectUid: 'demo-admin',
@@ -261,6 +274,13 @@ function createDemoState(): MemoryState {
       scope: { type: 'sports_team', id: 'team-basketball' },
     }),
   ];
+  state.tagPermissions = BUILT_IN_TAG_PERMISSIONS.map((definition, index) =>
+    stored<TagPermissionRecord>(`tag-permission-governance-${index}`, {
+      ...definition,
+      status: 'active',
+      ownerUid: 'demo-admin',
+    }),
+  );
 
   const moduleNames: Array<[ModuleRecord['moduleId'], string]> = [
     ['dashboard', '工作台'],
