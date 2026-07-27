@@ -16,44 +16,14 @@ import {
   BUILT_IN_TAG_DEFINITIONS,
   BUILT_IN_TAG_PERMISSIONS,
 } from './built-in-definitions.js';
-import { bootstrapPlatform, type BootstrapExecutionLock } from './bootstrap-service.js';
+import { bootstrapPlatform } from './bootstrap-service.js';
 
 const now = new Date('2026-07-27T08:30:00.000Z');
 const publicScope = { type: 'public', id: '*' };
 
-class MutexBootstrapExecutionLock implements BootstrapExecutionLock {
-  private tail = Promise.resolve();
-  active = 0;
-  acquisitions = 0;
-  maxActive = 0;
-
-  async withLock<T>(operation: () => Promise<T>): Promise<T> {
-    const previous = this.tail;
-    let release: () => void = () => {};
-    this.tail = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await previous;
-    this.acquisitions += 1;
-    this.active += 1;
-    this.maxActive = Math.max(this.maxActive, this.active);
-    try {
-      return await operation();
-    } finally {
-      this.active -= 1;
-      release();
-    }
-  }
+function runBootstrap(store: DevelopmentStore, input: ReturnType<typeof bootstrapInput>) {
+  return bootstrapPlatform(store, input);
 }
-
-function runBootstrap(
-  store: DevelopmentStore,
-  input: ReturnType<typeof bootstrapInput>,
-  lock: BootstrapExecutionLock = new MutexBootstrapExecutionLock(),
-) {
-  return bootstrapPlatform(store, input, lock);
-}
-
 function bootstrapInput(uid: string, recovery = false) {
   return { uid, recovery, version: '834a804', now };
 }
@@ -94,6 +64,47 @@ function storeWithMalformedSuperAdmin(store: DevelopmentStore): DevelopmentStore
           delete: transactionStore.roleAssignments.delete.bind(transactionStore.roleAssignments),
         };
         return operation({ ...transactionStore, roleAssignments });
+      }),
+  };
+}
+
+function storeObservingBootstrapOrder(store: DevelopmentStore, events: string[]): DevelopmentStore {
+  return {
+    ...store,
+    transaction: (operation) =>
+      store.transaction((transactionStore) => {
+        const roles: RecordRepository<Awaited<ReturnType<typeof transactionStore.roles.create>>> = {
+          create: transactionStore.roles.create.bind(transactionStore.roles),
+          get: transactionStore.roles.get.bind(transactionStore.roles),
+          getForUpdate: async (id) => {
+            events.push('role-lock');
+            return transactionStore.roles.getForUpdate(id);
+          },
+          list: transactionStore.roles.list.bind(transactionStore.roles),
+          page: transactionStore.roles.page.bind(transactionStore.roles),
+          update: transactionStore.roles.update.bind(transactionStore.roles),
+          delete: transactionStore.roles.delete.bind(transactionStore.roles),
+        };
+        const roleAssignments: RecordRepository<
+          Awaited<ReturnType<typeof transactionStore.roleAssignments.create>>
+        > = {
+          create: async (input) => {
+            events.push('assignment-create');
+            return transactionStore.roleAssignments.create(input);
+          },
+          get: transactionStore.roleAssignments.get.bind(transactionStore.roleAssignments),
+          getForUpdate: transactionStore.roleAssignments.getForUpdate.bind(
+            transactionStore.roleAssignments,
+          ),
+          list: async (filters) => {
+            events.push('assignment-list');
+            return transactionStore.roleAssignments.list(filters);
+          },
+          page: transactionStore.roleAssignments.page.bind(transactionStore.roleAssignments),
+          update: transactionStore.roleAssignments.update.bind(transactionStore.roleAssignments),
+          delete: transactionStore.roleAssignments.delete.bind(transactionStore.roleAssignments),
+        };
+        return operation({ ...transactionStore, roles, roleAssignments });
       }),
   };
 }
@@ -456,20 +467,21 @@ describe('production governance bootstrap', () => {
     ).toHaveLength(2);
   });
 
-  it('uses the required execution lock around the entire transaction', async () => {
-    const rootStore = createMemoryStore({ seed: false });
-    const lock = new MutexBootstrapExecutionLock();
-    const guardedStore: DevelopmentStore = {
-      ...rootStore,
-      transaction: (operation) => {
-        expect(lock.active).toBe(1);
-        return rootStore.transaction(operation);
-      },
-    };
+  it('locks the canonical super-admin role before assignment reads and writes', async () => {
+    const events: string[] = [];
+    const store = storeObservingBootstrapOrder(createMemoryStore({ seed: false }), events);
+
+    await bootstrapPlatform(store, bootstrapInput('u_ordered'));
+
+    expect(events).toEqual(['role-lock', 'assignment-list', 'assignment-create']);
+  });
+
+  it('serializes concurrent two-argument bootstrap calls through storage', async () => {
+    const store = createMemoryStore({ seed: false });
 
     const outcomes = await Promise.allSettled([
-      runBootstrap(guardedStore, bootstrapInput('u_concurrent_a'), lock),
-      runBootstrap(guardedStore, bootstrapInput('u_concurrent_b'), lock),
+      bootstrapPlatform(store, bootstrapInput('u_concurrent_a')),
+      bootstrapPlatform(store, bootstrapInput('u_concurrent_b')),
     ]);
 
     expect(outcomes.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
@@ -478,11 +490,8 @@ describe('production governance bootstrap', () => {
       status: 'rejected',
       reason: { code: 'super_admin_already_exists' },
     });
-    expect(await rootStore.roleAssignments.list()).toHaveLength(1);
-    expect(lock.acquisitions).toBe(2);
-    expect(lock.maxActive).toBe(1);
+    expect(await store.roleAssignments.list()).toHaveLength(1);
   });
-
   it('does not mistake prefix-collision bindings for canonical recovery rows', async () => {
     const store = createMemoryStore({ seed: false });
     await runBootstrap(store, bootstrapInput('u_first'));
