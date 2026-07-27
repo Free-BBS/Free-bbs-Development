@@ -1,4 +1,4 @@
-export type PermissionAction = `${string}.${string}`;
+export type PermissionAction = '*' | `${string}.${string}`;
 
 export interface ScopeRef {
   type: string;
@@ -16,5 +16,5 @@ export function validateTagScope(tag: string, scope: ScopeRef | undefined): bool
     return true;
   }
 
-  return scope?.type === 'sports_team' && scope.id.length > 0;
+  return scope?.type === 'sports_team' && scope.id.length > 0 && scope.id !== '*';
 }

@@ -104,3 +104,8 @@ export const SPORTS_CAPTAIN_RULES: readonly PermissionRule[] = rules(
   ['sports.checkin.read', 'sports_checkin'],
   ['sports.checkin.create', 'sports_checkin'],
 );
+export const ALL_PERMISSION_RULES: readonly PermissionRule[] = [
+  ...BASE_STUDENT_PERMISSIONS,
+  ...Object.values(ROLE_PERMISSION_CATALOG).flat(),
+  ...SPORTS_CAPTAIN_RULES,
+];
