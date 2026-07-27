@@ -16,10 +16,43 @@ import {
   BUILT_IN_TAG_DEFINITIONS,
   BUILT_IN_TAG_PERMISSIONS,
 } from './built-in-definitions.js';
-import { bootstrapPlatform } from './bootstrap-service.js';
+import { bootstrapPlatform, type BootstrapExecutionLock } from './bootstrap-service.js';
 
 const now = new Date('2026-07-27T08:30:00.000Z');
 const publicScope = { type: 'public', id: '*' };
+
+class MutexBootstrapExecutionLock implements BootstrapExecutionLock {
+  private tail = Promise.resolve();
+  active = 0;
+  acquisitions = 0;
+  maxActive = 0;
+
+  async withLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.tail;
+    let release: () => void = () => {};
+    this.tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    this.acquisitions += 1;
+    this.active += 1;
+    this.maxActive = Math.max(this.maxActive, this.active);
+    try {
+      return await operation();
+    } finally {
+      this.active -= 1;
+      release();
+    }
+  }
+}
+
+function runBootstrap(
+  store: DevelopmentStore,
+  input: ReturnType<typeof bootstrapInput>,
+  lock: BootstrapExecutionLock = new MutexBootstrapExecutionLock(),
+) {
+  return bootstrapPlatform(store, input, lock);
+}
 
 function bootstrapInput(uid: string, recovery = false) {
   return { uid, recovery, version: '834a804', now };
@@ -27,6 +60,42 @@ function bootstrapInput(uid: string, recovery = false) {
 
 function permissionKey(value: { action: string; resource: string }): string {
   return `${value.action}\u0000${value.resource}`;
+}
+
+function storeWithMalformedSuperAdmin(store: DevelopmentStore): DevelopmentStore {
+  return {
+    ...store,
+    transaction: (operation) =>
+      store.transaction((transactionStore) => {
+        const roleAssignments: RecordRepository<
+          Awaited<ReturnType<typeof transactionStore.roleAssignments.create>>
+        > = {
+          create: transactionStore.roleAssignments.create.bind(transactionStore.roleAssignments),
+          get: transactionStore.roleAssignments.get.bind(transactionStore.roleAssignments),
+          getForUpdate: transactionStore.roleAssignments.getForUpdate.bind(
+            transactionStore.roleAssignments,
+          ),
+          list: async (filters) => [
+            ...(await transactionStore.roleAssignments.list(filters)),
+            {
+              id: 'malformed-super-admin',
+              subjectUid: 'u_malformed',
+              roleKey: 'platform.super_admin',
+              expiresAt: 'not-a-date',
+              status: 'active',
+              ownerUid: 'u_malformed',
+              scope: publicScope,
+              createdAt: now.toISOString(),
+              updatedAt: now.toISOString(),
+            },
+          ],
+          page: transactionStore.roleAssignments.page.bind(transactionStore.roleAssignments),
+          update: transactionStore.roleAssignments.update.bind(transactionStore.roleAssignments),
+          delete: transactionStore.roleAssignments.delete.bind(transactionStore.roleAssignments),
+        };
+        return operation({ ...transactionStore, roleAssignments });
+      }),
+  };
 }
 
 function failingAuditStore(store: DevelopmentStore): DevelopmentStore {
@@ -89,7 +158,7 @@ describe('production governance bootstrap', () => {
   it('atomically bootstraps all definitions and the first super administrator', async () => {
     const store = createMemoryStore({ seed: false });
 
-    const result = await bootstrapPlatform(store, bootstrapInput('u_20260727_admin'));
+    const result = await runBootstrap(store, bootstrapInput('u_20260727_admin'));
 
     expect(result).toMatchObject({
       uid: 'u_20260727_admin',
@@ -151,7 +220,7 @@ describe('production governance bootstrap', () => {
 
   it('refuses normal bootstrap when any active super administrator exists without mutation', async () => {
     const store = createMemoryStore({ seed: false });
-    await bootstrapPlatform(store, bootstrapInput('u_first'));
+    await runBootstrap(store, bootstrapInput('u_first'));
     const countsBefore = await Promise.all([
       store.subjects.list(),
       store.roles.list(),
@@ -159,7 +228,7 @@ describe('production governance bootstrap', () => {
       store.auditLogs.list(),
     ]);
 
-    await expect(bootstrapPlatform(store, bootstrapInput('u_second'))).rejects.toMatchObject({
+    await expect(runBootstrap(store, bootstrapInput('u_second'))).rejects.toMatchObject({
       code: 'super_admin_already_exists',
     });
 
@@ -174,9 +243,9 @@ describe('production governance bootstrap', () => {
 
   it('separately audits recovery but refuses a duplicate target assignment', async () => {
     const store = createMemoryStore({ seed: false });
-    await bootstrapPlatform(store, bootstrapInput('u_first'));
+    await runBootstrap(store, bootstrapInput('u_first'));
 
-    const recovered = await bootstrapPlatform(store, bootstrapInput('u_recovered', true));
+    const recovered = await runBootstrap(store, bootstrapInput('u_recovered', true));
 
     expect(recovered).toMatchObject({ uid: 'u_recovered', recovered: true });
     expect(await store.roles.list()).toHaveLength(ROLE_KEYS.length);
@@ -185,9 +254,9 @@ describe('production governance bootstrap', () => {
       'platform.bootstrap.recovery',
     );
     const assignmentsBefore = await store.roleAssignments.list();
-    await expect(
-      bootstrapPlatform(store, bootstrapInput('u_recovered', true)),
-    ).rejects.toMatchObject({ code: 'super_admin_assignment_exists' });
+    await expect(runBootstrap(store, bootstrapInput('u_recovered', true))).rejects.toMatchObject({
+      code: 'super_admin_assignment_exists',
+    });
     expect(await store.roleAssignments.list()).toEqual(assignmentsBefore);
   });
 
@@ -195,7 +264,7 @@ describe('production governance bootstrap', () => {
     const rootStore = createMemoryStore({ seed: false });
 
     await expect(
-      bootstrapPlatform(failingAuditStore(rootStore), bootstrapInput('u_atomic')),
+      runBootstrap(failingAuditStore(rootStore), bootstrapInput('u_atomic')),
     ).rejects.toThrow('simulated audit failure');
 
     expect(await rootStore.subjects.list()).toEqual([]);
@@ -207,5 +276,277 @@ describe('production governance bootstrap', () => {
     expect(await rootStore.tagPermissions.list()).toEqual([]);
     expect(await rootStore.modules.list()).toEqual([]);
     expect(await rootStore.auditLogs.list()).toEqual([]);
+  });
+
+  it.each([
+    ['expired', '2026-07-27T08:29:59.999Z'],
+    ['expires exactly now', now.toISOString()],
+  ])('does not let an %s active assignment block normal bootstrap', async (_label, expiresAt) => {
+    const store = createMemoryStore({ seed: false });
+    const first = await runBootstrap(store, bootstrapInput('u_first'));
+    await store.roleAssignments.update(first.roleAssignmentId, { expiresAt });
+
+    const second = await runBootstrap(store, bootstrapInput('u_second'));
+
+    expect(second.uid).toBe('u_second');
+    expect(await store.roleAssignments.list()).toHaveLength(2);
+  });
+
+  it('treats malformed super-admin expiry as ineffective instead of blocking bootstrap', async () => {
+    const rootStore = createMemoryStore({ seed: false });
+
+    const result = await runBootstrap(
+      storeWithMalformedSuperAdmin(rootStore),
+      bootstrapInput('u_valid'),
+    );
+
+    expect(result.uid).toBe('u_valid');
+    expect(await rootStore.roleAssignments.list({ query: 'u_valid' })).toHaveLength(1);
+  });
+
+  it('still blocks a future active super-admin assignment', async () => {
+    const store = createMemoryStore({ seed: false });
+    const first = await runBootstrap(store, bootstrapInput('u_first'));
+    await store.roleAssignments.update(first.roleAssignmentId, {
+      expiresAt: '2026-07-27T08:30:00.001Z',
+    });
+
+    await expect(runBootstrap(store, bootstrapInput('u_second'))).rejects.toMatchObject({
+      code: 'super_admin_already_exists',
+    });
+  });
+
+  it('reconciles the canonical recovery minimum, reactivates the target and audits every repair', async () => {
+    const store = createMemoryStore({ seed: false });
+    await runBootstrap(store, bootstrapInput('u_first'));
+    const roles = await store.roles.list();
+    const permissions = await store.permissions.list();
+    const rolePermissions = await store.rolePermissions.list();
+    const tagDefinitions = await store.tagDefinitions.list();
+    const tagPermissions = await store.tagPermissions.list();
+    const modules = await store.modules.list();
+    const superAdminRole = roles.find(({ key }) => key === 'platform.super_admin');
+    const wildcardPermission = permissions.find(
+      ({ action, resource }) => action === '*' && resource === '*',
+    );
+    const deniedBinding = rolePermissions.find(
+      ({ roleKey, action }) => roleKey === 'platform.super_admin' && action === '*',
+    );
+    const inactiveBinding = rolePermissions.find(
+      ({ roleKey, action }) => roleKey === 'domain.arts_lead' && action === 'clubs.*',
+    );
+    const captainDefinition = tagDefinitions.find(({ key }) => key === 'sports.team_captain');
+    const inactiveTagBinding = tagPermissions.find(
+      ({ action }) => action === 'sports.checkin.read',
+    );
+    const deniedTagBinding = tagPermissions.find(
+      ({ action }) => action === 'sports.checkin.create',
+    );
+    const adminModule = modules.find(({ moduleId }) => moduleId === 'admin');
+    if (
+      !superAdminRole ||
+      !wildcardPermission ||
+      !deniedBinding ||
+      !inactiveBinding ||
+      !captainDefinition ||
+      !inactiveTagBinding ||
+      !deniedTagBinding ||
+      !adminModule
+    ) {
+      throw new Error('expected canonical bootstrap definitions');
+    }
+    await store.roles.update(superAdminRole.id, {
+      name: 'drifted role',
+      status: 'inactive',
+    });
+    await store.permissions.update(wildcardPermission.id, { status: 'inactive' });
+    await store.rolePermissions.update(deniedBinding.id, { effect: 'deny' });
+    await store.rolePermissions.update(inactiveBinding.id, { status: 'inactive' });
+    await store.tagDefinitions.update(captainDefinition.id, {
+      status: 'inactive',
+      requiredScopeType: 'club',
+    });
+    await store.tagPermissions.update(inactiveTagBinding.id, { status: 'inactive' });
+    await store.tagPermissions.update(deniedTagBinding.id, { effect: 'deny' });
+    await store.modules.update(adminModule.id, {
+      enabled: false,
+      status: 'disabled',
+    });
+    const target = await store.subjects.create({
+      uid: 'u_recovered_profile',
+      displayName: 'Main-site display name',
+      avatarUrl: 'https://example.test/avatar.png',
+      status: 'inactive',
+      ownerUid: 'main-site',
+      scope: publicScope,
+    });
+    const extraBinding = await store.rolePermissions.create({
+      roleKey: 'platform.super_admin',
+      action: 'custom.export',
+      resource: 'custom_resource',
+      effect: 'allow',
+      status: 'active',
+      ownerUid: 'u_first',
+      scope: publicScope,
+    });
+
+    const result = await runBootstrap(store, bootstrapInput('u_recovered_profile', true));
+
+    expect(result.subjectId).toBe(target.id);
+    expect(await store.subjects.get(target.id)).toMatchObject({
+      status: 'active',
+      displayName: 'Main-site display name',
+      avatarUrl: 'https://example.test/avatar.png',
+    });
+    expect(await store.roles.get(superAdminRole.id)).toMatchObject({
+      name: BUILT_IN_ROLES[0]?.name,
+      status: 'active',
+    });
+    expect(await store.permissions.get(wildcardPermission.id)).toMatchObject({ status: 'active' });
+    expect(await store.rolePermissions.get(deniedBinding.id)).toMatchObject({
+      effect: 'allow',
+      status: 'active',
+    });
+    expect(await store.rolePermissions.get(inactiveBinding.id)).toMatchObject({
+      effect: 'allow',
+      status: 'active',
+    });
+    expect(await store.tagDefinitions.get(captainDefinition.id)).toMatchObject({
+      status: 'active',
+      requiredScopeType: 'sports_team',
+    });
+    expect(await store.tagPermissions.get(inactiveTagBinding.id)).toMatchObject({
+      effect: 'allow',
+      status: 'active',
+    });
+    expect(await store.tagPermissions.get(deniedTagBinding.id)).toMatchObject({
+      effect: 'allow',
+      status: 'active',
+    });
+    expect(await store.modules.get(adminModule.id)).toMatchObject({
+      enabled: true,
+      status: 'enabled',
+    });
+    expect(await store.rolePermissions.get(extraBinding.id)).toEqual(extraBinding);
+    const recoveryAudit = (await store.auditLogs.list({ query: 'u_recovered_profile' })).find(
+      ({ action }) => action === 'platform.bootstrap.recovery',
+    );
+    expect(recoveryAudit?.details).toMatchObject({
+      reconciliation: {
+        roles: ['platform.super_admin'],
+        permissions: ['*:*'],
+        rolePermissions: expect.arrayContaining([
+          'platform.super_admin:*:*:public:*',
+          'domain.arts_lead:clubs.*:*:public:*',
+        ]),
+        tagDefinitions: ['sports.team_captain'],
+        tagPermissions: expect.arrayContaining([
+          'sports.team_captain:sports.checkin.read:sports_checkin:sports_team:*',
+          'sports.team_captain:sports.checkin.create:sports_checkin:sports_team:*',
+        ]),
+        modules: ['admin'],
+        subjects: ['u_recovered_profile'],
+      },
+    });
+    expect(
+      (recoveryAudit?.details.reconciliation as { rolePermissions: string[] }).rolePermissions,
+    ).toHaveLength(2);
+    expect(
+      (recoveryAudit?.details.reconciliation as { tagPermissions: string[] }).tagPermissions,
+    ).toHaveLength(2);
+  });
+
+  it('uses the required execution lock around the entire transaction', async () => {
+    const rootStore = createMemoryStore({ seed: false });
+    const lock = new MutexBootstrapExecutionLock();
+    const guardedStore: DevelopmentStore = {
+      ...rootStore,
+      transaction: (operation) => {
+        expect(lock.active).toBe(1);
+        return rootStore.transaction(operation);
+      },
+    };
+
+    const outcomes = await Promise.allSettled([
+      runBootstrap(guardedStore, bootstrapInput('u_concurrent_a'), lock),
+      runBootstrap(guardedStore, bootstrapInput('u_concurrent_b'), lock),
+    ]);
+
+    expect(outcomes.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    const rejection = outcomes.find(({ status }) => status === 'rejected');
+    expect(rejection).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'super_admin_already_exists' },
+    });
+    expect(await rootStore.roleAssignments.list()).toHaveLength(1);
+    expect(lock.acquisitions).toBe(2);
+    expect(lock.maxActive).toBe(1);
+  });
+
+  it('does not mistake prefix-collision bindings for canonical recovery rows', async () => {
+    const store = createMemoryStore({ seed: false });
+    await runBootstrap(store, bootstrapInput('u_first'));
+    const canonicalRoleBinding = (await store.rolePermissions.list()).find(
+      ({ roleKey, action, resource, scope }) =>
+        roleKey === 'platform.super_admin' &&
+        action === '*' &&
+        resource === '*' &&
+        scope.type === 'public' &&
+        scope.id === '*',
+    );
+    const canonicalTagBinding = (await store.tagPermissions.list()).find(
+      ({ tagKey, action, scope }) =>
+        tagKey === 'sports.team_captain' &&
+        action === 'sports.checkin.read' &&
+        scope.type === 'sports_team' &&
+        scope.id === '*',
+    );
+    if (!canonicalRoleBinding || !canonicalTagBinding) {
+      throw new Error('expected canonical bindings');
+    }
+    await store.rolePermissions.delete(canonicalRoleBinding.id);
+    await store.tagPermissions.delete(canonicalTagBinding.id);
+    const rolePrefix = await store.rolePermissions.create({
+      roleKey: canonicalRoleBinding.roleKey,
+      action: canonicalRoleBinding.action,
+      resource: canonicalRoleBinding.resource,
+      effect: 'allow',
+      status: 'active',
+      ownerUid: 'u_first',
+      scope: { type: 'public', id: '*extra' },
+    });
+    const tagPrefix = await store.tagPermissions.create({
+      tagKey: canonicalTagBinding.tagKey,
+      action: canonicalTagBinding.action,
+      resource: canonicalTagBinding.resource,
+      effect: 'allow',
+      status: 'active',
+      ownerUid: 'u_first',
+      scope: { type: 'sports_team', id: '*extra' },
+    });
+
+    await runBootstrap(store, bootstrapInput('u_recovered', true));
+
+    expect(
+      (await store.rolePermissions.list()).filter(
+        ({ roleKey, action, resource, scope }) =>
+          roleKey === 'platform.super_admin' &&
+          action === '*' &&
+          resource === '*' &&
+          scope.type === 'public' &&
+          scope.id === '*',
+      ),
+    ).toHaveLength(1);
+    expect(
+      (await store.tagPermissions.list()).filter(
+        ({ tagKey, action, scope }) =>
+          tagKey === 'sports.team_captain' &&
+          action === 'sports.checkin.read' &&
+          scope.type === 'sports_team' &&
+          scope.id === '*',
+      ),
+    ).toHaveLength(1);
+    expect(await store.rolePermissions.get(rolePrefix.id)).toEqual(rolePrefix);
+    expect(await store.tagPermissions.get(tagPrefix.id)).toEqual(tagPrefix);
   });
 });
