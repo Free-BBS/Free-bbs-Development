@@ -35,7 +35,43 @@ function appWithAuditRows(rows: AuditLogRecord[]) {
   const baseStore = createMemoryStore();
   const auditLogs = Object.create(baseStore.auditLogs) as typeof baseStore.auditLogs;
   auditLogs.list = async () => structuredClone(rows);
-  const store = { ...baseStore, auditLogs };
+  const store = {
+    ...baseStore,
+    auditLogs,
+    queryAuditLogs: async (query: {
+      actorUid?: string;
+      action?: string;
+      resourceType?: string;
+      resourceId?: string;
+      from?: string;
+      to?: string;
+      page: number;
+      pageSize: number;
+    }) => {
+      const matches = rows
+        .filter(
+          (row) =>
+            (query.actorUid === undefined || row.actorUid === query.actorUid) &&
+            (query.action === undefined || row.action === query.action) &&
+            (query.resourceType === undefined || row.resourceType === query.resourceType) &&
+            (query.resourceId === undefined || row.resourceId === query.resourceId) &&
+            (query.from === undefined || Date.parse(row.createdAt) >= Date.parse(query.from)) &&
+            (query.to === undefined || Date.parse(row.createdAt) <= Date.parse(query.to)),
+        )
+        .sort(
+          (left, right) =>
+            Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+            right.id.localeCompare(left.id),
+        );
+      const offset = (query.page - 1) * query.pageSize;
+      return {
+        items: structuredClone(matches.slice(offset, offset + query.pageSize)),
+        page: query.page,
+        pageSize: query.pageSize,
+        total: matches.length,
+      };
+    },
+  };
   return createApp({
     store,
     databaseMode: 'memory',
@@ -101,6 +137,7 @@ describe('audit log query API', () => {
     [{ pageSize: 0 }, 'page size below one'],
     [{ pageSize: 101 }, 'page size above one hundred'],
     [{ from: 'not-a-date' }, 'invalid from date'],
+    [{ from: '2026-07-27T18:00:00.000+08:00' }, 'non-UTC from date'],
     [{ unexpected: 'field' }, 'unknown filter'],
   ])('rejects %s (%s)', async (query, _label) => {
     await request(appWithAuditRows([])).get(auditPath).query(query).set(adminHeaders).expect(400);

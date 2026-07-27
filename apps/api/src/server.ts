@@ -7,7 +7,18 @@ if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
 }
 
 const handle = createStore();
-const server = createApp({ store: handle.store, databaseMode: handle.mode }).listen(port);
+let appliedMigrationCount: number;
+try {
+  appliedMigrationCount = await handle.appliedMigrationCount();
+} catch (error) {
+  await handle.close();
+  throw error;
+}
+const server = createApp({
+  store: handle.store,
+  databaseMode: handle.mode,
+  appliedMigrationCount,
+}).listen(port);
 
 async function shutdown(): Promise<void> {
   server.close(async () => {

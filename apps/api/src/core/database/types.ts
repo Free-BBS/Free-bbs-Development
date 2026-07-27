@@ -31,6 +31,15 @@ export interface Page<T> {
   total: number;
 }
 
+export interface AuditLogQuery extends PageRequest {
+  actorUid?: string;
+  action?: string;
+  resourceType?: string;
+  resourceId?: string;
+  from?: string;
+  to?: string;
+}
+
 export interface RecordRepository<T extends StoredRecord> {
   create(input: NewRecord<T>): Promise<T>;
   get(id: string): Promise<T | null>;
@@ -179,6 +188,7 @@ export interface FinanceRecord extends StoredRecord {
 
 export interface DevelopmentStore {
   transaction<T>(operation: (store: DevelopmentStore) => Promise<T>): Promise<T>;
+  queryAuditLogs(query: AuditLogQuery): Promise<Page<AuditLogRecord>>;
   subjects: RecordRepository<SubjectRecord>;
   roles: RecordRepository<RoleRecord>;
   permissions: RecordRepository<PermissionRecord>;

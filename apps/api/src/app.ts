@@ -124,7 +124,7 @@ export function createApp(options: CreateAppOptions = {}) {
     if (origin !== undefined && allowedOrigins.has(origin)) {
       response.vary('Origin');
       response.setHeader('Access-Control-Allow-Origin', origin);
-      response.setHeader('Access-Control-Allow-Methods', 'GET,POST,PATCH,DELETE,OPTIONS');
+      response.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
       response.setHeader(
         'Access-Control-Allow-Headers',
         'Authorization,Content-Type,X-Demo-User,X-Request-Id',

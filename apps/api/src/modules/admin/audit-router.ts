@@ -3,7 +3,7 @@ import { Router } from 'express';
 import type { Response } from 'express';
 import { z } from 'zod';
 
-import type { AuditLogRecord, DevelopmentStore, Page } from '../../core/database/types.js';
+import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
 
 const identifier = z.string().trim().min(1).max(128);
@@ -13,8 +13,8 @@ const auditQuerySchema = z
     action: identifier.optional(),
     resourceType: identifier.optional(),
     resourceId: identifier.optional(),
-    from: z.string().datetime({ offset: true }).optional(),
-    to: z.string().datetime({ offset: true }).optional(),
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
     page: z.coerce.number().int().min(1).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
   })
@@ -23,8 +23,6 @@ const auditQuerySchema = z
     ({ from, to }) => from === undefined || to === undefined || Date.parse(from) <= Date.parse(to),
     'from must not be later than to',
   );
-
-type AuditQuery = z.infer<typeof auditQuerySchema>;
 
 function send<T>(response: Response, status: number, data: T): void {
   const envelope: ApiEnvelope<T> = {
@@ -40,43 +38,12 @@ function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
   return result.data;
 }
 
-function matches(record: AuditLogRecord, query: AuditQuery): boolean {
-  const createdAt = Date.parse(record.createdAt);
-  return (
-    (query.actorUid === undefined || record.actorUid === query.actorUid) &&
-    (query.action === undefined || record.action === query.action) &&
-    (query.resourceType === undefined || record.resourceType === query.resourceType) &&
-    (query.resourceId === undefined || record.resourceId === query.resourceId) &&
-    (query.from === undefined || createdAt >= Date.parse(query.from)) &&
-    (query.to === undefined || createdAt <= Date.parse(query.to))
-  );
-}
-
-async function queryAuditLogs(
-  store: DevelopmentStore,
-  query: AuditQuery,
-): Promise<Page<AuditLogRecord>> {
-  const records = (await store.auditLogs.list())
-    .filter((record) => matches(record, query))
-    .sort(
-      (left, right) =>
-        Date.parse(right.createdAt) - Date.parse(left.createdAt) || right.id.localeCompare(left.id),
-    );
-  const offset = (query.page - 1) * query.pageSize;
-  return {
-    items: records.slice(offset, offset + query.pageSize),
-    page: query.page,
-    pageSize: query.pageSize,
-    total: records.length,
-  };
-}
-
 export function createAuditRouter(store: DevelopmentStore): Router {
   const router = Router();
 
   router.get('/audit-logs', async (request, response) => {
     const query = parse(auditQuerySchema, request.query);
-    send(response, 200, await queryAuditLogs(store, query));
+    send(response, 200, await store.queryAuditLogs(query));
   });
 
   return router;

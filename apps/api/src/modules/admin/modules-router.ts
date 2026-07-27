@@ -191,6 +191,13 @@ export function createModulesRouter(store: DevelopmentStore): Router {
       z.object({ moduleId: moduleIdSchema, enabled: z.boolean() }).strict(),
       request.body,
     );
+    if (input.moduleId === 'admin' && !input.enabled) {
+      throw new HttpError(
+        409,
+        'protected_admin_module',
+        'The administration module cannot be disabled',
+      );
+    }
     await store.transaction(async (transactionStore) => {
       const record = (await transactionStore.modules.listForUpdate({ query: input.moduleId })).find(
         (candidate) => candidate.moduleId === input.moduleId,

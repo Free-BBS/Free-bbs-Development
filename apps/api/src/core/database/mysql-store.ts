@@ -8,6 +8,7 @@ import {
   type RowDataPacket,
 } from 'mysql2/promise';
 
+import { queryMySqlAuditLogs } from './audit-query.js';
 import {
   decodeDateOnly,
   decodeUtcDateTime,
@@ -545,6 +546,7 @@ function buildMySqlStore(executor: Executor, pool: Pool, inTransaction: boolean)
         connection.release();
       }
     },
+    queryAuditLogs: (query) => queryMySqlAuditLogs(executor, query),
     subjects: repository<SubjectRecord>(definitions.subjects),
     roles: repository<RoleRecord>(definitions.roles),
     permissions: repository<PermissionRecord>(definitions.permissions),
@@ -582,7 +584,19 @@ export interface MySqlStoreOptions {
 export interface MySqlStoreHandle {
   store: DevelopmentStore;
   pool: Pool;
+  appliedMigrationCount(): Promise<number>;
   close(): Promise<void>;
+}
+
+async function countAppliedMigrations(pool: Pool): Promise<number> {
+  const [rows] = await pool.execute<RowDataPacket[]>(
+    'SELECT COUNT(*) AS total FROM schema_migrations',
+  );
+  const count = Number(rows[0]?.total);
+  if (!Number.isSafeInteger(count) || count < 0) {
+    throw new Error('MySQL returned an invalid applied migration count');
+  }
+  return count;
 }
 
 export function buildMySqlPoolOptions(config: MySqlConfig) {
@@ -595,6 +609,7 @@ export function createMySqlStore(options: MySqlStoreOptions = {}): MySqlStoreHan
   return {
     store: buildMySqlStore(pool, pool, false),
     pool,
+    appliedMigrationCount: () => countAppliedMigrations(pool),
     close: () => pool.end(),
   };
 }

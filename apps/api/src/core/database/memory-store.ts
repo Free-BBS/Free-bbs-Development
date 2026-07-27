@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { queryMemoryAuditLogs } from './audit-query.js';
 import { encodeDateOnly, encodeUtcDateTime } from './date-codec.js';
 import {
   BUILT_IN_PERMISSIONS,
@@ -729,6 +730,7 @@ function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStor
         return result;
       });
     },
+    queryAuditLogs: async (query) => queryMemoryAuditLogs(holder.current.auditLogs, query),
     subjects: repository('subjects'),
     roles: repository('roles'),
     permissions: repository('permissions'),
