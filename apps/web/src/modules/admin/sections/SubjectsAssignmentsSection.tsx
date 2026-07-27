@@ -21,6 +21,41 @@ import {
 
 const emptyPage = <T,>(): Page<T> => ({ items: [], page: 1, pageSize: 20, total: 0 });
 
+function Paging({
+  value,
+  label,
+  onPage,
+}: {
+  value: Page<unknown>;
+  label: string;
+  onPage: (page: number) => void;
+}) {
+  const pages = Math.max(1, Math.ceil(value.total / value.pageSize));
+  const directionLabel = label.startsWith('Tag') ? ` ${label}` : label;
+  return (
+    <div className="admin-pagination" aria-label={`${label}分页`}>
+      <button
+        type="button"
+        aria-label={`上一页${directionLabel}`}
+        disabled={value.page <= 1}
+        onClick={() => onPage(value.page - 1)}
+      >
+        上一页
+      </button>
+      <span>
+        第 {value.page} / {pages} 页 · 共 {value.total} 条
+      </span>
+      <button
+        type="button"
+        aria-label={`下一页${directionLabel}`}
+        disabled={value.page >= pages}
+        onClick={() => onPage(value.page + 1)}
+      >
+        下一页
+      </button>
+    </div>
+  );
+}
 export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) {
   const [subjects, setSubjects] = useState<Page<AdminSubject>>(emptyPage);
   const [roles, setRoles] = useState<AdminRole[]>([]);
@@ -91,6 +126,49 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
     }
   }
 
+  async function pageSubjects(page: number) {
+    setError('');
+    try {
+      setSubjects(
+        await client.request<Page<AdminSubject>>(
+          queryPath('/admin/subjects', {
+            query: search || undefined,
+            status: status || undefined,
+            page,
+            pageSize: subjects.pageSize,
+          }),
+        ),
+      );
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
+
+  async function pageRoleAssignments(page: number) {
+    setError('');
+    try {
+      setRoleAssignments(
+        await client.request<Page<AdminRoleAssignment>>(
+          queryPath('/admin/role-assignments', { page, pageSize: roleAssignments.pageSize }),
+        ),
+      );
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
+
+  async function pageTagAssignments(page: number) {
+    setError('');
+    try {
+      setTagAssignments(
+        await client.request<Page<AdminTagAssignment>>(
+          queryPath('/admin/tag-assignments', { page, pageSize: tagAssignments.pageSize }),
+        ),
+      );
+    } catch (caught) {
+      setError(errorMessage(caught));
+    }
+  }
   async function grantRole(event: FormEvent) {
     event.preventDefault();
     setError('');
@@ -99,6 +177,12 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
       setError('请完整填写用户 UID 和作用域。');
       return;
     }
+    if (
+      !window.confirm(
+        `确认授予角色？\nUID: ${roleUid.trim()}\nKey: ${roleKey}\n作用域: ${roleScopeType.trim()}:${roleScopeId.trim()}\n影响: 该操作会立即向此 UID 授予角色对应的全部有效权限。`,
+      )
+    )
+      return;
     setBusy(true);
     try {
       const created = await client.request<AdminRoleAssignment>('/admin/role-assignments', {
@@ -132,6 +216,12 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
       setError('请完整填写用户 UID、Tag 和作用域。');
       return;
     }
+    if (
+      !window.confirm(
+        `确认授予 Tag？\nUID: ${tagUid.trim()}\nKey: ${tagKey.trim()}\n作用域: ${tagScopeType.trim()}:${tagScopeId.trim()}\n影响: 该操作会立即向此 UID 授予 Tag 对应的作用域权限。`,
+      )
+    )
+      return;
     setBusy(true);
     try {
       const created = await client.request<AdminTagAssignment>('/admin/tag-assignments', {
@@ -252,6 +342,7 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
             <p className="admin-page-summary">
               第 {subjects.page} 页 · 共 {subjects.total} 位用户
             </p>
+            <Paging value={subjects} label="用户" onPage={(page) => void pageSubjects(page)} />
           </section>
 
           <section className="panel">
@@ -336,6 +427,11 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
             ) : (
               <p className="record-list-state">暂无角色授权。</p>
             )}
+            <Paging
+              value={roleAssignments}
+              label="角色授权"
+              onPage={(page) => void pageRoleAssignments(page)}
+            />
           </section>
 
           <section className="panel">
@@ -412,6 +508,11 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
             ) : (
               <p className="record-list-state">暂无 Tag 授权。</p>
             )}
+            <Paging
+              value={tagAssignments}
+              label="Tag 授权"
+              onPage={(page) => void pageTagAssignments(page)}
+            />
           </section>
         </div>
       </SectionState>

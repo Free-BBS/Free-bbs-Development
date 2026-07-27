@@ -1,5 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { ApiClient } from '../../core/api/client.js';
@@ -86,10 +87,18 @@ function governanceClient(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function renderAdmin(client: ReturnType<typeof governanceClient>) {
+  return render(
+    <MemoryRouter basename="/development" initialEntries={['/development/']}>
+      <AdminPage client={client as unknown as Pick<ApiClient, 'request'>} />
+    </MemoryRouter>,
+  );
+}
+
 describe('complete governance administration', () => {
   it('exposes seven keyboard-usable governance tabs and read-only internal keys', async () => {
     const client = governanceClient();
-    render(<AdminPage client={client as unknown as Pick<ApiClient, 'request'>} />);
+    renderAdmin(client);
 
     const tabs = [
       '用户与授权',
@@ -108,7 +117,8 @@ describe('complete governance administration', () => {
     expect(await screen.findByText('b28b98f')).toBeInTheDocument();
   });
 
-  it('searches paged subjects and grants scoped expiring role and Tag assignments', async () => {
+  it('searches paged subjects and confirms scoped expiring role and Tag grants', async () => {
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const client = governanceClient({
       'POST /admin/role-assignments': {
         ...roleAssignment,
@@ -122,7 +132,7 @@ describe('complete governance administration', () => {
         scope: { type: 'sports_team', id: 'team-7' },
       },
     });
-    render(<AdminPage client={client as unknown as Pick<ApiClient, 'request'>} />);
+    renderAdmin(client);
     expect((await screen.findAllByText('uid-1001')).length).toBeGreaterThan(0);
 
     await userEvent.type(screen.getByLabelText('搜索用户'), 'uid-1001');
@@ -159,18 +169,52 @@ describe('complete governance administration', () => {
       ),
     );
 
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('uid-2002'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('department.sports_member'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('department:sports'));
     const tagForm = screen.getByRole('form', { name: '授予 Tag' });
-    expect(within(tagForm).getByLabelText('Tag 到期时间')).toBeInTheDocument();
-    expect(within(tagForm).getByLabelText('Tag 作用域 ID')).toBeInTheDocument();
+    await userEvent.type(within(tagForm).getByLabelText('Tag 用户 UID'), 'uid-2002');
+    await userEvent.type(within(tagForm).getByLabelText('Tag 作用域 ID'), 'team-7');
+    await userEvent.type(within(tagForm).getByLabelText('Tag 到期时间'), '2027-07-27T12:00');
+    await userEvent.click(within(tagForm).getByRole('button', { name: '授予 Tag' }));
+    await waitFor(() =>
+      expect(client.request).toHaveBeenCalledWith(
+        '/admin/tag-assignments',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('sports.team_captain'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('sports_team:team-7'));
+    confirm.mockRestore();
   });
 
+  it('pages subject, role-assignment, and Tag-assignment lists independently', async () => {
+    const client = governanceClient({
+      '/admin/subjects?page=1&pageSize=20': { ...page([subject]), total: 21 },
+      '/admin/role-assignments?page=1&pageSize=20': { ...page([roleAssignment]), total: 21 },
+      '/admin/tag-assignments?page=1&pageSize=20': { ...page([]), total: 21 },
+      '/admin/subjects?page=2&pageSize=20': { ...page([]), page: 2, total: 21 },
+      '/admin/role-assignments?page=2&pageSize=20': { ...page([]), page: 2, total: 21 },
+      '/admin/tag-assignments?page=2&pageSize=20': { ...page([]), page: 2, total: 21 },
+    });
+    renderAdmin(client);
+    await screen.findByText('测试用户');
+
+    await userEvent.click(screen.getByRole('button', { name: '下一页用户' }));
+    await userEvent.click(screen.getByRole('button', { name: '下一页角色授权' }));
+    await userEvent.click(screen.getByRole('button', { name: '下一页 Tag 授权' }));
+
+    expect(client.request).toHaveBeenCalledWith('/admin/subjects?page=2&pageSize=20');
+    expect(client.request).toHaveBeenCalledWith('/admin/role-assignments?page=2&pageSize=20');
+    expect(client.request).toHaveBeenCalledWith('/admin/tag-assignments?page=2&pageSize=20');
+  });
   it('confirms archival with UID, key, scope and impact, then waits for server success', async () => {
     const archive = deferred<unknown>();
     const client = governanceClient({
       'DELETE /admin/role-assignments/role-assignment-1': archive.promise,
     });
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<AdminPage client={client as unknown as Pick<ApiClient, 'request'>} />);
+    renderAdmin(client);
     const revoke = await screen.findByRole('button', { name: '归档 uid-1001 的角色授权' });
     await userEvent.click(revoke);
 
@@ -197,7 +241,7 @@ describe('complete governance administration', () => {
         bindings: [],
       },
     });
-    render(<AdminPage client={client as unknown as Pick<ApiClient, 'request'>} />);
+    renderAdmin(client);
     await userEvent.click(screen.getByRole('tab', { name: '角色与权限' }));
     const toggle = await screen.findByRole('button', { name: '停用平台最高管理员' });
     await userEvent.click(toggle);
@@ -216,7 +260,7 @@ describe('complete governance administration', () => {
 
   it('validates owner replacement, exposes domain links, filters audit pages, and shows status', async () => {
     const client = governanceClient();
-    render(<AdminPage client={client as unknown as Pick<ApiClient, 'request'>} />);
+    renderAdmin(client);
     await userEvent.click(screen.getByRole('tab', { name: '模块与负责人' }));
     expect((await screen.findAllByText('体育代表队')).length).toBeGreaterThan(0);
     await userEvent.selectOptions(screen.getByLabelText('负责人类型'), 'team');
@@ -224,7 +268,10 @@ describe('complete governance administration', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('负责人标识');
 
     await userEvent.click(screen.getByRole('tab', { name: '业务数据入口' }));
-    expect(screen.getByRole('link', { name: '进入知识库' })).toHaveAttribute('href', '/knowledge');
+    expect(screen.getByRole('link', { name: '进入知识库' })).toHaveAttribute(
+      'href',
+      '/development/knowledge',
+    );
     expect(screen.getByText('异常与待处理')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /SQL|数据库/ })).not.toBeInTheDocument();
 

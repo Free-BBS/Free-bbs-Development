@@ -1,5 +1,6 @@
 import type { AdminModule } from '@freebbs-development/contracts';
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 
 import { errorMessage, SectionState, type AdminClient } from '../admin-support.js';
 
@@ -61,10 +62,10 @@ export function BusinessEntrySection({ client }: { client: AdminClient }) {
         </div>
         <nav className="domain-link-grid" aria-label="业务模块入口">
           {DOMAIN_LINKS.map((link) => (
-            <a key={link.href} href={link.href} aria-label={link.label}>
+            <Link key={link.href} to={link.href} aria-label={link.label}>
               <span>{link.description}</span>
               <strong>{link.label}</strong>
-            </a>
+            </Link>
           ))}
         </nav>
         <aside className="governance-note">
