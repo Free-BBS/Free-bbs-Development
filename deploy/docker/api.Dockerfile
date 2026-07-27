@@ -1,4 +1,4 @@
-FROM node:22-bookworm-slim AS build
+FROM node:24-bookworm-slim AS build
 
 WORKDIR /app
 
@@ -16,8 +16,9 @@ RUN npm run build -w @freebbs-development/contracts \
   && npm run build -w @freebbs-development/api \
   && npm prune --omit=dev
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:24-bookworm-slim AS runtime
 
+ENV NODE_ENV=production
 ENV PORT=3100
 WORKDIR /app
 

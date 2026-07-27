@@ -126,6 +126,40 @@ npm run db:seed
 如果 seed 因重复键失败，不要手工删除生产表来“修复”。应确认连接的是可丢弃的本地数据库，再
 选择新建空库或使用明确的测试清理流程。
 
+## 生产管理员初始化
+
+受控初始化只用于生产 MySQL，并要求 `NODE_ENV=production`、`DATA_MODE=mysql` 和完整的 `MYSQL_*`
+环境变量。先执行并核对全部迁移，再从仓库根目录运行普通初始化：
+
+```bash
+export APP_VERSION=<当前发布版本或提交 SHA>
+npm run admin:bootstrap -- \
+  --uid u_20260727_admin \
+  --confirm BOOTSTRAP_SUPER_ADMIN:u_20260727_admin
+```
+
+确认文本必须逐字包含同一个 UID。凭据、Token 和 SQL 只能通过获批的环境或密钥注入，不得作为该命令的
+参数；CLI 会拒绝相应参数，也不会输出数据库配置。`npm run admin:bootstrap -- --help` 只显示帮助，不会
+连接 MySQL。
+
+CLI 获取与迁移和 seed 共用、按数据库名隔离的 advisory lock，然后在锁内对照
+`database/migrations/` 与 `schema_migrations` 的完整文件名和 SHA-256；缺失、额外或校验和不一致都会在
+创建业务 store 前失败。校验通过后才调用 bootstrap 服务；服务自身仍在事务内锁定规范的最高管理员
+角色行，再读取或写入分配。无论成功或失败，CLI 都会关闭 store、释放 advisory lock 并关闭连接池。
+
+恢复模式只用于经批准的事故恢复窗口，例如有效最高管理员已经全部丢失。恢复前先备份并确认迁移历史，
+使用独立的恢复确认文本：
+
+```bash
+npm run admin:bootstrap -- \
+  --uid u_20260727_recovery \
+  --recovery \
+  --confirm RECOVER_SUPER_ADMIN:u_20260727_recovery
+```
+
+恢复模式会核对并修复内建治理定义，并写入恢复审计事件；它不是绕过迁移校验、数据库锁或 UID 重复分配
+保护的通道。完成后应立即验证登录和审计记录，并按事故流程决定是否撤销临时恢复账号。
+
 ## 常规业务管理
 
 拥有 `platform.super_admin` 的用户应通过：

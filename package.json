@@ -19,6 +19,7 @@
     "test:workflows": "node --test tests/workflows/release-workflows.test.mjs",
     "db:migrate": "node scripts/migrate.mjs",
     "db:seed": "node scripts/seed.mjs",
+    "admin:bootstrap": "node scripts/admin-bootstrap.mjs",
     "typecheck": "npm run typecheck -ws --if-present",
     "lint": "eslint .",
     "format:check": "prettier . --check",
