@@ -15,6 +15,94 @@ const baseUser = (policies: AuthorizationPolicy[] = []): AuthorizationContext =>
 });
 
 describe('compiled authorization policy matrix', () => {
+  it.each([
+    [{ type: '', id: '' }, 'empty fields'],
+    [{ type: 'sports_team', id: '' }, 'empty id'],
+    [{ type: 'sports_team', id: 'team\u0000a' }, 'control character'],
+    [{ type: 'sports_team', id: 'x'.repeat(129) }, 'oversized id'],
+    [{ type: 'x'.repeat(129), id: 'team-a' }, 'oversized type'],
+    [{ type: 'sports_team', id: '*' }, 'non-public wildcard'],
+  ])('rejects a malformed request scope before matching policies: %s (%s)', (scope) => {
+    const context = baseUser([
+      {
+        id: 'global-sports',
+        action: 'sports.checkin.read',
+        resource: 'sports_checkin',
+        effect: 'allow',
+      },
+    ]);
+
+    expect(
+      authorize(context, {
+        action: 'sports.checkin.read',
+        resource: 'sports_checkin',
+        scope,
+      }),
+    ).toEqual({ allowed: false, reason: 'invalid-scope', matchedBy: null });
+  });
+
+  it('validates scope before action matching', () => {
+    expect(
+      authorize(baseUser(), {
+        action: 'unknown.execute',
+        resource: 'unknown',
+        scope: { type: '', id: '' },
+      }),
+    ).toEqual({ allowed: false, reason: 'invalid-scope', matchedBy: null });
+  });
+
+  it('accepts public wildcard and concrete scopes while preserving explicit unscoped requests', () => {
+    const scoped: AuthorizationPolicy = {
+      id: 'team-a',
+      action: 'sports.checkin.create',
+      resource: 'sports_checkin',
+      effect: 'allow',
+      scope: { type: 'sports_team', id: 'team-a' },
+    };
+    const context = baseUser([
+      {
+        id: 'global-sports',
+        action: 'sports.checkin.read',
+        resource: 'sports_checkin',
+        effect: 'allow',
+      },
+      {
+        id: 'public-liaison',
+        action: 'liaison.resource.read',
+        resource: 'liaison_resource',
+        effect: 'allow',
+        scope: { type: 'public', id: '*' },
+      },
+      scoped,
+    ]);
+
+    expect(
+      authorize(context, {
+        action: 'liaison.resource.read',
+        resource: 'liaison_resource',
+        scope: { type: 'public', id: '*' },
+      }).allowed,
+    ).toBe(true);
+    expect(
+      authorize(context, {
+        action: 'sports.checkin.create',
+        resource: 'sports_checkin',
+        scope: { type: 'sports_team', id: 'team-a' },
+      }).allowed,
+    ).toBe(true);
+    expect(
+      authorize(context, {
+        action: 'sports.checkin.read',
+        resource: 'sports_checkin',
+      }).allowed,
+    ).toBe(true);
+    expect(
+      authorize(baseUser([scoped]), {
+        action: 'sports.checkin.create',
+        resource: 'sports_checkin',
+      }),
+    ).toEqual({ allowed: false, reason: 'scope-mismatch', matchedBy: 'policy:team-a' });
+  });
   it('does not grant through coarse roles or tags', () => {
     const untrusted: AuthorizationContext = {
       ...baseUser(),

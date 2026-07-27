@@ -26,10 +26,32 @@ function isKnownRequest(request: AuthorizationRequest): boolean {
   );
 }
 
+const scopeTypePattern = /^[a-z][a-z0-9_]*$/;
+const maximumScopePartLength = 128;
+
+function containsControlCharacter(value: string): boolean {
+  return [...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint !== undefined && (codePoint <= 0x1f || codePoint === 0x7f);
+  });
+}
+
+function validScopePart(value: string): boolean {
+  return (
+    value.length > 0 &&
+    value.length <= maximumScopePartLength &&
+    value.trim() === value &&
+    !containsControlCharacter(value)
+  );
+}
+
 function validScope(scope: ScopeRef | undefined): boolean {
   if (scope === undefined) return true;
   return (
-    scope.type.length > 0 && scope.id.length > 0 && (scope.id !== '*' || scope.type === 'public')
+    validScopePart(scope.type) &&
+    scopeTypePattern.test(scope.type) &&
+    validScopePart(scope.id) &&
+    (scope.id !== '*' || scope.type === 'public')
   );
 }
 
@@ -63,6 +85,10 @@ export function authorize(
   request: AuthorizationRequest,
   now = new Date(),
 ): AuthorizationDecision {
+  if (!validScope(request.scope)) {
+    return { allowed: false, reason: 'invalid-scope', matchedBy: null };
+  }
+
   if (!isKnownRequest(request)) {
     return { allowed: false, reason: 'unknown-permission', matchedBy: null };
   }

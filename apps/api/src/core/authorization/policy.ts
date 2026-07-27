@@ -34,6 +34,7 @@ export interface AuthorizationDecision {
     | 'tag-grant'
     | 'base-role-grant'
     | 'scope-mismatch'
+    | 'invalid-scope'
     | 'unknown-permission'
     | 'no-matching-grant';
   matchedBy: string | null;
