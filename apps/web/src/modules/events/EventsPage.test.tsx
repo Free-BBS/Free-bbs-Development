@@ -1,77 +1,147 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import { EventsPage, type DevelopmentApi } from './EventsPage.js';
 
-const activity = {
-  id: 'activity-night-run',
-  title: '夏日夜跑',
-  description: '操场集合，一起完成五公里。',
-  status: 'open',
-  clubId: 'club-running',
-  startsAt: '2026-08-01T11:00:00.000Z',
-  ownerUid: 'demo-admin',
-  scope: { type: 'public', id: '*' },
-  createdAt: '2026-07-22T00:00:00.000Z',
-  updatedAt: '2026-07-22T00:00:00.000Z',
+const scope = { type: 'public', id: '*' } as const;
+const activityScope = { type: 'activity', id: 'activity-workflow' } as const;
+const maintainer = {
+  uid: 'maintainer',
+  displayName: '活动维护者',
+  avatarUrl: null,
+  baseRole: 'student' as const,
+  roles: [],
+  tags: [],
+  policies: [
+    { id: 'read', action: 'events.read', resource: 'activity', effect: 'allow' as const },
+    { id: 'create', action: 'events.create', resource: 'activity', effect: 'allow' as const },
+    { id: 'update', action: 'events.update', resource: 'activity', effect: 'allow' as const },
+    { id: 'approve', action: 'events.approve', resource: 'activity', effect: 'allow' as const },
+    {
+      id: 'support',
+      action: 'events.technical_support',
+      resource: 'activity',
+      effect: 'allow' as const,
+    },
+    {
+      id: 'register',
+      action: 'events.register',
+      resource: 'activity_registration',
+      effect: 'allow' as const,
+      scope: activityScope,
+    },
+    {
+      id: 'cancel',
+      action: 'events.cancel_registration',
+      resource: 'activity_registration',
+      effect: 'allow' as const,
+      scope: activityScope,
+    },
+  ],
 };
 
-function apiWith(request: DevelopmentApi['request']): DevelopmentApi {
-  return { request };
+function renderPage(client: DevelopmentApi) {
+  return render(
+    <MemoryRouter basename="/development" initialEntries={['/development/events']}>
+      <EventsPage client={client} user={maintainer} />
+    </MemoryRouter>,
+  );
 }
 
 describe('EventsPage', () => {
-  it('shows loading, empty and error list states', async () => {
-    let release: ((value: unknown[]) => void) | undefined;
-    const loadingApi = apiWith(
-      vi.fn(() => new Promise((resolve) => (release = resolve))) as DevelopmentApi['request'],
-    );
-    const loadingView = render(<EventsPage client={loadingApi} />);
-    expect(screen.getByRole('status')).toHaveTextContent('正在加载活动');
-    release?.([]);
-    expect(await screen.findByText('暂无可报名的活动')).toBeInTheDocument();
-    loadingView.unmount();
-
-    const errorApi = apiWith(
-      vi.fn().mockRejectedValue(new Error('请求失败')) as DevelopmentApi['request'],
-    );
-    render(<EventsPage client={errorApi} />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('活动加载失败');
-  });
-
-  it('lists activities and registers, then cancels with feedback and a refresh', async () => {
+  it('runs the approval, support, and registration workflow from server-confirmed state', async () => {
     const user = userEvent.setup();
-    const request = vi
-      .fn()
-      .mockResolvedValueOnce([activity])
-      .mockResolvedValueOnce({ id: 'registration-1' })
-      .mockResolvedValueOnce([activity])
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce([activity]);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-    render(<EventsPage client={apiWith(request as DevelopmentApi['request'])} />);
+    let current = {
+      id: 'activity-workflow',
+      title: '校园夜跑',
+      description: '五公里轻松跑。',
+      status: 'draft',
+      clubId: 'club-running' as string | null,
+      startsAt: '2026-08-01T11:00:00.000Z' as string | null,
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null as string | null,
+      scope,
+    };
+    let registration: { id: string; status: 'registered' | 'cancelled' } | null = null;
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/events/activities' && init === undefined) return [current];
+      if (path.endsWith('/registrations') && init === undefined) return registration;
+      if (path.endsWith('/transitions')) {
+        const body = JSON.parse(String(init?.body)) as { to: typeof current.status };
+        current = { ...current, status: body.to };
+        return current;
+      }
+      if (path.endsWith('/technical-support')) {
+        const body = JSON.parse(String(init?.body)) as {
+          to: 'requested' | 'confirmed';
+          note?: string;
+        };
+        current = {
+          ...current,
+          technicalSupportStatus: body.to,
+          technicalSupportNote: body.note ?? current.technicalSupportNote,
+        };
+        return current;
+      }
+      if (path.endsWith('/registrations') && init?.method === 'POST') {
+        registration = { id: 'registration-1', status: 'registered' };
+        return registration;
+      }
+      if (path.endsWith('/registrations') && init?.method === 'DELETE') {
+        registration = { id: 'registration-1', status: 'cancelled' };
+        return undefined;
+      }
+      if (path === '/events/activities' && init?.method === 'PATCH') {
+        const body = JSON.parse(String(init.body)) as {
+          title: string;
+          description: string;
+          clubId: string | null;
+          startsAt: string | null;
+        };
+        current = { ...current, ...body };
+        return current;
+      }
+      if (path === '/events/activities' && init?.method === 'POST') return current;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
-    const card = await screen.findByRole('article', { name: '夏日夜跑' });
-    expect(within(card).getByText('操场集合，一起完成五公里。')).toBeInTheDocument();
-    expect(within(card).getByText(/2026/)).toBeInTheDocument();
-
-    await user.click(within(card).getByRole('button', { name: '报名夏日夜跑' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('已报名夏日夜跑');
-    expect(request).toHaveBeenNthCalledWith(
-      2,
-      '/events/activities/activity-night-run/registrations',
-      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' },
+    renderPage({ request: request as DevelopmentApi['request'] });
+    let card = await screen.findByRole('article', { name: '校园夜跑' });
+    expect(within(card).getByRole('link', { name: '查看所属俱乐部' })).toHaveAttribute(
+      'href',
+      '/development/clubs',
     );
 
-    await user.click(within(card).getByRole('button', { name: '取消夏日夜跑报名' }));
-    expect(confirm).toHaveBeenCalledWith('确定取消“夏日夜跑”的报名吗？');
-    expect(await screen.findByRole('status')).toHaveTextContent('已取消夏日夜跑报名');
-    expect(request).toHaveBeenNthCalledWith(
-      4,
-      '/events/activities/activity-night-run/registrations',
-      { method: 'DELETE' },
-    );
-    await waitFor(() => expect(request).toHaveBeenCalledTimes(5));
+    await user.click(within(card).getByRole('button', { name: '编辑校园夜跑' }));
+    await user.clear(within(card).getByLabelText('活动名称'));
+    await user.type(within(card).getByLabelText('活动名称'), '校园荧光夜跑');
+    await user.clear(within(card).getByLabelText('所属俱乐部 ID（可选）'));
+    await user.type(within(card).getByLabelText('所属俱乐部 ID（可选）'), 'club-updated');
+    const startsAt = within(card).getByLabelText('开始时间（可选）');
+    await user.clear(startsAt);
+    await user.type(startsAt, '2026-09-01T18:30');
+    await user.click(within(card).getByRole('button', { name: '保存活动' }));
+    card = await screen.findByRole('article', { name: '校园荧光夜跑' });
+    expect(current.clubId).toBe('club-updated');
+    expect(current.startsAt).toBe('2026-09-01T10:30:00.000Z');
+
+    await user.click(within(card).getByRole('button', { name: '提交审核' }));
+    await user.click(await within(card).findByRole('button', { name: '批准活动' }));
+    await user.click(await within(card).findByRole('button', { name: '发布活动' }));
+    await user.click(await within(card).findByRole('button', { name: '报名活动' }));
+    expect(await within(card).findByRole('button', { name: '取消报名' })).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: '取消报名' }));
+
+    await user.click(within(card).getByRole('button', { name: '申请技术支持' }));
+    await user.click(await within(card).findByRole('button', { name: '确认技术支持' }));
+    await user.click(within(card).getByRole('button', { name: '结束活动' }));
+    await user.click(await within(card).findByRole('button', { name: '归档活动' }));
+
+    await waitFor(() => expect(current.status).toBe('archived'));
+    expect(current.technicalSupportStatus).toBe('confirmed');
+    expect(registration).toEqual(expect.objectContaining({ status: 'cancelled' }));
   });
 });

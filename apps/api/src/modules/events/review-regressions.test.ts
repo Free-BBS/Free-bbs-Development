@@ -106,6 +106,113 @@ describe('events security regressions', () => {
     });
   });
 
+  it('lets a scoped create-only owner edit, revise, and resubmit', async () => {
+    const store = createMemoryStore();
+    const creator: AuthorizationContext = {
+      uid: 'sports-member',
+      displayName: 'Sports member',
+      avatarUrl: null,
+      baseRole: 'student',
+      roles: [],
+      tags: [],
+    };
+    await store.subjects.create({
+      uid: creator.uid,
+      displayName: creator.displayName,
+      avatarUrl: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
+    await store.roleAssignments.create({
+      subjectUid: creator.uid,
+      roleKey: 'department.sports_member',
+      expiresAt: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'organization', id: 'org-a' },
+    });
+    const app = createApp({
+      store,
+      authMode: 'demo',
+      authClient: {
+        introspect: async (token: string) =>
+          token === creator.uid
+            ? creator
+            : {
+                uid: 'demo-admin',
+                displayName: 'Admin',
+                avatarUrl: null,
+                baseRole: 'student' as const,
+                roles: [],
+                tags: [],
+              },
+      },
+    });
+    const creatorHeader = { 'X-Demo-User': creator.uid };
+    const created = await request(app)
+      .post('/api/development/v1/events/activities')
+      .set(creatorHeader)
+      .send({
+        title: 'Creator workflow',
+        description: 'Draft',
+        scope: { type: 'organization', id: 'org-a' },
+      })
+      .expect(201);
+    const id = created.body.data.id as string;
+
+    const visible = await request(app)
+      .get('/api/development/v1/events/activities')
+      .set(creatorHeader)
+      .expect(200);
+    expect(visible.body.data).toEqual(expect.arrayContaining([expect.objectContaining({ id })]));
+    await request(app)
+      .patch('/api/development/v1/events/activities')
+      .set(creatorHeader)
+      .send({ id, description: 'Revised by creator' })
+      .expect(200);
+    await request(app)
+      .patch(`/api/development/v1/events/activities/${id}/technical-support`)
+      .set(creatorHeader)
+      .send({ to: 'requested' })
+      .expect(404);
+    await request(app)
+      .post(`/api/development/v1/events/activities/${id}/transitions`)
+      .set(creatorHeader)
+      .send({ to: 'pending' })
+      .expect(200);
+    await request(app)
+      .post(`/api/development/v1/events/activities/${id}/transitions`)
+      .set('X-Demo-User', 'demo-admin')
+      .send({ to: 'rejected' })
+      .expect(200);
+    await request(app)
+      .post(`/api/development/v1/events/activities/${id}/transitions`)
+      .set(creatorHeader)
+      .send({ to: 'draft' })
+      .expect(200);
+    await request(app)
+      .post(`/api/development/v1/events/activities/${id}/transitions`)
+      .set(creatorHeader)
+      .send({ to: 'pending' })
+      .expect(200);
+    await request(app)
+      .post(`/api/development/v1/events/activities/${id}/transitions`)
+      .set('X-Demo-User', 'demo-admin')
+      .send({ to: 'approved' })
+      .expect(200);
+    await request(app)
+      .patch('/api/development/v1/events/activities')
+      .set(creatorHeader)
+      .send({ id, description: 'Post-approval edit' })
+      .expect(404);
+    await request(app)
+      .post(`/api/development/v1/events/activities/${id}/transitions`)
+      .set(creatorHeader)
+      .send({ to: 'published' })
+      .expect(404);
+  });
+
   it('allows a personal cancellation after the activity closes and rejects spoofed creation fields', async () => {
     const store = createMemoryStore();
     const actor: AuthorizationContext = {
@@ -121,7 +228,7 @@ describe('events security regressions', () => {
       authMode: 'demo',
       authClient: { introspect: async () => actor },
     });
-    await store.activities.update('activity-orientation', { status: 'closed' });
+    await store.activities.update('activity-orientation', { status: 'finished' });
     await request(app)
       .delete('/api/development/v1/events/activities/activity-orientation/registrations')
       .set('X-Demo-User', actor.uid)

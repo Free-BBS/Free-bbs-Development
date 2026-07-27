@@ -19,7 +19,7 @@ function fixture() {
 }
 
 describe('events API', () => {
-  it('registers, prevents duplicates, cancels, and permits later registration', async () => {
+  it('restores, cancels, and reuses the actor registration history', async () => {
     const { app, store } = fixture();
     await request(app)
       .post('/api/development/v1/events/activities/activity-night-run/registrations')
@@ -47,44 +47,62 @@ describe('events API', () => {
       .expect(409);
     expect(JSON.stringify(duplicate.body)).not.toContain('ER_DUP_ENTRY');
 
+    const current = await request(app)
+      .get('/api/development/v1/events/activities/activity-night-run/registrations')
+      .set(student)
+      .expect(200);
+    expect(current.body.data).toMatchObject({
+      id: registered.body.data.id,
+      status: 'registered',
+    });
+
     await request(app)
       .delete('/api/development/v1/events/activities/activity-night-run/registrations')
       .set(student)
       .expect(204);
-    expect(
-      (await store.activityRegistrations.list({ query: 'activity-night-run' })).filter(
-        (record) => record.participantUid === 'demo-student',
-      ),
-    ).toEqual([]);
-    await request(app)
+    const historical = (
+      await store.activityRegistrations.list({ query: 'activity-night-run' })
+    ).find((record) => record.participantUid === 'demo-student');
+    expect(historical).toMatchObject({ status: 'cancelled' });
+
+    const registeredAgain = await request(app)
       .post('/api/development/v1/events/activities/activity-night-run/registrations')
       .set(student)
       .send({})
       .expect(201);
+    expect(registeredAgain.body.data).toMatchObject({
+      id: historical?.id,
+      status: 'registered',
+    });
   });
 
-  it('rejects registration unless the transaction-locked activity is open', async () => {
+  it('accepts registration only while the transaction-locked activity is published', async () => {
     const { app, store } = fixture();
-    await store.activities.update('activity-night-run', { status: 'closed' });
+    await store.activities.update('activity-night-run', { status: 'approved' });
     const response = await request(app)
       .post('/api/development/v1/events/activities/activity-night-run/registrations')
       .set(student)
       .send({})
       .expect(409);
-    expect(response.body.data.error.code).toBe('activity_not_open');
+    expect(response.body.data.error.code).toBe('activity_not_published');
   });
 
-  it('lets a domain manager update status atomically with an audit', async () => {
+  it('keeps status out of generic PATCH and updates content atomically with an audit', async () => {
     const { app, store } = fixture();
     await request(app)
       .patch('/api/development/v1/events/activities')
       .set(admin)
-      .send({ id: 'activity-night-run', status: 'closed' })
+      .send({ id: 'activity-night-run', status: 'finished' })
+      .expect(400);
+    await request(app)
+      .patch('/api/development/v1/events/activities')
+      .set(admin)
+      .send({ id: 'activity-night-run', description: 'Updated activity.' })
       .expect(200);
     expect(await store.auditLogs.list({ query: 'activity-night-run' })).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          action: 'events.activity.status_changed',
+          action: 'events.activity.updated',
           resourceId: 'activity-night-run',
         }),
       ]),

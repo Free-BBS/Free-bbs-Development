@@ -22,7 +22,15 @@ interface ErrorData {
 
 const identifier = z.string().trim().min(1).max(128);
 const scope = z.object({ type: identifier.regex(/^[a-z][a-z0-9_]*$/), id: identifier }).strict();
-const status = z.enum(['draft', 'open', 'closed', 'completed', 'cancelled']);
+const status = z.enum([
+  'draft',
+  'pending',
+  'approved',
+  'rejected',
+  'published',
+  'finished',
+  'archived',
+]);
 const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const querySchema = z
   .object({
@@ -39,7 +47,7 @@ const createSchema = z
     description: z.string().trim().min(1).max(20_000),
     clubId: identifier.nullable().default(null),
     startsAt: nullableDateTime.default(null),
-    status: status.default('draft'),
+    status: z.literal('draft').default('draft'),
     scope: scope.default({ type: 'public', id: '*' }),
   })
   .strict();
@@ -50,7 +58,6 @@ const patchSchema = z
     description: z.string().trim().min(1).max(20_000).optional(),
     clubId: identifier.nullable().optional(),
     startsAt: nullableDateTime.optional(),
-    status: status.optional(),
     scope: scope.optional(),
   })
   .strict()
@@ -60,10 +67,16 @@ const patchSchema = z
       value.description !== undefined ||
       value.clubId !== undefined ||
       value.startsAt !== undefined ||
-      value.status !== undefined ||
       value.scope !== undefined,
   );
 const routeSchema = z.object({ activityId: identifier }).strict();
+const transitionSchema = z.object({ to: status }).strict();
+const technicalSupportSchema = z
+  .object({
+    to: z.enum(['requested', 'confirmed']),
+    note: z.string().trim().min(1).max(20_000).nullable().optional(),
+  })
+  .strict();
 const emptyBodySchema = z.object({}).strict();
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
@@ -142,6 +155,33 @@ export function createEventsRouter(options: EventsRouterOptions): Router {
     const input = parse(patchSchema, request.body);
     const { id, ...patch } = input;
     send(response, 200, await service.update(actor, id, patch));
+  });
+
+  router.post('/activities/:activityId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { activityId } = parse(routeSchema, request.params);
+    const { to } = parse(transitionSchema, request.body);
+    send(response, 200, await service.transition(actor, activityId, to));
+  });
+
+  router.patch('/activities/:activityId/technical-support', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { activityId } = parse(routeSchema, request.params);
+    const input = parse(technicalSupportSchema, request.body);
+    send(
+      response,
+      200,
+      await service.updateTechnicalSupport(actor, activityId, input.to, input.note),
+    );
+  });
+
+  router.get('/activities/:activityId/registrations', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { activityId } = parse(routeSchema, request.params);
+    send(response, 200, await service.getRegistration(actor, activityId));
   });
 
   router.post('/activities/:activityId/registrations', async (request, response) => {
