@@ -47,6 +47,7 @@ function bodyParserHttpError(error: unknown): HttpError | undefined {
 export interface CreateAppOptions {
   store?: DevelopmentStore;
   databaseMode?: DataMode;
+  appliedMigrationCount?: number;
   authMode?: AuthMode;
   authClient?: AuthClient;
   allowedOrigins?: readonly string[];
@@ -166,7 +167,16 @@ export function createApp(options: CreateAppOptions = {}) {
     }
   });
 
-  app.use(`${API_BASE_PATH}/admin`, createAdminRouter({ store, authenticate }));
+  app.use(
+    `${API_BASE_PATH}/admin`,
+    createAdminRouter({
+      store,
+      authenticate,
+      version: options.version ?? API_VERSION,
+      dataMode: databaseMode,
+      appliedMigrationCount: options.appliedMigrationCount ?? 0,
+    }),
+  );
   app.use(`${API_BASE_PATH}/clubs`, createClubsRouter({ store, authenticate }));
   app.use(`${API_BASE_PATH}/events`, createEventsRouter({ store, authenticate }));
   app.use(`${API_BASE_PATH}/finance`, createFinanceRouter({ store, authenticate }));

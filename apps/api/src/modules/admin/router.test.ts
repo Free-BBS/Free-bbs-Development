@@ -65,7 +65,7 @@ describe('administration API', () => {
       .get('/api/development/v1/admin/audit-logs')
       .set(adminHeaders)
       .expect(200);
-    expect(audit.body.data).toEqual(
+    expect(audit.body.data.items).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           actorUid: 'demo-admin',
@@ -125,7 +125,7 @@ describe('administration API', () => {
       .set(adminHeaders)
       .expect(200);
     expect(
-      audit.body.data.filter(
+      audit.body.data.items.filter(
         (entry: { resourceType: string }) => entry.resourceType === 'role_assignment',
       ),
     ).toEqual(
@@ -179,7 +179,7 @@ describe('administration API', () => {
       .set(adminHeaders)
       .expect(200);
     expect(
-      audit.body.data.filter(
+      audit.body.data.items.filter(
         (entry: { resourceType: string }) => entry.resourceType === 'tag_assignment',
       ),
     ).toEqual(

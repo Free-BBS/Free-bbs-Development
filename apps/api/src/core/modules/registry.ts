@@ -1,6 +1,17 @@
-import type { ModuleManifest } from '@freebbs-development/contracts';
-import type { DevelopmentStore } from '../database/types.js';
+import type { ModuleId, ModuleManifest } from '@freebbs-development/contracts';
+import type { DevelopmentStore, ModuleRecord } from '../database/types.js';
 import { MODULE_MANIFESTS } from './manifests.js';
+
+export async function getModuleRecord(
+  store: DevelopmentStore,
+  moduleId: ModuleId,
+): Promise<ModuleRecord | null> {
+  return (
+    (await store.modules.list({ query: moduleId })).find(
+      (record) => record.moduleId === moduleId,
+    ) ?? null
+  );
+}
 
 export async function listModuleManifests(store: DevelopmentStore): Promise<ModuleManifest[]> {
   const records = await store.modules.list();
