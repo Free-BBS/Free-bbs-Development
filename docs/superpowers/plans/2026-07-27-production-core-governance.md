@@ -24,6 +24,7 @@
 ### Task 1: 治理 schema、存储类型与分页原语
 
 **Files:**
+
 - Create: `database/migrations/004_production_governance.sql`
 - Create: `apps/api/src/core/database/governance-schema.test.ts`
 - Create: `apps/api/src/core/database/record-repository-page.test.ts`
@@ -44,8 +45,16 @@ export interface TagPermissionRecord extends StoredRecord {
   effect: 'allow' | 'deny';
 }
 
-export interface PageRequest { page: number; pageSize: number }
-export interface Page<T> { items: T[]; page: number; pageSize: number; total: number }
+export interface PageRequest {
+  page: number;
+  pageSize: number;
+}
+export interface Page<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
 
 export interface RecordRepository<T extends StoredRecord> {
   create(input: NewRecord<T>): Promise<T>;
@@ -99,6 +108,7 @@ git commit -m "feat: add production governance storage"
 ### Task 2: 内置治理目录与 bootstrap 服务
 
 **Files:**
+
 - Create: `apps/api/src/core/bootstrap/built-in-definitions.ts`
 - Create: `apps/api/src/core/bootstrap/bootstrap-service.ts`
 - Create: `apps/api/src/core/bootstrap/bootstrap-service.test.ts`
@@ -132,14 +142,20 @@ export async function bootstrapPlatform(
 
 ```ts
 const result = await bootstrapPlatform(store, {
-  uid: 'u_20260727_admin', recovery: false, version: '834a804', now,
+  uid: 'u_20260727_admin',
+  recovery: false,
+  version: '834a804',
+  now,
 });
 expect(result.recovered).toBe(false);
-expect((await store.roles.list()).map((role) => role.key)).toEqual(expect.arrayContaining(ROLE_KEYS));
+expect((await store.roles.list()).map((role) => role.key)).toEqual(
+  expect.arrayContaining(ROLE_KEYS),
+);
 expect(await store.roleAssignments.list({ query: 'u_20260727_admin' })).toHaveLength(1);
 expect((await store.modules.list()).map((item) => item.moduleId)).toEqual(MODULE_IDS);
-await expect(bootstrapPlatform(store, { uid: 'u_second', recovery: false, version: '834a804', now }))
-  .rejects.toMatchObject({ code: 'super_admin_already_exists' });
+await expect(
+  bootstrapPlatform(store, { uid: 'u_second', recovery: false, version: '834a804', now }),
+).rejects.toMatchObject({ code: 'super_admin_already_exists' });
 ```
 
 - [ ] **Step 2: 运行 RED**
@@ -170,6 +186,7 @@ git commit -m "feat: add production governance bootstrap service"
 ### Task 3: 受控 bootstrap CLI
 
 **Files:**
+
 - Create: `scripts/admin-bootstrap.mjs`
 - Create: `tests/scripts/admin-bootstrap.test.mjs`
 - Modify: `package.json`
@@ -186,12 +203,29 @@ export async function runBootstrapCli(options = {}) {}
 - [ ] **Step 1: 写参数与门禁失败测试**
 
 ```js
-assert.deepEqual(parseBootstrapArguments([
-  '--uid', 'u_20260727_admin',
-  '--confirm', 'BOOTSTRAP_SUPER_ADMIN:u_20260727_admin',
-]), { uid: 'u_20260727_admin', confirm: 'BOOTSTRAP_SUPER_ADMIN:u_20260727_admin', recovery: false, help: false });
-await assert.rejects(() => runBootstrapCli({ environment: { NODE_ENV: 'development' } }), /production/);
-await assert.rejects(() => runBootstrapCli({ environment: productionEnv, argv: ['--uid','u_x','--confirm','wrong'] }), /confirmation/);
+assert.deepEqual(
+  parseBootstrapArguments([
+    '--uid',
+    'u_20260727_admin',
+    '--confirm',
+    'BOOTSTRAP_SUPER_ADMIN:u_20260727_admin',
+  ]),
+  {
+    uid: 'u_20260727_admin',
+    confirm: 'BOOTSTRAP_SUPER_ADMIN:u_20260727_admin',
+    recovery: false,
+    help: false,
+  },
+);
+await assert.rejects(
+  () => runBootstrapCli({ environment: { NODE_ENV: 'development' } }),
+  /production/,
+);
+await assert.rejects(
+  () =>
+    runBootstrapCli({ environment: productionEnv, argv: ['--uid', 'u_x', '--confirm', 'wrong'] }),
+  /confirmation/,
+);
 ```
 
 - [ ] **Step 2: 运行 RED**
@@ -222,6 +256,7 @@ git commit -m "feat: add controlled administrator bootstrap cli"
 ### Task 4: 数据库驱动授权与 subject 同步
 
 **Files:**
+
 - Create: `apps/api/src/core/authorization/load-authorization-context.ts`
 - Create: `apps/api/src/core/authorization/load-authorization-context.test.ts`
 - Create: `apps/api/src/core/auth/subject-sync.test.ts`
@@ -235,10 +270,14 @@ git commit -m "feat: add controlled administrator bootstrap cli"
 
 ```ts
 export async function synchronizeSubject(
-  store: DevelopmentStore, identity: UserContext, now: Date,
+  store: DevelopmentStore,
+  identity: UserContext,
+  now: Date,
 ): Promise<SubjectRecord>;
 export async function loadAuthorizationContext(
-  store: DevelopmentStore, identity: UserContext, now: Date,
+  store: DevelopmentStore,
+  identity: UserContext,
+  now: Date,
 ): Promise<AuthorizationContext>;
 ```
 
@@ -246,10 +285,14 @@ export async function loadAuthorizationContext(
 
 ```ts
 const context = await loadAuthorizationContext(store, identity, now);
-expect(authorize(context, request('knowledge.entry.publish', 'knowledge_entry')).allowed).toBe(true);
+expect(authorize(context, request('knowledge.entry.publish', 'knowledge_entry')).allowed).toBe(
+  true,
+);
 await store.rolePermissions.update(binding.id, { status: 'inactive' });
 const revoked = await loadAuthorizationContext(store, identity, now);
-expect(authorize(revoked, request('knowledge.entry.publish', 'knowledge_entry')).allowed).toBe(false);
+expect(authorize(revoked, request('knowledge.entry.publish', 'knowledge_entry')).allowed).toBe(
+  false,
+);
 ```
 
 Also assert inactive role/tag definition, expired assignment, disabled module, unknown action and invalid captain scope all deny; main auth upserts display name/avatar while demo auth does not sync production subjects.
@@ -282,6 +325,7 @@ git commit -m "feat: load authorization from governance data"
 ### Task 5: 用户映射、分配与最后管理员保护 API
 
 **Files:**
+
 - Create: `apps/api/src/modules/admin/subjects-router.ts`
 - Create: `apps/api/src/modules/admin/assignments-router.ts`
 - Create: `apps/api/src/modules/admin/assignment-service.ts`
@@ -334,6 +378,7 @@ git commit -m "feat: govern subjects and scoped assignments"
 ### Task 6: 角色权限与 Tag 定义治理 API
 
 **Files:**
+
 - Create: `apps/api/src/modules/admin/permissions-router.ts`
 - Create: `apps/api/src/modules/admin/tags-router.ts`
 - Create: `apps/api/src/modules/admin/permissions-router.test.ts`
@@ -357,9 +402,19 @@ PUT /admin/tag-definitions/:tagKey/permissions
 - [ ] **Step 1: 写 replace-set 与扩展 Tag 失败测试**
 
 ```ts
-await request(app).put('/api/development/v1/admin/roles/domain.arts_lead/permissions')
+await request(app)
+  .put('/api/development/v1/admin/roles/domain.arts_lead/permissions')
   .set(adminHeaders)
-  .send({ bindings: [{ action: 'knowledge.entry.publish', resource: 'knowledge_entry', effect: 'allow', scope: { type: 'public', id: '*' } }] })
+  .send({
+    bindings: [
+      {
+        action: 'knowledge.entry.publish',
+        resource: 'knowledge_entry',
+        effect: 'allow',
+        scope: { type: 'public', id: '*' },
+      },
+    ],
+  })
   .expect(200);
 ```
 
@@ -393,6 +448,7 @@ git commit -m "feat: manage role and tag permissions"
 ### Task 7: 模块负责人、审计分页与系统状态 API
 
 **Files:**
+
 - Create: `apps/api/src/modules/admin/modules-router.ts`
 - Create: `apps/api/src/modules/admin/audit-router.ts`
 - Create: `apps/api/src/modules/admin/system-router.ts`
@@ -444,6 +500,7 @@ git commit -m "feat: manage modules owners and audit queries"
 ### Task 8: 共享治理契约与七区 Admin 页面
 
 **Files:**
+
 - Create: `packages/contracts/src/admin.ts`
 - Create: `packages/contracts/src/admin.test.ts`
 - Create: `apps/web/src/modules/admin/AdminSectionNav.tsx`
@@ -465,7 +522,15 @@ git commit -m "feat: manage modules owners and audit queries"
 - [ ] **Step 1: 写七区失败测试**
 
 ```ts
-for (const label of ['用户与授权','角色与权限','Tag 定义','模块与负责人','业务数据入口','审计日志','系统状态']) {
+for (const label of [
+  '用户与授权',
+  '角色与权限',
+  'Tag 定义',
+  '模块与负责人',
+  '业务数据入口',
+  '审计日志',
+  '系统状态',
+]) {
   expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
 }
 ```

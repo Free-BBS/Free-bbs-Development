@@ -27,6 +27,7 @@
 **Repository:** `E:\BBSDeveleopment\Free-bbs-Development\.worktrees\platform-mvp`
 
 **Files:**
+
 - Modify: `apps/web/src/core/auth/AuthProvider.tsx`
 - Modify: `apps/web/src/core/auth/AuthProvider.test.tsx`
 - Modify: `apps/web/src/core/api/client.test.ts`
@@ -36,18 +37,27 @@
 **Interfaces:**
 
 ```ts
-export interface ReturnLocation { pathname: string; search: string; hash: string }
+export interface ReturnLocation {
+  pathname: string;
+  search: string;
+  hash: string;
+}
 export function mainSiteLoginHref(location?: ReturnLocation): string;
 ```
 
 - [ ] **Step 1: 写失败测试**
 
 ```ts
-expect(mainSiteLoginHref({
-  pathname: '/development/events', search: '?filter=pending', hash: '#record-x',
-})).toBe('/login?returnTo=%2Fdevelopment%2Fevents%3Ffilter%3Dpending%23record-x');
-expect(mainSiteLoginHref({ pathname: '//evil.example', search: '', hash: '' }))
-  .toBe('/login?returnTo=%2Fdevelopment%2F');
+expect(
+  mainSiteLoginHref({
+    pathname: '/development/events',
+    search: '?filter=pending',
+    hash: '#record-x',
+  }),
+).toBe('/login?returnTo=%2Fdevelopment%2Fevents%3Ffilter%3Dpending%23record-x');
+expect(mainSiteLoginHref({ pathname: '//evil.example', search: '', hash: '' })).toBe(
+  '/login?returnTo=%2Fdevelopment%2F',
+);
 ```
 
 Also assert `AUTH_TOKEN_STORAGE_KEY` remains `free_bbs_auth_token`, main mode forwards only opaque Bearer, and coarse main-site role never grants development permissions.
@@ -82,6 +92,7 @@ git commit -m "feat: preserve development login return path"
 **Repository:** development worktree.
 
 **Files:**
+
 - Create: `apps/api/src/config/env.test.ts`
 - Create: `apps/api/src/core/database/mysql-readiness.ts`
 - Create: `apps/api/src/core/database/mysql-readiness.test.ts`
@@ -138,6 +149,7 @@ git commit -m "feat: add production readiness and loopback binding"
 ### Task 3: 真实 MySQL 8 约束与 CI
 
 **Files:**
+
 - Create: `database/migrations/006_domain_reference_integrity.sql`
 - Create: `apps/api/src/core/database/mysql.integration.test.ts`
 - Create: `.dockerignore`
@@ -189,6 +201,7 @@ git commit -m "ci: verify real mysql integration"
 ### Task 4: 可复现发布归档、安装器与原子回滚 hook
 
 **Files:**
+
 - Create: `scripts/create-release-archive.sh`
 - Create: `scripts/deploy-release.sh`
 - Create: `scripts/install-server.sh`
@@ -252,6 +265,7 @@ git commit -m "feat: add auditable atomic server deployment"
 ### Task 5: 生产数据、发布和回滚文档
 
 **Files:**
+
 - Create: `docs/production-release-checklist.md`
 - Modify: `README.md`
 - Modify: `docs/README.md`
@@ -293,6 +307,7 @@ git commit -m "docs: add production release and data runbook"
 **Repository:** `E:\BBSDeveleopment\freebbs-web`, branch `deploy-development-entry`.
 
 **Files:**
+
 - Create: `public/return-to.js`
 - Create: `scripts/return-to.test.js`
 - Modify: `public/login.html`
@@ -348,6 +363,7 @@ Do not merge or deploy this main-site commit until Task 7 proves the development
 **Repositories:** development first, then main site.
 
 **Files:**
+
 - Create: `tests/e2e/admin.spec.ts`
 - Create: `tests/e2e/release-smoke.spec.ts`
 - Modify: `tests/e2e/auth.spec.ts`

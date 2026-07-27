@@ -25,6 +25,7 @@
 ### Task 1: 共享状态机与业务存储迁移
 
 **Files:**
+
 - Create: `apps/api/src/core/workflow/state-machine.ts`
 - Create: `apps/api/src/core/workflow/state-machine.test.ts`
 - Create: `database/migrations/005_business_workflows.sql`
@@ -87,6 +88,7 @@ git commit -m "feat: add business workflow foundation"
 ### Task 2: 经验库编辑、发布、撤回与归档
 
 **Files:**
+
 - Create: `apps/api/src/modules/knowledge/state-machine.test.ts`
 - Modify: `apps/api/src/modules/knowledge/service.ts`
 - Modify: `apps/api/src/modules/knowledge/router.ts`
@@ -128,6 +130,7 @@ git commit -m "feat: complete knowledge lifecycle"
 ### Task 3: 公告发布与咨询处理闭环
 
 **Files:**
+
 - Create: `apps/api/src/modules/information/state-machine.test.ts`
 - Modify: `apps/api/src/modules/information/service.ts`
 - Modify: `apps/api/src/modules/information/router.ts`
@@ -178,6 +181,7 @@ git commit -m "feat: complete information and consultation workflows"
 ### Task 4: 俱乐部维护、成员审批与技术支持
 
 **Files:**
+
 - Create: `apps/api/src/modules/clubs/state-machine.test.ts`
 - Create: `apps/api/src/modules/clubs/membership-workflow.test.ts`
 - Create: `apps/api/src/modules/clubs/technical-support.test.ts`
@@ -228,6 +232,7 @@ git commit -m "feat: complete club management workflows"
 ### Task 5: 活动审批、技术支持与生命周期
 
 **Files:**
+
 - Create: `apps/api/src/modules/events/state-machine.test.ts`
 - Create: `apps/api/src/modules/events/technical-support.test.ts`
 - Modify: `apps/api/src/modules/events/service.ts`
@@ -278,6 +283,7 @@ git commit -m "feat: add complete activity approval workflow"
 ### Task 6: 联络资源编辑、可见性与归档
 
 **Files:**
+
 - Create: `apps/api/src/modules/liaison/state-machine.test.ts`
 - Modify: `apps/api/src/modules/liaison/service.ts`
 - Modify: `apps/api/src/modules/liaison/router.ts`
@@ -320,6 +326,7 @@ git commit -m "feat: complete liaison resource management"
 ### Task 7: 体育队伍、成员、队长与签到
 
 **Files:**
+
 - Create: `apps/api/src/modules/sports/state-machine.test.ts`
 - Create: `apps/api/src/modules/sports/member-management.test.ts`
 - Create: `apps/api/src/modules/sports/captain-management.test.ts`
@@ -372,6 +379,7 @@ git commit -m "feat: complete sports team administration"
 ### Task 8: 财务编辑、提交、审批与归档
 
 **Files:**
+
 - Create: `apps/api/src/modules/finance/state-machine.test.ts`
 - Modify: `apps/api/src/modules/finance/service.ts`
 - Modify: `apps/api/src/modules/finance/router.ts`
@@ -414,6 +422,7 @@ git commit -m "feat: complete finance approval lifecycle"
 ### Task 9: 九页响应式与共享交互壳层
 
 **Files:**
+
 - Modify: `apps/web/index.html`
 - Modify: `apps/web/src/app/AppShell.tsx`
 - Modify: `apps/web/src/app/AppShell.test.tsx`
@@ -456,6 +465,7 @@ git commit -m "feat: align complete responsive development ui"
 ### Task 10: 七域全链路 E2E
 
 **Files:**
+
 - Create: `tests/e2e/knowledge.spec.ts`
 - Create: `tests/e2e/information.spec.ts`
 - Create: `tests/e2e/clubs.spec.ts`
