@@ -5,6 +5,7 @@ import { createApp } from '../../app.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import { createMemoryStore } from '../../core/database/memory-store.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
+import { ClubsService } from './service.js';
 
 function actorWithPolicies(scopeIds: string[]): AuthorizationContext {
   return {
@@ -132,5 +133,50 @@ describe('clubs security regressions', () => {
       .set('X-Demo-User', actor.uid)
       .send({})
       .expect(409);
+  });
+  it('applies scoped allow and deny per record to archived listing and maintenance', async () => {
+    const store = createMemoryStore();
+    const allowedClub = await store.clubs.create({
+      name: 'Allowed archive',
+      description: 'Visible to its maintainer.',
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null,
+      status: 'archived',
+      ownerUid: 'owner',
+      scope: { type: 'organization', id: 'org-a' },
+    });
+    const deniedClub = await store.clubs.create({
+      name: 'Denied archive',
+      description: 'Hidden by an explicit deny.',
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null,
+      status: 'archived',
+      ownerUid: 'owner',
+      scope: { type: 'organization', id: 'org-b' },
+    });
+    const actor: AuthorizationContext = {
+      ...actorWithPolicies(['org-a', 'org-b']),
+      policies: [
+        { id: 'read', action: 'clubs.read', resource: 'club', effect: 'allow' },
+        ...actorWithPolicies(['org-a', 'org-b']).policies!,
+        {
+          id: 'deny-org-b',
+          action: 'clubs.update',
+          resource: 'club',
+          effect: 'deny',
+          scope: { type: 'organization', id: 'org-b' },
+        },
+      ],
+    };
+    const service = new ClubsService(store);
+
+    expect((await service.list(actor, {})).map((club) => club.id)).toContain(allowedClub.id);
+    expect((await service.list(actor, {})).map((club) => club.id)).not.toContain(deniedClub.id);
+    await expect(service.update(actor, deniedClub.id, { name: 'Forbidden' })).rejects.toMatchObject(
+      {
+        status: 404,
+        code: 'club_not_found',
+      },
+    );
   });
 });

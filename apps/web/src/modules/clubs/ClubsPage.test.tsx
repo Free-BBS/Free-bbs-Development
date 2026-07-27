@@ -1,73 +1,157 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ClubsPage, type DevelopmentApi } from './ClubsPage.js';
 
 const club = {
   id: 'club-running',
-  name: '夜跑俱乐部',
+  name: '自由跑团',
   description: '每周组织校园夜跑。',
-  status: 'active',
+  status: 'active' as const,
+  technicalSupportStatus: 'not_requested' as const,
+  technicalSupportNote: null,
   ownerUid: 'demo-admin',
   scope: { type: 'public', id: '*' },
   createdAt: '2026-07-22T00:00:00.000Z',
   updatedAt: '2026-07-22T00:00:00.000Z',
 };
 
-function apiWith(request: DevelopmentApi['request']): DevelopmentApi {
-  return { request };
+function renderPage(client: DevelopmentApi, user: Parameters<typeof ClubsPage>[0]['user']) {
+  return render(
+    <MemoryRouter basename="/development" initialEntries={['/development/clubs']}>
+      <ClubsPage client={client} user={user} />
+    </MemoryRouter>,
+  );
 }
 
-describe('ClubsPage', () => {
-  it('shows loading, empty and error list states', async () => {
-    let release: ((value: unknown[]) => void) | undefined;
-    const loadingApi = apiWith(
-      vi.fn(() => new Promise((resolve) => (release = resolve))) as DevelopmentApi['request'],
-    );
-    const loadingView = render(<ClubsPage client={loadingApi} />);
-    expect(screen.getByRole('status')).toHaveTextContent('正在加载俱乐部');
-    release?.([]);
-    expect(await screen.findByText('暂无可加入的俱乐部')).toBeInTheDocument();
-    loadingView.unmount();
+const student = {
+  uid: 'demo-student',
+  displayName: '普通同学',
+  avatarUrl: null,
+  baseRole: 'student' as const,
+  roles: [],
+  tags: [],
+  policies: [
+    { id: 'read', action: 'clubs.read', resource: 'club', effect: 'allow' as const },
+    { id: 'join', action: 'clubs.join', resource: 'club_membership', effect: 'allow' as const },
+    { id: 'leave', action: 'clubs.leave', resource: 'club_membership', effect: 'allow' as const },
+  ],
+};
 
-    const errorApi = apiWith(
-      vi.fn().mockRejectedValue(new Error('网络不可用')) as DevelopmentApi['request'],
-    );
-    render(<ClubsPage client={errorApi} />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('俱乐部加载失败');
+const maintainer = {
+  ...student,
+  uid: 'maintainer',
+  displayName: '社群维护者',
+  policies: [
+    ...student.policies,
+    { id: 'create', action: 'clubs.create', resource: 'club', effect: 'allow' as const },
+    {
+      id: 'update',
+      action: 'clubs.update',
+      resource: 'club',
+      effect: 'allow' as const,
+      scope: { type: 'public', id: '*' },
+    },
+    {
+      id: 'support',
+      action: 'clubs.technical_support',
+      resource: 'club',
+      effect: 'allow' as const,
+      scope: { type: 'public', id: '*' },
+    },
+  ],
+};
+
+describe('ClubsPage', () => {
+  it('restores the current user membership from the server and preserves history after leaving', async () => {
+    const user = userEvent.setup();
+    let membershipStatus: 'pending' | 'left' = 'pending';
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/clubs') return [club];
+      if (path === '/clubs/club-running/memberships' && init?.method === 'DELETE') {
+        membershipStatus = 'left';
+        return undefined;
+      }
+      if (path === '/clubs/club-running/memberships') {
+        return [
+          {
+            id: 'membership-1',
+            clubId: club.id,
+            memberUid: 'demo-student',
+            status: membershipStatus,
+          },
+        ];
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    renderPage({ request: request as DevelopmentApi['request'] }, student);
+    const card = await screen.findByRole('article', { name: '自由跑团' });
+    expect(await within(card).findByText('申请待审批')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: '加入自由跑团' })).not.toBeInTheDocument();
+
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await user.click(within(card).getByRole('button', { name: '撤回自由跑团申请' }));
+    expect(
+      await within(card).findByRole('button', { name: '重新申请自由跑团' }),
+    ).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith('/clubs/club-running/memberships', { method: 'DELETE' });
   });
 
-  it('lists clubs and joins, then leaves with feedback and a refresh', async () => {
+  it('shows scoped maintenance, membership, support controls and a basename-aware activity link', async () => {
     const user = userEvent.setup();
-    const request = vi
-      .fn()
-      .mockResolvedValueOnce([club])
-      .mockResolvedValueOnce({ id: 'membership-1' })
-      .mockResolvedValueOnce([club])
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce([club]);
-    const client = apiWith(request as DevelopmentApi['request']);
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
-
-    render(<ClubsPage client={client} />);
-    const card = await screen.findByRole('article', { name: '夜跑俱乐部' });
-    expect(within(card).getByText('每周组织校园夜跑。')).toBeInTheDocument();
-
-    await user.click(within(card).getByRole('button', { name: '加入夜跑俱乐部' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('已加入夜跑俱乐部');
-    expect(request).toHaveBeenNthCalledWith(2, '/clubs/club-running/memberships', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
+    const pending = {
+      id: 'membership-2',
+      clubId: club.id,
+      memberUid: 'new-member',
+      status: 'pending',
+    };
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/clubs') return [club];
+      if (path === '/clubs/club-running/memberships' && init === undefined) return [pending];
+      if (path.includes('/memberships/membership-2')) return { ...pending, status: 'active' };
+      if (path.endsWith('/transitions')) return { ...club, status: 'archived' };
+      if (path.endsWith('/technical-support'))
+        return { ...club, technicalSupportStatus: 'requested' };
+      throw new Error(`Unexpected request: ${path}`);
     });
 
-    await user.click(within(card).getByRole('button', { name: '退出夜跑俱乐部' }));
-    expect(confirm).toHaveBeenCalledWith('确定退出“夜跑俱乐部”吗？');
-    expect(await screen.findByRole('status')).toHaveTextContent('已退出夜跑俱乐部');
-    expect(request).toHaveBeenNthCalledWith(4, '/clubs/club-running/memberships', {
-      method: 'DELETE',
+    renderPage({ request: request as DevelopmentApi['request'] }, maintainer);
+    const card = await screen.findByRole('article', { name: '自由跑团' });
+    expect(within(card).getByRole('button', { name: '编辑自由跑团' })).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: '归档自由跑团' })).toBeInTheDocument();
+    expect(within(card).getByText('new-member')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '查看自由跑团的活动' })).toHaveAttribute(
+      'href',
+      '/development/events',
+    );
+
+    await user.click(within(card).getByRole('button', { name: '批准 new-member' }));
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        '/clubs/club-running/memberships/membership-2',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+    await user.click(within(card).getByRole('button', { name: '申请自由跑团技术支持' }));
+    await waitFor(() =>
+      expect(request).toHaveBeenCalledWith(
+        '/clubs/club-running/technical-support',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+  });
+  it('does not present an empty membership state when the membership request fails', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === '/clubs') return [club];
+      if (path === '/clubs/club-running/memberships') throw new Error('会员服务不可用');
+      throw new Error(`Unexpected request: ${path}`);
     });
-    await waitFor(() => expect(request).toHaveBeenCalledTimes(5));
+
+    renderPage({ request: request as DevelopmentApi['request'] }, student);
+    expect(await screen.findByRole('alert')).toHaveTextContent('会员服务不可用');
+    expect(screen.queryByRole('button', { name: '加入自由跑团' })).not.toBeInTheDocument();
   });
 });

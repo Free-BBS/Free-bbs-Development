@@ -36,7 +36,7 @@ const createSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     description: z.string().trim().min(1).max(20_000),
-    status: status.default('draft'),
+    status: z.literal('draft').default('draft'),
     scope: scope.default({ type: 'public', id: '*' }),
   })
   .strict();
@@ -45,18 +45,23 @@ const patchSchema = z
     id: identifier,
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().min(1).max(20_000).optional(),
-    status: status.optional(),
     scope: scope.optional(),
   })
   .strict()
   .refine(
     (value) =>
-      value.name !== undefined ||
-      value.description !== undefined ||
-      value.status !== undefined ||
-      value.scope !== undefined,
+      value.name !== undefined || value.description !== undefined || value.scope !== undefined,
   );
 const routeSchema = z.object({ clubId: identifier }).strict();
+const membershipRouteSchema = z.object({ clubId: identifier, id: identifier }).strict();
+const transitionSchema = z.object({ to: z.enum(['active', 'archived']) }).strict();
+const membershipSchema = z.object({ status: z.enum(['active', 'rejected']) }).strict();
+const technicalSupportSchema = z
+  .object({
+    status: z.enum(['requested', 'confirmed']),
+    note: z.string().trim().min(1).max(20_000).nullable().optional(),
+  })
+  .strict();
 const emptyBodySchema = z.object({}).strict();
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
@@ -118,8 +123,7 @@ export function createClubsRouter(options: ClubsRouterOptions): Router {
   router.get('/', async (request, response) => {
     const actor = await requireActor(options, request, response);
     if (actor === null) return;
-    const filters = parse(querySchema, request.query);
-    send(response, 200, await service.list(actor, filters));
+    send(response, 200, await service.list(actor, parse(querySchema, request.query)));
   });
 
   router.post('/', async (request, response) => {
@@ -138,12 +142,35 @@ export function createClubsRouter(options: ClubsRouterOptions): Router {
     send(response, 200, await service.update(actor, id, patch));
   });
 
+  router.post('/:clubId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { clubId } = parse(routeSchema, request.params);
+    const { to } = parse(transitionSchema, request.body);
+    send(response, 200, await service.transition(actor, clubId, to));
+  });
+
+  router.get('/:clubId/memberships', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { clubId } = parse(routeSchema, request.params);
+    send(response, 200, await service.listMemberships(actor, clubId));
+  });
+
   router.post('/:clubId/memberships', async (request, response) => {
     const actor = await requireActor(options, request, response);
     if (actor === null) return;
     const { clubId } = parse(routeSchema, request.params);
     parse(emptyBodySchema, request.body ?? {});
     send(response, 201, await service.join(actor, clubId));
+  });
+
+  router.patch('/:clubId/memberships/:id', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { clubId, id } = parse(membershipRouteSchema, request.params);
+    const { status: membershipStatus } = parse(membershipSchema, request.body);
+    send(response, 200, await service.updateMembership(actor, clubId, id, membershipStatus));
   });
 
   router.delete('/:clubId/memberships', async (request, response) => {
@@ -153,6 +180,18 @@ export function createClubsRouter(options: ClubsRouterOptions): Router {
     parse(emptyBodySchema, request.body ?? {});
     await service.leave(actor, clubId);
     response.status(204).end();
+  });
+
+  router.patch('/:clubId/technical-support', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { clubId } = parse(routeSchema, request.params);
+    const input = parse(technicalSupportSchema, request.body);
+    send(
+      response,
+      200,
+      await service.updateTechnicalSupport(actor, clubId, input.status, input.note),
+    );
   });
 
   return router;

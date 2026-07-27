@@ -37,7 +37,7 @@ describe('clubs API', () => {
       clubId: 'club-running',
       memberUid: 'demo-student',
       ownerUid: 'demo-student',
-      status: 'active',
+      status: 'pending',
       scope: { type: 'club', id: 'club-running' },
     });
 
@@ -52,17 +52,17 @@ describe('clubs API', () => {
       .delete('/api/development/v1/clubs/club-running/memberships')
       .set(student)
       .expect(204);
-    expect(
-      (await store.clubMemberships.list({ query: 'club-running' })).filter(
-        (record) => record.memberUid === 'demo-student',
-      ),
-    ).toEqual([]);
+    const historical = (await store.clubMemberships.list({ query: 'club-running' })).find(
+      (record) => record.memberUid === 'demo-student',
+    );
+    expect(historical).toMatchObject({ status: 'left' });
 
-    await request(app)
+    const rejoined = await request(app)
       .post('/api/development/v1/clubs/club-running/memberships')
       .set(student)
       .send({})
       .expect(201);
+    expect(rejoined.body.data).toMatchObject({ id: historical?.id, status: 'pending' });
   });
 
   it('uses authenticated ownership and lets an arts domain manager update with an audit', async () => {
@@ -80,9 +80,9 @@ describe('clubs API', () => {
     expect(created.body.data.ownerUid).toBe('demo-admin');
 
     await request(app)
-      .patch('/api/development/v1/clubs')
+      .post(`/api/development/v1/clubs/${created.body.data.id}/transitions`)
       .set(admin)
-      .send({ id: created.body.data.id, status: 'active' })
+      .send({ to: 'active' })
       .expect(200);
     expect(await store.auditLogs.list({ query: created.body.data.id })).toEqual(
       expect.arrayContaining([
