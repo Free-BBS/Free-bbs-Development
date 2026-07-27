@@ -48,7 +48,7 @@ const createSchema = z
     type,
     title,
     body,
-    status: status.default('draft'),
+    status: z.literal('draft').default('draft'),
     scope: scope.default({ type: 'public', id: '*' }),
   })
   .strict();
@@ -58,7 +58,6 @@ const patchSchema = z
     type: type.optional(),
     title: title.optional(),
     body: body.optional(),
-    status: status.optional(),
     scope: scope.optional(),
   })
   .strict()
@@ -67,9 +66,9 @@ const patchSchema = z
       value.type !== undefined ||
       value.title !== undefined ||
       value.body !== undefined ||
-      value.status !== undefined ||
       value.scope !== undefined,
   );
+const transitionSchema = z.object({ to: status }).strict();
 
 function send<T>(response: Response, statusCode: number, data: T): void {
   const envelope: ApiEnvelope<T> = {
@@ -173,10 +172,6 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
       forbid(response);
       return;
     }
-    if (input.status !== 'draft' && !allowed(actor, 'knowledge.publish', input.scope)) {
-      forbid(response, 'Knowledge publication permission is required');
-      return;
-    }
     send(response, 201, await service.create(actor.uid, input));
   });
 
@@ -186,6 +181,16 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
     const input = parse(patchSchema, request.body);
     const { id, ...patch } = input;
     const updated = await service.update(actor, id, patch);
+    if (updated === null) throw new HttpError(404, 'knowledge_entry_not_found', 'Entry not found');
+    send(response, 200, updated);
+  });
+
+  router.post('/entries/:entryId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const entryId = parse(identifier, request.params.entryId);
+    const input = parse(transitionSchema, request.body);
+    const updated = await service.transition(actor, entryId, input.to);
     if (updated === null) throw new HttpError(404, 'knowledge_entry_not_found', 'Entry not found');
     send(response, 200, updated);
   });

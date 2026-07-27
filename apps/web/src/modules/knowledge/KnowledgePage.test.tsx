@@ -55,6 +55,7 @@ describe('KnowledgePage', () => {
   });
 
   it('validates and creates a draft, then publishes it and refreshes the list', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const entries = [draft];
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
@@ -65,7 +66,7 @@ describe('KnowledgePage', () => {
         entries.push(created as typeof draft);
         return created;
       }
-      if (path === '/knowledge/entries' && method === 'PATCH') {
+      if (path === '/knowledge/entries/knowledge-1/transitions' && method === 'POST') {
         entries[0] = { ...entries[0], status: 'published' };
         return entries[0];
       }
@@ -102,15 +103,90 @@ describe('KnowledgePage', () => {
     await user.click(screen.getByRole('button', { name: '发布 活动复盘模板' }));
     expect(await screen.findByRole('status')).toHaveTextContent('经验已发布');
     expect(request).toHaveBeenCalledWith(
-      '/knowledge/entries',
+      '/knowledge/entries/knowledge-1/transitions',
       expect.objectContaining({
-        method: 'PATCH',
-        body: JSON.stringify({ id: 'knowledge-1', status: 'published' }),
+        method: 'POST',
+        body: JSON.stringify({ to: 'published' }),
       }),
     );
     expect(screen.queryByRole('button', { name: '发布 活动复盘模板' })).not.toBeInTheDocument();
     expect(
       request.mock.calls.filter(([path, init]) => path === '/knowledge/entries' && !init),
     ).toHaveLength(3);
+  });
+
+  it('edits content and confirms publish, withdraw, and archive without optimistic corruption', async () => {
+    const entries = [{ ...draft }];
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET';
+      if (path === '/knowledge/entries' && method === 'GET') return structuredClone(entries);
+      if (path === '/knowledge/entries' && method === 'PATCH') {
+        const input = JSON.parse(String(init?.body)) as {
+          id: string;
+          title?: string;
+          body?: string;
+        };
+        entries[0] = { ...entries[0], ...input };
+        return structuredClone(entries[0]);
+      }
+      if (path === '/knowledge/entries/knowledge-1/transitions' && method === 'POST') {
+        const input = JSON.parse(String(init?.body)) as { to: typeof draft.status };
+        entries[0] = { ...entries[0], status: input.to };
+        return structuredClone(entries[0]);
+      }
+      throw new Error(`Unexpected request: ${method} ${path}`);
+    });
+    const user = userEvent.setup();
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={admin} />);
+
+    await screen.findByText('活动复盘模板');
+    expect(screen.getByText('草稿')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '编辑 活动复盘模板' }));
+    await user.clear(screen.getByLabelText('编辑标题'));
+    await user.type(screen.getByLabelText('编辑标题'), '活动复盘与改进');
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(confirm).toHaveBeenCalledWith('确认保存“活动复盘模板”的修改吗？');
+    expect(await screen.findByText('活动复盘与改进')).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith(
+      '/knowledge/entries',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: expect.not.stringContaining('status'),
+      }),
+    );
+
+    await user.click(screen.getByRole('button', { name: '发布 活动复盘与改进' }));
+    expect(confirm).toHaveBeenCalledWith('确认发布“活动复盘与改进”吗？');
+    expect(await screen.findByText('已发布')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '撤回 活动复盘与改进' }));
+    expect(confirm).toHaveBeenCalledWith('确认撤回“活动复盘与改进”吗？');
+    expect(await screen.findByText('草稿')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '发布 活动复盘与改进' }));
+    expect(await screen.findByText('已发布')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '归档 活动复盘与改进' }));
+    expect(confirm).toHaveBeenCalledWith('确认归档“活动复盘与改进”吗？');
+    expect(await screen.findByText('已归档')).toBeInTheDocument();
+  });
+
+  it('shows the server error and preserves the visible published state when archiving fails', async () => {
+    const published = { ...draft, status: 'published' as const };
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/knowledge/entries' && (init?.method ?? 'GET') === 'GET') return [published];
+      throw new ApiError(409, 'invalid_state_transition', '状态已经发生变化', 'request-1');
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={admin} />);
+
+    await screen.findByText('已发布');
+    await user.click(screen.getByRole('button', { name: '归档 活动复盘模板' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('状态已经发生变化');
+    expect(screen.getByText('已发布')).toBeInTheDocument();
+    expect(screen.queryByText('已归档')).not.toBeInTheDocument();
   });
 });

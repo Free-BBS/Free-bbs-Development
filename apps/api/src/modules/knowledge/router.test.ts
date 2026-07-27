@@ -119,9 +119,9 @@ describe('knowledge API', () => {
     expect(filtered.body.data.map((entry: { id: string }) => entry.id)).toEqual([draft.id]);
 
     const published = await request(app)
-      .patch('/api/development/v1/knowledge/entries')
+      .post(`/api/development/v1/knowledge/entries/${draft.id}/transitions`)
       .set(adminHeaders)
-      .send({ id: draft.id, status: 'published' })
+      .send({ to: 'published' })
       .expect(200);
     expect(published.body.data).toMatchObject({ id: draft.id, status: 'published' });
 
@@ -129,7 +129,7 @@ describe('knowledge API', () => {
       expect.arrayContaining([
         expect.objectContaining({
           actorUid: 'demo-admin',
-          action: 'knowledge.entry.status_changed',
+          action: 'knowledge.entry.publish',
           resourceId: draft.id,
         }),
       ]),

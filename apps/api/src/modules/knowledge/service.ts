@@ -2,15 +2,14 @@ import type { ScopeRef } from '@freebbs-development/contracts';
 
 import { recordAuditEvent } from '../../core/audit/audit-service.js';
 import { authorize } from '../../core/authorization/authorize.js';
-
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
-
 import type {
   DevelopmentStore,
   KnowledgeEntryRecord,
   ListFilters,
 } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { canTransition, type TransitionGraph } from '../../core/workflow/state-machine.js';
 
 export type KnowledgeEntryType = KnowledgeEntryRecord['type'];
 export type KnowledgeEntryStatus = 'draft' | 'published' | 'archived';
@@ -23,11 +22,27 @@ export interface KnowledgeEntryInput {
   scope: ScopeRef;
 }
 
-export type KnowledgeEntryPatch = Partial<KnowledgeEntryInput>;
+export type KnowledgeEntryPatch = Partial<Omit<KnowledgeEntryInput, 'status'>>;
 
 export interface KnowledgeEntryFilters extends ListFilters {
   type?: KnowledgeEntryType;
 }
+
+const KNOWLEDGE_TRANSITIONS: TransitionGraph<KnowledgeEntryStatus> = {
+  draft: ['published'],
+  published: ['draft', 'archived'],
+  archived: [],
+};
+
+type TransitionResult =
+  | { kind: 'missing' }
+  | {
+      kind: 'rejected';
+      from: KnowledgeEntryStatus;
+      to: KnowledgeEntryStatus;
+      scope: ScopeRef;
+    }
+  | { kind: 'updated'; entry: KnowledgeEntryRecord };
 
 function repositoryFilters(filters: KnowledgeEntryFilters): ListFilters {
   return {
@@ -36,6 +51,14 @@ function repositoryFilters(filters: KnowledgeEntryFilters): ListFilters {
     scopeId: filters.scopeId,
     query: filters.query,
   };
+}
+
+function permitted(actor: AuthorizationContext, action: string, scope: ScopeRef): boolean {
+  return authorize(actor, { action, resource: 'knowledge_entry', scope }).allowed;
+}
+
+function knowledgeStatus(value: string): KnowledgeEntryStatus | null {
+  return value === 'draft' || value === 'published' || value === 'archived' ? value : null;
 }
 
 export class KnowledgeService {
@@ -61,10 +84,10 @@ export class KnowledgeService {
       if (input.status !== 'draft') {
         await recordAuditEvent(transactionStore, {
           actorUid,
-          action: 'knowledge.entry.status_changed',
+          action: 'knowledge.entry.publish',
           resourceType: 'knowledge_entry',
           resourceId: created.id,
-          details: { from: null, to: input.status, scope: created.scope },
+          details: { from: null, to: input.status, outcome: 'accepted', scope: created.scope },
         });
       }
       return created;
@@ -77,42 +100,87 @@ export class KnowledgeService {
     patch: KnowledgeEntryPatch,
   ): Promise<KnowledgeEntryRecord | null> {
     return this.store.transaction(async (transactionStore) => {
-      const current = await transactionStore.knowledge.get(id);
+      const current = await transactionStore.knowledge.getForUpdate(id);
       if (current === null) return null;
       const targetScope = patch.scope ?? current.scope;
-      const contentChanged =
-        patch.type !== undefined ||
-        patch.title !== undefined ||
-        patch.body !== undefined ||
-        patch.scope !== undefined;
-      const permitted = (action: string, scope: ScopeRef) =>
-        authorize(actor, { action, resource: 'knowledge_entry', scope }).allowed;
       if (
-        contentChanged &&
-        (!permitted('knowledge.create', current.scope) ||
-          !permitted('knowledge.create', targetScope))
+        !permitted(actor, 'knowledge.create', current.scope) ||
+        !permitted(actor, 'knowledge.create', targetScope)
       ) {
         throw new HttpError(404, 'knowledge_entry_not_found', 'Entry not found');
       }
       if (
-        (patch.status !== undefined || (contentChanged && current.status === 'published')) &&
-        (!permitted('knowledge.publish', current.scope) ||
-          !permitted('knowledge.publish', targetScope))
+        current.status === 'published' &&
+        (!permitted(actor, 'knowledge.publish', current.scope) ||
+          !permitted(actor, 'knowledge.publish', targetScope))
       ) {
         throw new HttpError(404, 'knowledge_entry_not_found', 'Entry not found');
       }
       const updated = await transactionStore.knowledge.update(id, patch);
       if (updated === null) return null;
-      if (patch.status !== undefined && patch.status !== current.status) {
-        await recordAuditEvent(transactionStore, {
-          actorUid: actor.uid,
-          action: 'knowledge.entry.status_changed',
-          resourceType: 'knowledge_entry',
-          resourceId: id,
-          details: { from: current.status, to: patch.status, scope: updated.scope },
-        });
-      }
+      await recordAuditEvent(transactionStore, {
+        actorUid: actor.uid,
+        action: 'knowledge.entry.update',
+        resourceType: 'knowledge_entry',
+        resourceId: id,
+        details: {
+          fields: Object.keys(patch).sort(),
+          fromScope: current.scope,
+          toScope: updated.scope,
+        },
+      });
       return updated;
     });
+  }
+
+  async transition(
+    actor: AuthorizationContext,
+    id: string,
+    to: KnowledgeEntryStatus,
+  ): Promise<KnowledgeEntryRecord | null> {
+    const result = await this.store.transaction<TransitionResult>(async (transactionStore) => {
+      const current = await transactionStore.knowledge.getForUpdate(id);
+      if (current === null) return { kind: 'missing' };
+      if (!permitted(actor, 'knowledge.publish', current.scope)) {
+        throw new HttpError(404, 'knowledge_entry_not_found', 'Entry not found');
+      }
+      const from = knowledgeStatus(current.status);
+      if (from === null || !canTransition(KNOWLEDGE_TRANSITIONS, from, to)) {
+        return {
+          kind: 'rejected',
+          from: from ?? (current.status as KnowledgeEntryStatus),
+          to,
+          scope: current.scope,
+        };
+      }
+      const updated = await transactionStore.knowledge.update(id, { status: to });
+      if (updated === null) return { kind: 'missing' };
+      await recordAuditEvent(transactionStore, {
+        actorUid: actor.uid,
+        action: 'knowledge.entry.publish',
+        resourceType: 'knowledge_entry',
+        resourceId: id,
+        details: { from, to, outcome: 'accepted', scope: updated.scope },
+      });
+      return { kind: 'updated', entry: updated };
+    });
+
+    if (result.kind === 'missing') return null;
+    if (result.kind === 'rejected') {
+      await recordAuditEvent(this.store, {
+        actorUid: actor.uid,
+        action: 'knowledge.entry.publish',
+        resourceType: 'knowledge_entry',
+        resourceId: id,
+        details: {
+          from: result.from,
+          to: result.to,
+          outcome: 'rejected',
+          scope: result.scope,
+        },
+      });
+      throw new HttpError(409, 'invalid_state_transition', 'Invalid knowledge state transition');
+    }
+    return result.entry;
   }
 }
