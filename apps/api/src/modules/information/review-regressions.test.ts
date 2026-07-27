@@ -76,7 +76,7 @@ describe('information review regressions', () => {
       requesterUid: 'another-user',
       assigneeUid: null,
       reply: null,
-      status: 'submitted',
+      status: 'open',
       ownerUid: 'another-user',
       scope: { type: 'user', id: 'another-user' },
     });
@@ -94,14 +94,14 @@ describe('information review regressions', () => {
       authClient: { introspect: async () => ordinary },
     });
     const known = await request(app)
-      .patch('/api/development/v1/information/consultations')
+      .post(`/api/development/v1/information/consultations/${consultation.id}/transitions`)
       .set('X-Demo-User', ordinary.uid)
-      .send({ id: consultation.id, status: 'triaged' })
+      .send({ to: 'in_progress' })
       .expect(404);
     const unknown = await request(app)
-      .patch('/api/development/v1/information/consultations')
+      .post('/api/development/v1/information/consultations/missing-consultation/transitions')
       .set('X-Demo-User', ordinary.uid)
-      .send({ id: 'missing-consultation', status: 'triaged' })
+      .send({ to: 'in_progress' })
       .expect(404);
     expect(known.body.data.error.code).toBe(unknown.body.data.error.code);
   });

@@ -32,7 +32,7 @@ const scope = z
   })
   .strict();
 const announcementStatus = z.enum(['draft', 'published', 'archived']);
-const consultationStatus = z.enum(['submitted', 'triaged', 'processing', 'resolved', 'closed']);
+const consultationStatus = z.enum(['open', 'in_progress', 'resolved', 'closed']);
 const listQueryFields = {
   scopeType: identifier.regex(/^[a-z][a-z0-9_]*$/).optional(),
   scopeId: identifier.optional(),
@@ -50,7 +50,7 @@ const announcementCreateSchema = z
   .object({
     title,
     body,
-    status: announcementStatus.default('draft'),
+    status: z.literal('draft').default('draft'),
     scope: scope.default({ type: 'public', id: '*' }),
   })
   .strict();
@@ -59,29 +59,30 @@ const announcementPatchSchema = z
     id: identifier,
     title: title.optional(),
     body: body.optional(),
-    status: announcementStatus.optional(),
     scope: scope.optional(),
   })
   .strict()
   .refine(
-    (value) =>
-      value.title !== undefined ||
-      value.body !== undefined ||
-      value.status !== undefined ||
-      value.scope !== undefined,
+    (value) => value.title !== undefined || value.body !== undefined || value.scope !== undefined,
   );
 const consultationCreateSchema = z.object({ title, body }).strict();
+const transitionAnnouncementSchema = z.object({ to: announcementStatus }).strict();
+const transitionConsultationSchema = z.object({ to: consultationStatus }).strict();
+const consultationHandlingSchema = z
+  .object({
+    assigneeUid: identifier.nullable().optional(),
+    reply: z.string().trim().max(20_000).nullable().optional(),
+  })
+  .strict()
+  .refine((value) => value.assigneeUid !== undefined || value.reply !== undefined);
 const consultationPatchSchema = z
   .object({
     id: identifier,
     title: title.optional(),
     body: body.optional(),
-    status: consultationStatus.optional(),
   })
   .strict()
-  .refine(
-    (value) => value.title !== undefined || value.body !== undefined || value.status !== undefined,
-  );
+  .refine((value) => value.title !== undefined || value.body !== undefined);
 
 function send<T>(response: Response, statusCode: number, data: T): void {
   const envelope: ApiEnvelope<T> = {
@@ -128,10 +129,6 @@ async function optionalActor(
   return null;
 }
 
-function requestedScope(input: { scopeType?: string; scopeId?: string }): ScopeRef | undefined {
-  return input.scopeType === undefined ? undefined : { type: input.scopeType, id: input.scopeId! };
-}
-
 function allowed(
   actor: AuthorizationContext,
   action: string,
@@ -170,17 +167,7 @@ export function createInformationRouter(options: InformationRouterOptions): Rout
     const filters = parse(announcementQuerySchema, request.query);
     const authentication = await optionalActor(options, request, response);
     if (authentication === null) return;
-    const scopeRef = requestedScope(filters);
-    const canMaintain =
-      authentication.actor !== null &&
-      (allowed(authentication.actor, 'information.announcement.create', 'announcement', scopeRef) ||
-        allowed(
-          authentication.actor,
-          'information.announcement.publish',
-          'announcement',
-          scopeRef,
-        ));
-    send(response, 200, await service.listAnnouncements(filters, !canMaintain));
+    send(response, 200, await service.listAnnouncements(filters, authentication.actor));
   });
 
   router.post('/announcements', async (request, response) => {
@@ -212,19 +199,21 @@ export function createInformationRouter(options: InformationRouterOptions): Rout
     send(response, 200, updated);
   });
 
+  router.post('/announcements/:announcementId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const announcementId = parse(identifier, request.params.announcementId);
+    const input = parse(transitionAnnouncementSchema, request.body);
+    const updated = await service.transitionAnnouncement(actor, announcementId, input.to);
+    if (updated === null)
+      throw new HttpError(404, 'announcement_not_found', 'Announcement not found');
+    send(response, 200, updated);
+  });
   router.get('/consultations', async (request, response) => {
     const actor = await requireActor(options, request, response);
     if (actor === null) return;
     const filters = parse(consultationQuerySchema, request.query);
-    const scopeRef = requestedScope(filters);
-    const canReadAll =
-      allowed(actor, 'information.consultation.read', 'consultation', scopeRef) ||
-      allowed(actor, 'information.consultation.triage', 'consultation', scopeRef);
-    send(
-      response,
-      200,
-      await service.listConsultations(filters, canReadAll ? undefined : actor.uid),
-    );
+    send(response, 200, await service.listConsultations(filters, actor));
   });
 
   router.post('/consultations', async (request, response) => {
@@ -250,5 +239,26 @@ export function createInformationRouter(options: InformationRouterOptions): Rout
     send(response, 200, updated);
   });
 
+  router.patch('/consultations/:consultationId/handling', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const consultationId = parse(identifier, request.params.consultationId);
+    const input = parse(consultationHandlingSchema, request.body);
+    const updated = await service.updateConsultationHandling(actor, consultationId, input);
+    if (updated === null)
+      throw new HttpError(404, 'consultation_not_found', 'Consultation not found');
+    send(response, 200, updated);
+  });
+
+  router.post('/consultations/:consultationId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const consultationId = parse(identifier, request.params.consultationId);
+    const input = parse(transitionConsultationSchema, request.body);
+    const updated = await service.transitionConsultation(actor, consultationId, input.to);
+    if (updated === null)
+      throw new HttpError(404, 'consultation_not_found', 'Consultation not found');
+    send(response, 200, updated);
+  });
   return router;
 }

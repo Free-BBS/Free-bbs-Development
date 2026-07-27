@@ -85,7 +85,7 @@ describe('information API', () => {
     expect(created.body).toMatchObject({
       data: {
         title: '食堂开放时间建议',
-        status: 'submitted',
+        status: 'open',
         requesterUid: 'demo-student',
         ownerUid: 'demo-student',
         scope: { type: 'user', id: 'demo-student' },
@@ -103,20 +103,20 @@ describe('information API', () => {
       requesterUid: 'demo-student',
       assigneeUid: null,
       reply: null,
-      status: 'submitted',
+      status: 'open',
       ownerUid: 'demo-student',
       scope: { type: 'user', id: 'demo-student' },
     });
 
     await request(app)
-      .patch('/api/development/v1/information/announcements')
+      .post(`/api/development/v1/information/announcements/${announcement.id}/transitions`)
       .set(adminHeaders)
-      .send({ id: announcement.id, status: 'published' })
+      .send({ to: 'published' })
       .expect(200);
     await request(app)
-      .patch('/api/development/v1/information/consultations')
+      .post(`/api/development/v1/information/consultations/${consultation.id}/transitions`)
       .set(adminHeaders)
-      .send({ id: consultation.id, status: 'triaged' })
+      .send({ to: 'in_progress' })
       .expect(200);
 
     const audit = await store.auditLogs.list();
@@ -142,7 +142,7 @@ describe('information API', () => {
       requesterUid: 'another-user',
       assigneeUid: null,
       reply: null,
-      status: 'submitted',
+      status: 'open',
       ownerUid: 'another-user',
       scope: { type: 'user', id: 'another-user' },
     });
@@ -160,12 +160,12 @@ describe('information API', () => {
 
     const adminList = await request(app)
       .get(
-        '/api/development/v1/information/consultations?status=submitted&scopeType=user&scopeId=another-user',
+        '/api/development/v1/information/consultations?status=open&scopeType=user&scopeId=another-user',
       )
       .set(adminHeaders)
       .expect(200);
     expect(adminList.body.data).toEqual([
-      expect.objectContaining({ requesterUid: 'another-user', status: 'submitted' }),
+      expect.objectContaining({ requesterUid: 'another-user', status: 'open' }),
     ]);
   });
 

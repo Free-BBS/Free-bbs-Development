@@ -48,7 +48,9 @@ function KnowledgeRoute() {
 
 function InformationRoute() {
   const auth = useAuth();
-  return <InformationPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+  return (
+    <InformationPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} user={auth.user} />
+  );
 }
 
 function ClubsRoute() {
