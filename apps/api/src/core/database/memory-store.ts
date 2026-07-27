@@ -35,6 +35,7 @@ import type {
   RolePermissionRecord,
   RoleRecord,
   SportsCheckinRecord,
+  SportsTeamMemberRecord,
   SportsTeamRecord,
   StoredRecord,
   SubjectRecord,
@@ -63,6 +64,7 @@ interface MemoryState {
   activities: ActivityRecord[];
   activityRegistrations: ActivityRegistrationRecord[];
   sportsTeams: SportsTeamRecord[];
+  sportsTeamMembers: SportsTeamMemberRecord[];
   sportsCheckins: SportsCheckinRecord[];
   liaisonResources: LiaisonResourceRecord[];
   financeRecords: FinanceRecord[];
@@ -101,12 +103,13 @@ const searchFields: Record<CollectionName, string[]> = {
   auditLogs: ['actorUid', 'action', 'resourceType', 'resourceId'],
   knowledge: ['title', 'body'],
   announcements: ['title', 'body'],
-  consultations: ['title', 'body', 'requesterUid'],
-  clubs: ['name', 'description'],
+  consultations: ['title', 'body', 'requesterUid', 'assigneeUid', 'reply'],
+  clubs: ['name', 'description', 'technicalSupportNote'],
   clubMemberships: ['clubId', 'memberUid'],
-  activities: ['title', 'description'],
+  activities: ['title', 'description', 'technicalSupportNote'],
   activityRegistrations: ['activityId', 'participantUid'],
   sportsTeams: ['name', 'description'],
+  sportsTeamMembers: ['teamId', 'memberUid'],
   sportsCheckins: ['teamId', 'memberUid'],
   liaisonResources: ['name', 'description', 'category'],
   financeRecords: ['title', 'kind'],
@@ -160,6 +163,7 @@ function createEmptyState(): MemoryState {
     activities: [],
     activityRegistrations: [],
     sportsTeams: [],
+    sportsTeamMembers: [],
     sportsCheckins: [],
     liaisonResources: [],
     financeRecords: [],
@@ -345,7 +349,9 @@ function createDemoState(): MemoryState {
       title: '活动场地申请',
       body: '请问教学楼公共空间如何申请？',
       requesterUid: 'demo-student',
-      status: 'triaged',
+      assigneeUid: 'demo-admin',
+      reply: '请填写场地预约表并等待管理员确认。',
+      status: 'in_progress',
       ownerUid: 'demo-student',
       scope: publicScope,
     }),
@@ -353,7 +359,9 @@ function createDemoState(): MemoryState {
       title: '校园权益建议',
       body: '希望延长公共讨论空间开放时间。',
       requesterUid: 'demo-student',
-      status: 'processing',
+      assigneeUid: 'demo-admin',
+      reply: null,
+      status: 'in_progress',
       ownerUid: 'demo-student',
       scope: publicScope,
     }),
@@ -362,6 +370,8 @@ function createDemoState(): MemoryState {
     stored('club-music', {
       name: '校园音乐俱乐部',
       description: '排练、分享与小型演出。',
+      technicalSupportStatus: 'requested',
+      technicalSupportNote: '需要演出音响调试支持。',
       status: 'active',
       ownerUid: 'demo-admin',
       scope: publicScope,
@@ -369,6 +379,8 @@ function createDemoState(): MemoryState {
     stored('club-running', {
       name: '自由跑团',
       description: '每周轻松跑与训练交流。',
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null,
       status: 'active',
       ownerUid: 'demo-sports-lead',
       scope: publicScope,
@@ -396,7 +408,9 @@ function createDemoState(): MemoryState {
       description: '一次认识各俱乐部的开放活动。',
       clubId: null,
       startsAt: '2026-09-05T10:00:00.000Z',
-      status: 'open',
+      technicalSupportStatus: 'requested',
+      technicalSupportNote: '需要现场网络与投影支持。',
+      status: 'published',
       ownerUid: 'demo-admin',
       scope: publicScope,
     }),
@@ -405,7 +419,9 @@ function createDemoState(): MemoryState {
       description: '五公里轻松跑。',
       clubId: 'club-running',
       startsAt: '2026-09-12T19:00:00.000Z',
-      status: 'open',
+      technicalSupportStatus: 'confirmed',
+      technicalSupportNote: '路线签到设备已确认。',
+      status: 'published',
       ownerUid: 'demo-sports-lead',
       scope: publicScope,
     }),
@@ -440,6 +456,22 @@ function createDemoState(): MemoryState {
       status: 'active',
       ownerUid: 'demo-sports-lead',
       scope: { type: 'sports_team', id: 'team-badminton' },
+    }),
+  ];
+  state.sportsTeamMembers = [
+    stored('sports-member-basketball-captain', {
+      teamId: 'team-basketball',
+      memberUid: 'demo-captain',
+      status: 'active',
+      ownerUid: 'demo-sports-lead',
+      scope: { type: 'sports_team', id: 'team-basketball' },
+    }),
+    stored('sports-member-basketball-student', {
+      teamId: 'team-basketball',
+      memberUid: 'demo-student',
+      status: 'active',
+      ownerUid: 'demo-sports-lead',
+      scope: { type: 'sports_team', id: 'team-basketball' },
     }),
   ];
   state.sportsCheckins = [
@@ -672,6 +704,18 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
         return 'Membership already exists';
       }
     }
+    if (this.collection === 'sportsTeamMembers') {
+      const candidate = input as unknown as { teamId: string; memberUid: string };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return current.teamId === candidate.teamId && current.memberUid === candidate.memberUid;
+        })
+      ) {
+        return 'Membership already exists';
+      }
+    }
     if (this.collection === 'activityRegistrations') {
       const candidate = input as unknown as { activityId: string; participantUid: string };
       if (
@@ -750,6 +794,7 @@ function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStor
     activities: repository('activities'),
     activityRegistrations: repository('activityRegistrations'),
     sportsTeams: repository('sportsTeams'),
+    sportsTeamMembers: repository('sportsTeamMembers'),
     sportsCheckins: repository('sportsCheckins'),
     liaisonResources: repository('liaisonResources'),
     financeRecords: repository('financeRecords'),

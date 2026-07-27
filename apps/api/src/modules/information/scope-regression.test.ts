@@ -63,6 +63,8 @@ describe('information scoped authorization regressions', () => {
       title: '组织 A 待分流咨询',
       body: '应由组织 A 的分流维护者看到。',
       requesterUid: 'another-user',
+      assigneeUid: null,
+      reply: null,
       status: 'submitted',
       ownerUid: 'another-user',
       scope: { type: 'organization', id: 'org-a' },

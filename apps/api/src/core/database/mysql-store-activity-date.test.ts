@@ -36,6 +36,8 @@ it('round-trips activity startsAt as an absolute UTC DATETIME', async () => {
     description: 'timezone-safe',
     clubId: null,
     startsAt: '2026-07-22T11:04:05.006+08:00',
+    technicalSupportStatus: 'not_requested',
+    technicalSupportNote: null,
     status: 'open',
     ownerUid: 'demo-admin',
     scope: { type: 'public', id: '*' },

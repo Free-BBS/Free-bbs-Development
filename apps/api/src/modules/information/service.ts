@@ -137,6 +137,8 @@ export class InformationService {
       transactionStore.consultations.create({
         ...input,
         requesterUid: actorUid,
+        assigneeUid: null,
+        reply: null,
         status: 'submitted',
         ownerUid: actorUid,
         scope: { type: 'user', id: actorUid },

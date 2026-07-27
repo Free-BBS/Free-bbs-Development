@@ -43,7 +43,12 @@ export class EventsService {
 
   async create(actor: AuthorizationContext, input: ActivityInput): Promise<ActivityRecord> {
     return this.store.transaction(async (store) => {
-      const created = await store.activities.create({ ...input, ownerUid: actor.uid });
+      const created = await store.activities.create({
+        ...input,
+        technicalSupportStatus: 'not_requested',
+        technicalSupportNote: null,
+        ownerUid: actor.uid,
+      });
       await recordAuditEvent(store, {
         actorUid: actor.uid,
         action: 'events.activity.created',

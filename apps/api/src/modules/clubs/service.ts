@@ -41,7 +41,12 @@ export class ClubsService {
 
   async create(actor: AuthorizationContext, input: ClubInput): Promise<ClubRecord> {
     return this.store.transaction(async (store) => {
-      const created = await store.clubs.create({ ...input, ownerUid: actor.uid });
+      const created = await store.clubs.create({
+        ...input,
+        technicalSupportStatus: 'not_requested',
+        technicalSupportNote: null,
+        ownerUid: actor.uid,
+      });
       await recordAuditEvent(store, {
         actorUid: actor.uid,
         action: 'clubs.club.created',

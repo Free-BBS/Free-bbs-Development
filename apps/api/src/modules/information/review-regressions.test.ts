@@ -74,6 +74,8 @@ describe('information review regressions', () => {
       title: 'Private',
       body: 'Private body',
       requesterUid: 'another-user',
+      assigneeUid: null,
+      reply: null,
       status: 'submitted',
       ownerUid: 'another-user',
       scope: { type: 'user', id: 'another-user' },

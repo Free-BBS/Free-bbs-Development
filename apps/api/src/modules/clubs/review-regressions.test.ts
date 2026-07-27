@@ -69,6 +69,8 @@ describe('clubs security regressions', () => {
     const club = await base.clubs.create({
       name: 'Scoped club',
       description: 'Original',
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null,
       status: 'draft',
       ownerUid: 'owner',
       scope: { type: 'organization', id: 'org-a' },

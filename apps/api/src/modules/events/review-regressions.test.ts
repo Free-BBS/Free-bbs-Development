@@ -70,6 +70,8 @@ describe('events security regressions', () => {
       description: 'Original',
       clubId: null,
       startsAt: null,
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null,
       status: 'draft',
       ownerUid: 'owner',
       scope: { type: 'organization', id: 'org-a' },

@@ -137,11 +137,17 @@ export interface ConsultationRecord extends StoredRecord {
   title: string;
   body: string;
   requesterUid: string;
+  assigneeUid: string | null;
+  reply: string | null;
 }
+
+export type TechnicalSupportStatus = 'not_requested' | 'requested' | 'confirmed';
 
 export interface ClubRecord extends StoredRecord {
   name: string;
   description: string;
+  technicalSupportStatus: TechnicalSupportStatus;
+  technicalSupportNote: string | null;
 }
 
 export interface ClubMembershipRecord extends StoredRecord {
@@ -154,6 +160,8 @@ export interface ActivityRecord extends StoredRecord {
   description: string;
   clubId?: string | null;
   startsAt?: string | null;
+  technicalSupportStatus: TechnicalSupportStatus;
+  technicalSupportNote: string | null;
 }
 
 export interface ActivityRegistrationRecord extends StoredRecord {
@@ -164,6 +172,11 @@ export interface ActivityRegistrationRecord extends StoredRecord {
 export interface SportsTeamRecord extends StoredRecord {
   name: string;
   description: string;
+}
+
+export interface SportsTeamMemberRecord extends StoredRecord {
+  teamId: string;
+  memberUid: string;
 }
 
 export interface SportsCheckinRecord extends StoredRecord {
@@ -208,6 +221,7 @@ export interface DevelopmentStore {
   activities: RecordRepository<ActivityRecord>;
   activityRegistrations: RecordRepository<ActivityRegistrationRecord>;
   sportsTeams: RecordRepository<SportsTeamRecord>;
+  sportsTeamMembers: RecordRepository<SportsTeamMemberRecord>;
   sportsCheckins: RecordRepository<SportsCheckinRecord>;
   liaisonResources: RecordRepository<LiaisonResourceRecord>;
   financeRecords: RecordRepository<FinanceRecord>;

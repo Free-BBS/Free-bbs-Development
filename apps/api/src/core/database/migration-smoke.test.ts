@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
 
-import { calculateChecksum, discoverMigrations } from './migrate.js';
+import { calculateChecksum, discoverMigrations, splitSqlStatements } from './migrate.js';
 
 const databaseDirectory = fileURLToPath(new URL('../../../../../database/', import.meta.url));
 
@@ -15,6 +15,7 @@ describe('database migrations', () => {
       '002_domains.sql',
       '003_tag_definition_contract.sql',
       '004_production_governance.sql',
+      '005_business_workflows.sql',
     ]);
 
     const sql = (await Promise.all(migrations.map(({ path }) => readFile(path, 'utf8')))).join(
@@ -41,6 +42,7 @@ describe('database migrations', () => {
       'activities',
       'activity_registrations',
       'sports_teams',
+      'sports_team_members',
       'sports_checkins',
       'liaison_resources',
       'finance_records',
@@ -53,6 +55,45 @@ describe('database migrations', () => {
     }
   });
 
+  it('keeps business workflow DDL retry-aware and maps legacy states exactly', async () => {
+    const migration = await readFile(
+      `${databaseDirectory}/migrations/005_business_workflows.sql`,
+      'utf8',
+    );
+    const normalized = migration.replace(/\s+/g, ' ');
+    expect(() => splitSqlStatements(migration)).not.toThrow();
+    expect(migration).not.toMatch(/^\s*DELIMITER\b/im);
+    expect(normalized).toContain('FROM information_schema.columns');
+    expect(normalized).toContain('PREPARE business_workflow_statement');
+    expect(normalized).toContain('CREATE TABLE IF NOT EXISTS sports_team_members');
+    expect(normalized).toContain('CREATE TEMPORARY TABLE business_workflow_schema_guard');
+    expect(normalized).toContain(
+      "column_type = 'enum(''not_requested'',''requested'',''confirmed'')'",
+    );
+    expect(normalized).toContain("SELECT 'sports_team_members.columns', 9 - COUNT(*)");
+    expect(normalized).toContain("SELECT 'consultations.assignee_uid.orphans', COUNT(*)");
+    expect(normalized).toContain("DEFAULT ''not_requested''");
+    expect(normalized).toContain("WHEN status = 'submitted' THEN 'open'");
+    expect(normalized).toContain("WHEN status IN ('triaged', 'processing') THEN 'in_progress'");
+    expect(normalized).toContain("WHEN status = 'open' THEN 'published'");
+    expect(normalized).toContain("WHEN status IN ('closed', 'completed') THEN 'finished'");
+    expect(normalized).toContain("WHEN status = 'cancelled' THEN 'archived'");
+    expect(normalized).toContain("WHERE status = 'settled'");
+    expect(normalized).toContain("UPDATE clubs SET status = 'active' WHERE status = 'draft'");
+    expect(normalized).toContain(
+      "UPDATE sports_teams SET status = 'active' WHERE status = 'draft'",
+    );
+    expect(normalized).toContain('UNIQUE KEY uq_sports_team_member (team_id, member_uid)');
+    expect(normalized).toContain(
+      'ALTER TABLE consultations ADD CONSTRAINT fk_consultations_assignee',
+    );
+    expect(normalized).toContain('FOREIGN KEY (assignee_uid) REFERENCES subjects(uid)');
+    expect(normalized).toContain(
+      'ALTER TABLE sports_team_members ADD CONSTRAINT fk_sports_team_members_team',
+    );
+    expect(normalized).toContain('FOREIGN KEY (team_id) REFERENCES sports_teams(id)');
+    expect(normalized).toContain('FOREIGN KEY (member_uid) REFERENCES subjects(uid)');
+  });
   it('calculates stable checksums and includes useful demo records', async () => {
     expect(calculateChecksum('SELECT 1;')).toBe(calculateChecksum('SELECT 1;'));
     expect(calculateChecksum('SELECT 1;')).not.toBe(calculateChecksum('SELECT 2;'));
@@ -65,6 +106,7 @@ describe('database migrations', () => {
       'clubs',
       'activities',
       'sports_teams',
+      'sports_team_members',
       'liaison_resources',
       'finance_records',
     ]) {
