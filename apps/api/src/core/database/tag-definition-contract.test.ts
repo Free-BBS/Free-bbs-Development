@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from './memory-store.js';
 import { discoverMigrations } from './migrate.js';
 import { createMySqlStore } from './mysql-store.js';
+import { RecordConflictError } from './record-conflict-error.js';
 
 const databaseDirectory = fileURLToPath(new URL('../../../../../database/', import.meta.url));
 
@@ -128,6 +129,77 @@ describe('tag definition contract', () => {
     expect(execute.mock.calls[0]?.[1]).toEqual(
       expect.arrayContaining([input.tagKey, input.action]),
     );
+  });
+
+  it('rejects duplicate tag permission creates in both adapters', async () => {
+    const input = {
+      tagKey: 'sports.team_captain',
+      action: 'sports.checkin.manage',
+      resource: 'sports_team',
+      effect: 'allow',
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'sports_team', id: 'team-a' },
+    } as const;
+    const memory = createMemoryStore({ seed: false });
+    await memory.tagPermissions.create(input);
+    await expect(memory.tagPermissions.create(input)).rejects.toBeInstanceOf(RecordConflictError);
+
+    const duplicate = Object.assign(new Error('Duplicate entry secret database key'), {
+      code: 'ER_DUP_ENTRY',
+      errno: 1062,
+    });
+    const pool = {
+      execute: vi.fn().mockRejectedValueOnce(duplicate),
+      end: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Pool;
+    const mysql = createMySqlStore({ pool });
+    const failure = mysql.store.tagPermissions.create(input);
+    await expect(failure).rejects.toMatchObject({
+      name: 'RecordConflictError',
+      message: 'Tag permission already exists',
+    });
+    await expect(failure).rejects.not.toThrow(/secret database key/);
+  });
+
+  it('rejects duplicate-producing tag permission updates in both adapters', async () => {
+    const first = {
+      tagKey: 'sports.team_captain',
+      action: 'sports.checkin.manage',
+      resource: 'sports_team',
+      effect: 'allow',
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'sports_team', id: 'team-a' },
+    } as const;
+    const second = { ...first, action: 'sports.team.manage' as const };
+    const memory = createMemoryStore({ seed: false });
+    await memory.tagPermissions.create(first);
+    const secondRecord = await memory.tagPermissions.create(second);
+    await expect(
+      memory.tagPermissions.update(secondRecord.id, { action: first.action }),
+    ).rejects.toBeInstanceOf(RecordConflictError);
+    expect(await memory.tagPermissions.get(secondRecord.id)).toMatchObject({
+      action: second.action,
+    });
+
+    const duplicate = Object.assign(new Error('Duplicate entry secret database key'), {
+      code: 'ER_DUP_ENTRY',
+      errno: 1062,
+    });
+    const pool = {
+      execute: vi.fn().mockRejectedValueOnce(duplicate),
+      end: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Pool;
+    const mysql = createMySqlStore({ pool });
+    const failure = mysql.store.tagPermissions.update('tag-permission-b', {
+      action: first.action,
+    });
+    await expect(failure).rejects.toMatchObject({
+      name: 'RecordConflictError',
+      message: 'Tag permission already exists',
+    });
+    await expect(failure).rejects.not.toThrow(/secret database key/);
   });
 
   it('adds the tag definition fields in an append-only migration and demo seed', async () => {

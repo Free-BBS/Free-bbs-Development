@@ -65,6 +65,75 @@ interface AppliedMigrationRow extends RowDataPacket {
   checksum: string;
 }
 
+interface ForeignKeyDefinition {
+  table: string;
+  constraint: string;
+  columns: string[];
+  referencedTable: string;
+  referencedColumns: string[];
+}
+
+interface ForeignKeyUsageRow extends RowDataPacket {
+  column_name: string;
+  referenced_table_name: string;
+  referenced_column_name: string;
+}
+
+function parseIdentifierList(value: string): string[] | null {
+  const identifiers = value.split(',').map((identifier) => identifier.trim());
+  return identifiers.length > 0 &&
+    identifiers.every((identifier) => /^[a-z0-9_]+$/i.test(identifier))
+    ? identifiers
+    : null;
+}
+
+function parseForeignKeyDefinition(statement: string): ForeignKeyDefinition | null {
+  const match = statement.match(
+    /^ALTER\s+TABLE\s+([a-z0-9_]+)\s+ADD\s+CONSTRAINT\s+(fk_[a-z0-9_]+)\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s+REFERENCES\s+([a-z0-9_]+)\s*\(([^)]+)\)\s*$/i,
+  );
+  if (!match) return null;
+  const columns = parseIdentifierList(match[3] ?? '');
+  const referencedColumns = parseIdentifierList(match[5] ?? '');
+  if (!columns || !referencedColumns || columns.length !== referencedColumns.length) return null;
+  return {
+    table: match[1] ?? '',
+    constraint: match[2] ?? '',
+    columns,
+    referencedTable: match[4] ?? '',
+    referencedColumns,
+  };
+}
+
+function isDuplicateForeignKeyError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { code?: unknown; errno?: unknown };
+  return candidate.code === 'ER_FK_DUP_NAME' || candidate.errno === 1826;
+}
+
+async function existingForeignKeyMatches(
+  connection: PoolConnection,
+  expected: ForeignKeyDefinition,
+): Promise<boolean> {
+  const [rows] = await connection.execute<ForeignKeyUsageRow[]>(
+    `SELECT column_name, referenced_table_name, referenced_column_name, ordinal_position
+     FROM information_schema.key_column_usage
+     WHERE constraint_schema = DATABASE()
+       AND table_name = ?
+       AND constraint_name = ?
+     ORDER BY ordinal_position`,
+    [expected.table, expected.constraint],
+  );
+  if (rows.length !== expected.columns.length) return false;
+  return rows.every(
+    (row, index) =>
+      String(row.column_name).toLocaleLowerCase() ===
+        expected.columns[index]?.toLocaleLowerCase() &&
+      String(row.referenced_table_name).toLocaleLowerCase() ===
+        expected.referencedTable.toLocaleLowerCase() &&
+      String(row.referenced_column_name).toLocaleLowerCase() ===
+        expected.referencedColumns[index]?.toLocaleLowerCase(),
+  );
+}
 export async function applyMigration(
   connection: PoolConnection,
   migration: MigrationFile,
@@ -85,7 +154,13 @@ export async function applyMigration(
   await connection.beginTransaction();
   try {
     for (const statement of splitSqlStatements(contents)) {
-      await connection.execute(statement);
+      try {
+        await connection.execute(statement);
+      } catch (error) {
+        if (!isDuplicateForeignKeyError(error)) throw error;
+        const expected = parseForeignKeyDefinition(statement);
+        if (!expected || !(await existingForeignKeyMatches(connection, expected))) throw error;
+      }
     }
     await connection.execute(
       'INSERT INTO schema_migrations (name, checksum, applied_at) VALUES (?, ?, NOW(3))',

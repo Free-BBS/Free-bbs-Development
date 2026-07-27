@@ -184,6 +184,7 @@ const definitions = {
   },
   tagPermissions: {
     table: 'tag_permissions',
+    conflictMessage: 'Tag permission already exists',
     fields: [
       field('tagKey', 'tag_key'),
       field('action', 'action'),

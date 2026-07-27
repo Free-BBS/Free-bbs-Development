@@ -611,6 +611,29 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
     ) {
       return 'Assignment already exists';
     }
+    if (this.collection === 'tagPermissions') {
+      const candidate = input as unknown as {
+        tagKey: string;
+        action: string;
+        resource: string;
+        scope: { type: string; id: string };
+      };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return (
+            current.tagKey === candidate.tagKey &&
+            current.action === candidate.action &&
+            current.resource === candidate.resource &&
+            current.scope.type === candidate.scope.type &&
+            current.scope.id === candidate.scope.id
+          );
+        })
+      ) {
+        return 'Tag permission already exists';
+      }
+    }
     if (this.collection === 'clubMemberships') {
       const candidate = input as unknown as { clubId: string; memberUid: string };
       if (
