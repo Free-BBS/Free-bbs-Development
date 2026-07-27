@@ -19,6 +19,8 @@ import type {
   ModuleOwnerRecord,
   ModuleRecord,
   NewRecord,
+  Page,
+  PageRequest,
   PermissionRecord,
   RecordPatch,
   RecordRepository,
@@ -31,6 +33,7 @@ import type {
   SubjectRecord,
   TagAssignmentRecord,
   TagDefinitionRecord,
+  TagPermissionRecord,
 } from './types.js';
 
 interface MemoryState {
@@ -41,6 +44,7 @@ interface MemoryState {
   roleAssignments: RoleAssignmentRecord[];
   tagDefinitions: TagDefinitionRecord[];
   tagAssignments: TagAssignmentRecord[];
+  tagPermissions: TagPermissionRecord[];
   modules: ModuleRecord[];
   moduleOwners: ModuleOwnerRecord[];
   auditLogs: AuditLogRecord[];
@@ -84,6 +88,7 @@ const searchFields: Record<CollectionName, string[]> = {
   roleAssignments: ['subjectUid', 'roleKey'],
   tagDefinitions: ['key', 'name', 'description'],
   tagAssignments: ['subjectUid', 'tagKey'],
+  tagPermissions: ['tagKey', 'action', 'resource'],
   modules: ['moduleId', 'name', 'description'],
   moduleOwners: ['moduleId', 'ownerType', 'ownerId'],
   auditLogs: ['actorUid', 'action', 'resourceType', 'resourceId'],
@@ -136,6 +141,7 @@ function createEmptyState(): MemoryState {
     roleAssignments: [],
     tagDefinitions: [],
     tagAssignments: [],
+    tagPermissions: [],
     modules: [],
     moduleOwners: [],
     auditLogs: [],
@@ -524,7 +530,23 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
           .toLocaleLowerCase()
           .includes(query);
       })
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) || right.id.localeCompare(left.id),
+      )
       .map((record) => structuredClone(record));
+  }
+
+  async page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>> {
+    validatePageRequest(request);
+    const records = await this.list(filters);
+    const offset = (request.page - 1) * request.pageSize;
+    return {
+      items: records.slice(offset, offset + request.pageSize),
+      page: request.page,
+      pageSize: request.pageSize,
+      total: records.length,
+    };
   }
 
   async update(id: string, patch: RecordPatch<T>): Promise<T | null> {
@@ -666,6 +688,7 @@ function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStor
     roleAssignments: repository('roleAssignments'),
     tagDefinitions: repository('tagDefinitions'),
     tagAssignments: repository('tagAssignments'),
+    tagPermissions: repository('tagPermissions'),
     modules: repository('modules'),
     moduleOwners: repository('moduleOwners'),
     auditLogs: repository('auditLogs'),
@@ -682,6 +705,15 @@ function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStor
     financeRecords: repository('financeRecords'),
   };
   return store;
+}
+
+function validatePageRequest(request: PageRequest): void {
+  if (!Number.isInteger(request.page) || request.page < 1) {
+    throw new RangeError('page must be an integer greater than or equal to 1');
+  }
+  if (!Number.isInteger(request.pageSize) || request.pageSize < 1 || request.pageSize > 100) {
+    throw new RangeError('pageSize must be an integer between 1 and 100');
+  }
 }
 
 export interface MemoryStoreOptions {

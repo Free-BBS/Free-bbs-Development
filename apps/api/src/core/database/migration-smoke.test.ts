@@ -14,6 +14,7 @@ describe('database migrations', () => {
       '001_core.sql',
       '002_domains.sql',
       '003_tag_definition_contract.sql',
+      '004_production_governance.sql',
     ]);
 
     const sql = (await Promise.all(migrations.map(({ path }) => readFile(path, 'utf8')))).join(
@@ -28,6 +29,7 @@ describe('database migrations', () => {
       'role_assignments',
       'tag_definitions',
       'tag_assignments',
+      'tag_permissions',
       'modules',
       'module_owners',
       'audit_logs',

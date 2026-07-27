@@ -147,6 +147,16 @@ describe('MySQL store mappings and binding', () => {
     expect(values).toEqual([String.raw`%50\%\_\\done%`]);
   });
 
+  it('rejects invalid page requests before querying MySQL', async () => {
+    const { pool, typedPool } = createFakes();
+    const handle = createMySqlStore({ pool: typedPool });
+
+    await expect(
+      handle.store.auditLogs.page(undefined, { page: 1, pageSize: 101 }),
+    ).rejects.toThrow('pageSize');
+    expect(pool.execute).not.toHaveBeenCalled();
+  });
+
   it('round-trips UTC DATETIME and calendar DATE fields consistently', async () => {
     const { pool, typedPool } = createFakes();
     pool.execute

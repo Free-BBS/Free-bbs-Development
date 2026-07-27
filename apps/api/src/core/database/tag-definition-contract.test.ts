@@ -86,6 +86,50 @@ describe('tag definition contract', () => {
     });
   });
 
+  it('stores tag permissions through both adapters', async () => {
+    const input = {
+      tagKey: 'sports.team_captain',
+      action: 'sports.checkin.manage',
+      resource: 'sports_team',
+      effect: 'allow',
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    } as const;
+    const memory = createMemoryStore({ seed: false });
+    await expect(memory.tagPermissions.create(input)).resolves.toMatchObject(input);
+
+    const timestamp = '2026-07-22 08:09:10.123';
+    const row = {
+      id: 'tag-permission-captain',
+      tag_key: input.tagKey,
+      action: input.action,
+      resource: input.resource,
+      effect: input.effect,
+      status: input.status,
+      owner_uid: input.ownerUid,
+      scope_type: input.scope.type,
+      scope_id: input.scope.id,
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+    const pool = {
+      execute: vi
+        .fn()
+        .mockResolvedValueOnce([{ affectedRows: 1 }, []])
+        .mockResolvedValueOnce([[row], []]),
+      end: vi.fn().mockResolvedValue(undefined),
+    } as unknown as Pool;
+    const mysql = createMySqlStore({ pool });
+
+    await expect(mysql.store.tagPermissions.create(input)).resolves.toMatchObject(input);
+    const execute = pool.execute as ReturnType<typeof vi.fn>;
+    expect(execute.mock.calls[0]?.[0]).toContain('INSERT INTO tag_permissions');
+    expect(execute.mock.calls[0]?.[1]).toEqual(
+      expect.arrayContaining([input.tagKey, input.action]),
+    );
+  });
+
   it('adds the tag definition fields in an append-only migration and demo seed', async () => {
     const migrations = await discoverMigrations(`${databaseDirectory}/migrations`);
     expect(migrations.map(({ name }) => name)).toContain('003_tag_definition_contract.sql');

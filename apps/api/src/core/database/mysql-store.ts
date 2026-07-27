@@ -32,6 +32,8 @@ import type {
   ModuleOwnerRecord,
   ModuleRecord,
   NewRecord,
+  Page,
+  PageRequest,
   PermissionRecord,
   RecordPatch,
   RecordRepository,
@@ -44,6 +46,7 @@ import type {
   SubjectRecord,
   TagAssignmentRecord,
   TagDefinitionRecord,
+  TagPermissionRecord,
 } from './types.js';
 
 type Executor = Pool | PoolConnection;
@@ -179,6 +182,16 @@ const definitions = {
     ],
     searchColumns: ['subject_uid', 'tag_key'],
   },
+  tagPermissions: {
+    table: 'tag_permissions',
+    fields: [
+      field('tagKey', 'tag_key'),
+      field('action', 'action'),
+      field('resource', 'resource'),
+      field('effect', 'effect'),
+    ],
+    searchColumns: ['tag_key', 'action', 'resource'],
+  },
   modules: {
     table: 'modules',
     fields: [
@@ -301,6 +314,45 @@ function isDuplicateEntryError(error: unknown): boolean {
   return candidate.code === 'ER_DUP_ENTRY' || candidate.errno === 1062;
 }
 
+function validatePageRequest(request: PageRequest): void {
+  if (!Number.isInteger(request.page) || request.page < 1) {
+    throw new RangeError('page must be an integer greater than or equal to 1');
+  }
+  if (!Number.isInteger(request.pageSize) || request.pageSize < 1 || request.pageSize > 100) {
+    throw new RangeError('pageSize must be an integer between 1 and 100');
+  }
+}
+
+function buildWhere(
+  definition: RepositoryDefinition,
+  filters: ListFilters,
+): { where: string; values: SqlValue[] } {
+  const clauses: string[] = [];
+  const values: SqlValue[] = [];
+  if (filters.status) {
+    clauses.push('status = ?');
+    values.push(filters.status);
+  }
+  if (filters.scopeType) {
+    clauses.push('scope_type = ?');
+    values.push(filters.scopeType);
+  }
+  if (filters.scopeId) {
+    clauses.push('scope_id = ?');
+    values.push(filters.scopeId);
+  }
+  if (filters.query?.trim() && definition.searchColumns.length > 0) {
+    clauses.push(
+      `LOWER(CONCAT_WS(' ', ${definition.searchColumns.join(', ')})) LIKE ? ESCAPE '\\\\'`,
+    );
+    values.push(`%${escapeLikeQuery(filters.query.trim().toLocaleLowerCase())}%`);
+  }
+  return {
+    where: clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '',
+    values,
+  };
+}
+
 class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
   constructor(
     private readonly executor: Executor,
@@ -371,34 +423,34 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
   }
 
   async list(filters: ListFilters = {}): Promise<T[]> {
-    const clauses: string[] = [];
-    const values: SqlValue[] = [];
-    if (filters.status) {
-      clauses.push('status = ?');
-      values.push(filters.status);
-    }
-    if (filters.scopeType) {
-      clauses.push('scope_type = ?');
-      values.push(filters.scopeType);
-    }
-    if (filters.scopeId) {
-      clauses.push('scope_id = ?');
-      values.push(filters.scopeId);
-    }
-    if (filters.query?.trim() && this.definition.searchColumns.length > 0) {
-      clauses.push(
-        `LOWER(CONCAT_WS(' ', ${this.definition.searchColumns.join(', ')})) LIKE ? ESCAPE '\\\\'`,
-      );
-      values.push(`%${escapeLikeQuery(filters.query.trim().toLocaleLowerCase())}%`);
-    }
-    const where = clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '';
+    const { where, values } = buildWhere(this.definition, filters);
     const [rows] = await this.executor.execute<RowDataPacket[]>(
-      `SELECT * FROM ${this.definition.table}${where} ORDER BY created_at DESC`,
+      `SELECT * FROM ${this.definition.table}${where} ORDER BY created_at DESC, id DESC`,
       values,
     );
     return rows.map((row) => this.decode(row));
   }
 
+  async page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>> {
+    validatePageRequest(request);
+    const { where, values } = buildWhere(this.definition, filters ?? {});
+    const [countRows] = await this.executor.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total FROM ${this.definition.table}${where}`,
+      values,
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+    const offset = (request.page - 1) * request.pageSize;
+    const [rows] = await this.executor.execute<RowDataPacket[]>(
+      `SELECT * FROM ${this.definition.table}${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      [...values, request.pageSize, offset],
+    );
+    return {
+      items: rows.map((row) => this.decode(row)),
+      page: request.page,
+      pageSize: request.pageSize,
+      total,
+    };
+  }
   async update(id: string, patch: RecordPatch<T>): Promise<T | null> {
     const patchRecord = patch as Record<string, unknown>;
     const assignments: string[] = [];
@@ -489,6 +541,7 @@ function buildMySqlStore(executor: Executor, pool: Pool, inTransaction: boolean)
     roleAssignments: repository<RoleAssignmentRecord>(definitions.roleAssignments),
     tagDefinitions: repository<TagDefinitionRecord>(definitions.tagDefinitions),
     tagAssignments: repository<TagAssignmentRecord>(definitions.tagAssignments),
+    tagPermissions: repository<TagPermissionRecord>(definitions.tagPermissions),
     modules: repository<ModuleRecord>(definitions.modules),
     moduleOwners: repository<ModuleOwnerRecord>(definitions.moduleOwners),
     auditLogs: repository<AuditLogRecord>(definitions.auditLogs),

@@ -19,11 +19,24 @@ export interface ListFilters {
   query?: string;
 }
 
+export interface PageRequest {
+  page: number;
+  pageSize: number;
+}
+
+export interface Page<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
 export interface RecordRepository<T extends StoredRecord> {
   create(input: NewRecord<T>): Promise<T>;
   get(id: string): Promise<T | null>;
   getForUpdate(id: string): Promise<T | null>;
   list(filters?: ListFilters): Promise<T[]>;
+  page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>>;
   update(id: string, patch: RecordPatch<T>): Promise<T | null>;
   delete(id: string): Promise<boolean>;
 }
@@ -69,6 +82,13 @@ export interface TagAssignmentRecord extends StoredRecord {
   subjectUid: string;
   tagKey: string;
   expiresAt: string | null;
+}
+
+export interface TagPermissionRecord extends StoredRecord {
+  tagKey: string;
+  action: PermissionAction;
+  resource: string;
+  effect: 'allow' | 'deny';
 }
 
 export interface ModuleRecord extends StoredRecord {
@@ -165,6 +185,7 @@ export interface DevelopmentStore {
   roleAssignments: RecordRepository<RoleAssignmentRecord>;
   tagDefinitions: RecordRepository<TagDefinitionRecord>;
   tagAssignments: RecordRepository<TagAssignmentRecord>;
+  tagPermissions: RecordRepository<TagPermissionRecord>;
   modules: RecordRepository<ModuleRecord>;
   moduleOwners: RecordRepository<ModuleOwnerRecord>;
   auditLogs: RecordRepository<AuditLogRecord>;
