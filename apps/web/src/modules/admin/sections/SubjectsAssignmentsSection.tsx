@@ -58,7 +58,7 @@ function Paging({
 }
 export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) {
   const [subjects, setSubjects] = useState<Page<AdminSubject>>(emptyPage);
-  const [roles, setRoles] = useState<AdminRole[]>([]);
+  const [, setRoles] = useState<AdminRole[]>([]);
   const [roleAssignments, setRoleAssignments] = useState<Page<AdminRoleAssignment>>(emptyPage);
   const [tagDefinitions, setTagDefinitions] = useState<AdminTagDefinition[]>([]);
   const [tagAssignments, setTagAssignments] = useState<Page<AdminTagAssignment>>(emptyPage);

@@ -56,7 +56,6 @@ export function AuditLogsSection({ client }: { client: AdminClient }) {
       to: '',
     });
     // Initial load intentionally ignores draft filters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client]);
 
   function submit(event: FormEvent) {

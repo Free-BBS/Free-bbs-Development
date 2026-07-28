@@ -139,7 +139,8 @@ describe('audit log query API', () => {
     [{ from: 'not-a-date' }, 'invalid from date'],
     [{ from: '2026-07-27T18:00:00.000+08:00' }, 'non-UTC from date'],
     [{ unexpected: 'field' }, 'unknown filter'],
-  ])('rejects %s (%s)', async (query, _label) => {
+  ])('rejects %s (%s)', async (query, label) => {
+    void label;
     await request(appWithAuditRows([])).get(auditPath).query(query).set(adminHeaders).expect(400);
   });
 });
