@@ -27,6 +27,7 @@ test('sports covers captain check-in and complete team management', async ({
   const suffix = `${testInfo.workerIndex}-${testInfo.retry}`;
   const name = `E2E 代表队 ${suffix}`;
   const editedName = `${name} 已编辑`;
+  const archivedDraftName = `E2E 草稿归档队 ${suffix}`;
 
   await page.goto('./sports');
   await expect(page.getByRole('heading', { name: '体育代表队', level: 2 })).toBeVisible();
@@ -58,6 +59,31 @@ test('sports covers captain check-in and complete team management', async ({
   const team = teams.data.find((item) => item.name === editedName);
   expect(team).toBeTruthy();
   const id = team!.id;
+
+  const archivedDraft = await request.post(`${apiRoot}/sports/teams`, {
+    headers: headers('demo-sports-lead'),
+    data: {
+      name: archivedDraftName,
+      description: '独立验证草稿可直接归档。',
+      status: 'draft',
+    },
+  });
+  expect(archivedDraft.status(), await archivedDraft.text()).toBe(201);
+  const archivedDraftBody = (await archivedDraft.json()) as {
+    data: { id: string; status: string };
+  };
+  expect(archivedDraftBody.data.status).toBe('draft');
+  const archivedFromDraft = await request.post(
+    `${apiRoot}/sports/teams/${archivedDraftBody.data.id}/transitions`,
+    {
+      headers: headers('demo-sports-lead'),
+      data: { to: 'archived' },
+    },
+  );
+  expect(archivedFromDraft.status(), await archivedFromDraft.text()).toBe(200);
+  await expect(archivedFromDraft.json()).resolves.toMatchObject({
+    data: { id: archivedDraftBody.data.id, status: 'archived' },
+  });
 
   const draftCheckin = await request.post(`${apiRoot}/sports/teams/${id}/checkins`, {
     headers: headers('demo-sports-lead'),

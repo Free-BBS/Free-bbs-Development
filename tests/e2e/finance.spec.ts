@@ -27,6 +27,7 @@ test('finance covers access denial and the complete approval lifecycle', async (
   const suffix = `${testInfo.workerIndex}-${testInfo.retry}`;
   const title = `E2E 预算 ${suffix}`;
   const editedTitle = `${title} 已编辑`;
+  const rejectedArchiveTitle = `E2E 驳回归档预算 ${suffix}`;
 
   await page.goto('./finance');
   await expect(page.getByRole('heading', { name: '暂无财务访问权限' })).toBeVisible();
@@ -55,6 +56,34 @@ test('finance covers access denial and the complete approval lifecycle', async (
   const record = records.data.find((item) => item.title === editedTitle);
   expect(record).toBeTruthy();
   const id = record!.id;
+
+  const rejectedArchiveDraft = await request.post(`${apiRoot}/finance/records`, {
+    headers: headers('demo-admin'),
+    data: {
+      title: rejectedArchiveTitle,
+      kind: 'budget',
+      amountCents: 34_567,
+      scope: { type: 'public', id: '*' },
+    },
+  });
+  expect(rejectedArchiveDraft.status(), await rejectedArchiveDraft.text()).toBe(201);
+  const rejectedArchiveBody = (await rejectedArchiveDraft.json()) as {
+    data: { id: string; status: string };
+  };
+  expect(rejectedArchiveBody.data.status).toBe('draft');
+  await transition(request, rejectedArchiveBody.data.id, 'submitted');
+  await transition(request, rejectedArchiveBody.data.id, 'rejected');
+  const archivedFromRejected = await request.post(
+    `${apiRoot}/finance/records/${rejectedArchiveBody.data.id}/transitions`,
+    {
+      headers: headers('demo-admin'),
+      data: { to: 'archived' },
+    },
+  );
+  expect(archivedFromRejected.status(), await archivedFromRejected.text()).toBe(200);
+  await expect(archivedFromRejected.json()).resolves.toMatchObject({
+    data: { id: rejectedArchiveBody.data.id, status: 'archived' },
+  });
 
   const illegalDraft = await request.post(`${apiRoot}/finance/records/${id}/transitions`, {
     headers: headers('demo-admin'),

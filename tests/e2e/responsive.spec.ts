@@ -9,6 +9,9 @@ const viewports = [
 const fontStylesheetHref =
   'https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=Noto+Serif+SC:wght@400;500;600;700&display=swap';
 
+// Each matrix case performs nine complete authenticated route loads.
+const responsiveMatrixTimeout = 90_000;
+
 const routes: readonly {
   path: string;
   heading: string;
@@ -130,6 +133,7 @@ async function expectLongTextWraps(target: Locator, value: string) {
 
 for (const viewport of viewports) {
   test(`${viewport.name} keeps all nine routes and their actions reachable`, async ({ page }) => {
+    test.setTimeout(responsiveMatrixTimeout);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     for (const route of routes) {
       await page.goto(`./${route.path}`);
@@ -250,15 +254,18 @@ test('mobile dialog keeps an overflowing body scrollable and its footer reachabl
   await body.evaluate((element) => {
     element.scrollTop = element.scrollHeight;
   });
-  await expect.poll(() => body.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      body.evaluate(
+        (element) =>
+          element.scrollTop > 0 &&
+          element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
+      ),
+    )
+    .toBe(true);
   await expect(footer).toBeInViewport();
   const footerAfterScroll = await footer.boundingBox();
   expect(footerAfterScroll).not.toBeNull();
   expect(footerAfterScroll?.y).toBeCloseTo(footerBeforeScroll?.y ?? 0, 0);
-  expect(
-    await body.evaluate(
-      (element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
-    ),
-  ).toBe(true);
   await expectNoHorizontalOverflow(page);
 });
