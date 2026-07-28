@@ -94,30 +94,74 @@ describe('finance API', () => {
     },
   );
 
-  it('rejects invalid and cross-scope activity references without creating records', async () => {
+  it('rejects missing, cross-scope, and orphaned activity references on create', async () => {
     const { app } = fixture();
-    for (const body of [
+    for (const { body, status } of [
       {
-        title: 'Missing activity',
-        kind: 'budget',
-        amountCents: 100,
-        activityId: 'activity-missing',
-        scope: { type: 'activity', id: 'activity-missing' },
+        body: {
+          title: 'Missing activity',
+          kind: 'budget',
+          amountCents: 100,
+          activityId: 'activity-missing',
+          scope: { type: 'activity', id: 'activity-missing' },
+        },
+        status: 404,
       },
       {
-        title: 'Cross-scope activity',
-        kind: 'budget',
-        amountCents: 100,
-        activityId: 'activity-orientation',
-        scope: { type: 'public', id: '*' },
+        body: {
+          title: 'Cross-scope activity',
+          kind: 'budget',
+          amountCents: 100,
+          activityId: 'activity-orientation',
+          scope: { type: 'public', id: '*' },
+        },
+        status: 400,
+      },
+      {
+        body: {
+          title: 'Orphaned activity scope',
+          kind: 'budget',
+          amountCents: 100,
+          activityId: null,
+          scope: { type: 'activity', id: 'activity-orientation' },
+        },
+        status: 400,
       },
     ]) {
       await request(app)
         .post('/api/development/v1/finance/records')
         .set(admin)
         .send(body)
-        .expect(body.activityId === 'activity-missing' ? 404 : 400);
+        .expect(status);
     }
+  });
+
+  it('rejects an orphaned activity scope on draft update and preserves the record', async () => {
+    const { app, store } = fixture();
+    const created = await request(app)
+      .post('/api/development/v1/finance/records')
+      .set(admin)
+      .send({
+        title: 'Public draft',
+        kind: 'budget',
+        amountCents: 100,
+        scope: { type: 'public', id: '*' },
+      })
+      .expect(201);
+
+    await request(app)
+      .patch('/api/development/v1/finance/records')
+      .set(admin)
+      .send({
+        id: created.body.data.id,
+        activityId: null,
+        scope: { type: 'activity', id: 'activity-orientation' },
+      })
+      .expect(400);
+    expect(await store.financeRecords.get(created.body.data.id)).toMatchObject({
+      activityId: null,
+      scope: { type: 'public', id: '*' },
+    });
   });
 
   it('strictly rejects client-owned fields and fails closed without a module row', async () => {

@@ -59,6 +59,10 @@ function financeNotFound(): HttpError {
   return new HttpError(404, 'finance_record_not_found', 'Finance record not found');
 }
 
+function financeForbidden(): HttpError {
+  return new HttpError(403, 'forbidden', 'Explicit finance permission is required');
+}
+
 function canMaintain(
   actor: AuthorizationContext,
   record: FinanceRecord,
@@ -75,7 +79,11 @@ function canMaintain(
 }
 
 function assertActivityScope(activityId: string | null, scope: ScopeRef): void {
-  if (activityId !== null && (scope.type !== 'activity' || scope.id !== activityId)) {
+  const activityScoped = scope.type === 'activity';
+  if (
+    (activityId === null && activityScoped) ||
+    (activityId !== null && (!activityScoped || scope.id !== activityId))
+  ) {
     throw new HttpError(400, 'invalid_activity_scope', 'Linked activity and scope do not match');
   }
 }
@@ -109,6 +117,8 @@ export class FinanceService {
         const activity = await store.activities.getForUpdate(input.activityId);
         if (activity === null) throw new HttpError(404, 'activity_not_found', 'Activity not found');
       }
+      const freshActor = await loadAuthorizationContext(store, actor, new Date());
+      if (!can(freshActor, 'finance.record.create', input.scope)) throw financeForbidden();
       const created = await store.financeRecords.create({
         ...input,
         status: 'draft',
@@ -138,8 +148,8 @@ export class FinanceService {
     return this.store.transaction(async (store) => {
       const current = await store.financeRecords.getForUpdate(id);
       if (current === null) throw financeNotFound();
-      const freshActor = await loadAuthorizationContext(store, actor, new Date());
       const targetScope = patch.scope ?? current.scope;
+      let freshActor = await loadAuthorizationContext(store, actor, new Date());
       if (current.status !== 'draft' || !canMaintain(freshActor, current, targetScope)) {
         throw financeNotFound();
       }
@@ -149,6 +159,8 @@ export class FinanceService {
       if (targetActivityId !== null) {
         const activity = await store.activities.getForUpdate(targetActivityId);
         if (activity === null) throw new HttpError(404, 'activity_not_found', 'Activity not found');
+        freshActor = await loadAuthorizationContext(store, actor, new Date());
+        if (!canMaintain(freshActor, current, targetScope)) throw financeNotFound();
       }
       const updated = await store.financeRecords.update(id, patch);
       if (updated === null) throw financeNotFound();

@@ -6,11 +6,102 @@ import { DemoAuthClient } from '../../core/auth/demo-auth-client.js';
 import { loadAuthorizationContext } from '../../core/authorization/load-authorization-context.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import { createMemoryStore } from '../../core/database/memory-store.js';
+import type { DevelopmentStore } from '../../core/database/types.js';
 import { FinanceService } from './service.js';
 
 const adminHeaders = { 'X-Demo-User': 'demo-admin' };
+const activityScope = { type: 'activity', id: 'activity-orientation' } as const;
+
+async function activityScopedLeadFixture() {
+  const store = createMemoryStore();
+  const identity: AuthorizationContext = {
+    uid: 'activity-finance-lead',
+    displayName: 'Activity finance lead',
+    avatarUrl: null,
+    baseRole: 'student',
+    roles: [],
+    tags: [],
+  };
+  await store.subjects.create({
+    uid: identity.uid,
+    displayName: identity.displayName,
+    avatarUrl: identity.avatarUrl,
+    status: 'active',
+    ownerUid: 'demo-admin',
+    scope: { type: 'public', id: '*' },
+  });
+  const assignment = await store.roleAssignments.create({
+    subjectUid: identity.uid,
+    roleKey: 'domain.rights_development_lead',
+    expiresAt: null,
+    status: 'active',
+    ownerUid: 'demo-admin',
+    scope: activityScope,
+  });
+  const actor = await loadAuthorizationContext(store, identity, new Date());
+  return { store, identity, assignment, actor };
+}
+
+function revokeAtActivityLock(store: DevelopmentStore, assignmentId: string): DevelopmentStore {
+  return {
+    ...store,
+    async transaction<T>(operation: (transactionStore: DevelopmentStore) => Promise<T>) {
+      return store.transaction(async (transactionStore) => {
+        let revoked = false;
+        const activities = {
+          ...transactionStore.activities,
+          async getForUpdate(id: string) {
+            const activity = await transactionStore.activities.getForUpdate(id);
+            if (!revoked) {
+              revoked = true;
+              await transactionStore.roleAssignments.update(assignmentId, { status: 'inactive' });
+            }
+            return activity;
+          },
+        };
+        return operation({ ...transactionStore, activities });
+      });
+    },
+  };
+}
 
 describe('finance security regressions', () => {
+  it('rechecks exact create permission after the linked activity lock', async () => {
+    const { store, assignment, actor } = await activityScopedLeadFixture();
+    const service = new FinanceService(revokeAtActivityLock(store, assignment.id));
+
+    await expect(
+      service.create(actor, {
+        title: 'Stale activity create',
+        kind: 'budget',
+        amountCents: 1000,
+        activityId: 'activity-orientation',
+        status: 'draft',
+        scope: activityScope,
+      }),
+    ).rejects.toMatchObject({ status: 403, code: 'forbidden' });
+    expect(await store.financeRecords.list({ query: 'Stale activity create' })).toEqual([]);
+  });
+
+  it('rechecks update permission after the linked activity lock', async () => {
+    const { store, assignment, actor } = await activityScopedLeadFixture();
+    const draft = await store.financeRecords.create({
+      title: 'Activity draft before revocation',
+      kind: 'budget',
+      amountCents: 2000,
+      activityId: 'activity-orientation',
+      status: 'draft',
+      ownerUid: 'another-owner',
+      scope: activityScope,
+    });
+    const service = new FinanceService(revokeAtActivityLock(store, assignment.id));
+
+    await expect(service.update(actor, draft.id, { amountCents: 3000 })).rejects.toMatchObject({
+      status: 404,
+      code: 'finance_record_not_found',
+    });
+    expect(await store.financeRecords.get(draft.id)).toMatchObject({ amountCents: 2000 });
+  });
   it('recompiles scoped permissions after locking transitions and updates', async () => {
     const store = createMemoryStore();
     const scope = { type: 'organization', id: 'revoked-finance-scope' } as const;

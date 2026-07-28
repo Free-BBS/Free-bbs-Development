@@ -161,6 +161,20 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
   const [busyId, setBusyId] = useState<string | null>(null);
   const [formError, setFormError] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [policyRevision, setPolicyRevision] = useState(0);
+
+  useEffect(() => {
+    const now = Date.now();
+    const nextExpiry = Math.min(
+      ...(user?.policies ?? [])
+        .map((policy) => (policy.expiresAt == null ? Number.NaN : Date.parse(policy.expiresAt)))
+        .filter((expiresAt) => Number.isFinite(expiresAt) && expiresAt > now),
+    );
+    if (!Number.isFinite(nextExpiry)) return;
+    const delay = Math.min(Math.max(nextExpiry - now + 1, 1), 2_147_483_647);
+    const timer = window.setTimeout(() => setPolicyRevision((current) => current + 1), delay);
+    return () => window.clearTimeout(timer);
+  }, [policyRevision, user]);
 
   function replaceConfirmed(record: FinanceRecord) {
     setRecords((current) => {
@@ -294,7 +308,28 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
     }
   }
 
+  function canMaintainRecord(record: FinanceRecord): boolean {
+    return (
+      permitted(user, 'finance.record.update', record.scope) ||
+      (record.ownerUid === user?.uid && permitted(user, 'finance.record.create', record.scope))
+    );
+  }
+
+  function canRunTransition(record: FinanceRecord, to: FinanceStatus): boolean {
+    if (to === 'approved' || to === 'rejected') {
+      return permitted(user, 'finance.record.approve', record.scope);
+    }
+    if (to === 'archived') return permitted(user, 'finance.record.update', record.scope);
+    if (to === 'submitted' || to === 'draft') return canMaintainRecord(record);
+    return false;
+  }
+
   async function transition(record: FinanceRecord, to: FinanceStatus, success: string) {
+    if (!canRunTransition(record, to)) {
+      setFeedback('');
+      setFormError('权限已失效或不适用于该记录');
+      return;
+    }
     await runAction(record, success, () =>
       client.request<FinanceRecord>(
         `/finance/records/${encodeURIComponent(record.id)}/transitions`,
@@ -369,6 +404,12 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
     );
   }
 
+  const canCreateAtCurrentScope = permitted(
+    user,
+    'finance.record.create',
+    scopeFromDraft(createDraft),
+  );
+
   if (error !== null && statusOf(error) === 403) {
     return (
       <section className="module-page" aria-labelledby="finance-title">
@@ -409,10 +450,7 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
             <ul className="record-list">
               {records.map((record) => {
                 const canUpdate = permitted(user, 'finance.record.update', record.scope);
-                const canCreateOwn =
-                  record.ownerUid === user?.uid &&
-                  permitted(user, 'finance.record.create', record.scope);
-                const canMaintain = canUpdate || canCreateOwn;
+                const canMaintain = canMaintainRecord(record);
                 const canApprove = permitted(user, 'finance.record.approve', record.scope);
                 const busy = busyId === record.id;
                 const editing = editingId === record.id && editDraft !== null;
@@ -524,7 +562,7 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
             <h3 id="finance-form-title">创建财务草稿</h3>
             <form onSubmit={createRecord}>
               {fields(createDraft, setCreateDraft, '')}
-              <button type="submit" disabled={busyId === 'new'}>
+              <button type="submit" disabled={busyId === 'new' || !canCreateAtCurrentScope}>
                 {busyId === 'new' ? '正在创建…' : '保存草稿'}
               </button>
             </form>

@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { FinancePage } from './FinancePage';
 
@@ -54,6 +54,10 @@ const financeLead = {
 describe('FinancePage', () => {
   beforeEach(() => {
     mockRequest.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('displays integer-cent amounts and creates an exact-cent draft before refreshing', async () => {
@@ -115,6 +119,117 @@ describe('FinancePage', () => {
     mockRequest.mockRejectedValueOnce({ status: 403, message: 'forbidden' });
     rerender(<FinancePage key="restricted" user={financeLead} />);
     expect(await screen.findByText('暂无财务访问权限')).toBeInTheDocument();
+  });
+
+  it('gates draft creation by the exact live scope with deny precedence', async () => {
+    const scopedUser = {
+      ...financeLead,
+      policies: [
+        {
+          id: 'allow-organization-a',
+          action: 'finance.record.create',
+          resource: 'finance_record',
+          effect: 'allow' as const,
+          scope: { type: 'organization', id: 'organization-a' },
+        },
+        {
+          id: 'allow-organization-b',
+          action: 'finance.record.create',
+          resource: 'finance_record',
+          effect: 'allow' as const,
+          scope: { type: 'organization', id: 'organization-b' },
+        },
+        {
+          id: 'deny-organization-b',
+          action: 'finance.record.create',
+          resource: 'finance_record',
+          effect: 'deny' as const,
+          scope: { type: 'organization', id: 'organization-b' },
+        },
+      ],
+    };
+    mockRequest.mockResolvedValueOnce([]);
+    render(<FinancePage user={scopedUser} />);
+
+    expect(await screen.findByText('暂无财务记录')).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: '保存草稿' });
+    expect(submit).toBeDisabled();
+
+    await userEvent.clear(screen.getByLabelText('范围类型'));
+    await userEvent.type(screen.getByLabelText('范围类型'), 'organization');
+    await userEvent.clear(screen.getByLabelText('范围标识'));
+    await userEvent.type(screen.getByLabelText('范围标识'), 'organization-a');
+    expect(submit).toBeEnabled();
+
+    await userEvent.clear(screen.getByLabelText('范围标识'));
+    await userEvent.type(screen.getByLabelText('范围标识'), 'organization-b');
+    expect(submit).toBeDisabled();
+  });
+
+  it('rechecks transition permission at click time after policy expiry', async () => {
+    vi.useFakeTimers();
+    const now = new Date('2026-07-28T04:00:00.000Z');
+    const expiresAt = new Date(now.getTime() + 1000);
+    vi.setSystemTime(now);
+    const expiringUser = {
+      ...financeLead,
+      policies: [
+        {
+          id: 'expiring-update',
+          action: 'finance.record.update',
+          resource: 'finance_record',
+          effect: 'allow' as const,
+          expiresAt: expiresAt.toISOString(),
+        },
+      ],
+    };
+    const draft = { ...existingRecord, status: 'draft', ownerUid: 'another-owner' };
+    mockRequest.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/finance/records' && init === undefined) return [draft];
+      return draft;
+    });
+
+    render(<FinancePage user={expiringUser} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const submit = screen.getByRole('button', { name: '提交审批' });
+
+    vi.setSystemTime(new Date(expiresAt.getTime() + 1));
+    fireEvent.click(submit);
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('alert')).toHaveTextContent('权限已失效或不适用于该记录');
+  });
+
+  it('rerenders when the next active policy expires while the page remains open', async () => {
+    vi.useFakeTimers();
+    const now = new Date('2026-07-28T04:10:00.000Z');
+    vi.setSystemTime(now);
+    const expiringUser = {
+      ...financeLead,
+      policies: [
+        {
+          id: 'expiring-update',
+          action: 'finance.record.update',
+          resource: 'finance_record',
+          effect: 'allow' as const,
+          expiresAt: new Date(now.getTime() + 1000).toISOString(),
+        },
+      ],
+    };
+    const draft = { ...existingRecord, status: 'draft', ownerUid: 'another-owner' };
+    mockRequest.mockResolvedValue([draft]);
+
+    render(<FinancePage user={expiringUser} />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('button', { name: '提交审批' })).toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(1001);
+    });
+    expect(screen.queryByRole('button', { name: '提交审批' })).not.toBeInTheDocument();
   });
 
   it('runs the complete lifecycle and preserves confirmed state after a failed write', async () => {
