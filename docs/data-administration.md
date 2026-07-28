@@ -112,8 +112,9 @@ export ALLOW_DEMO_SEED=true
 npm run db:seed
 ```
 
-当前 seed 包含固定 UID、最高权限、体育负责人、队长 Tag 和示例业务记录，包括
-`demo-admin`。它不是生产初始化方案。禁止在生产运行。只有显式的 `NODE_ENV=development` 或
+当前 seed 包含固定 UID、体育负责人、队长 Tag 和示例业务记录，也会创建 `demo-admin` 的用户映射；
+它不会直接授予 `platform.super_admin`。最高管理员必须通过下文受保护的 `admin:bootstrap` 流程建立。
+seed 不是生产初始化方案，禁止在生产运行。只有显式的 `NODE_ENV=development` 或
 `NODE_ENV=test` 使用单门禁；生产、缺失或未知环境还会要求额外的
 `ALLOW_PRODUCTION_DEMO_SEED=true`。该二次门禁用于默认失败关闭，并不构成生产运行授权。不要依赖 seed
 主键或示例日期承载真实业务。
