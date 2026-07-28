@@ -59,7 +59,9 @@ describe('review regressions: main-site identity contract', () => {
       fetch: fetchMock,
     });
 
-    await expect(client.introspect('opaque')).resolves.toEqual({
+    const user = await client.introspect('opaque');
+
+    expect(user).toEqual({
       uid: 'main-uid-real',
       displayName: '正式姓名',
       avatarUrl: '/uploads/avatar-real.png',
@@ -67,6 +69,13 @@ describe('review regressions: main-site identity contract', () => {
       roles: [],
       tags: [],
     });
+    expect(
+      authorize(user as AuthorizationContext, {
+        action: 'sports.team.manage',
+        resource: 'sports_team',
+        scope: publicScope,
+      }).allowed,
+    ).toBe(false);
   });
 
   it('rejects unknown non-empty NODE_ENV values before demo mode can default or enable', () => {

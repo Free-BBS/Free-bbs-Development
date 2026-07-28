@@ -37,10 +37,23 @@ export interface AuthProviderProps {
   client?: ApiClient;
 }
 
+export interface ReturnLocation {
+  pathname: string;
+  search: string;
+  hash: string;
+}
+
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function mainSiteLoginHref(): string {
-  return '/login?returnTo=%2Fdevelopment%2F';
+export function mainSiteLoginHref(location?: ReturnLocation): string {
+  const activeLocation = location ?? (typeof window === 'undefined' ? undefined : window.location);
+  const pathname = activeLocation?.pathname ?? '/development/';
+  const returnTo =
+    pathname === '/development' || pathname.startsWith('/development/')
+      ? `${pathname}${activeLocation?.search ?? ''}${activeLocation?.hash ?? ''}`
+      : '/development/';
+
+  return `/login?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
 function asError(value: unknown): Error {

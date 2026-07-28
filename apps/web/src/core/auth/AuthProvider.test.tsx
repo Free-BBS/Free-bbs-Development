@@ -159,6 +159,18 @@ describe('AuthProvider', () => {
     );
   });
 
+  it('preserves an encoded development return location and fails closed for an external path', () => {
+    expect(
+      mainSiteLoginHref({
+        pathname: '/development/events',
+        search: '?filter=pending',
+        hash: '#record-x',
+      }),
+    ).toBe('/login?returnTo=%2Fdevelopment%2Fevents%3Ffilter%3Dpending%23record-x');
+    expect(mainSiteLoginHref({ pathname: '//evil.example', search: '', hash: '' })).toBe(
+      '/login?returnTo=%2Fdevelopment%2F',
+    );
+  });
   it('renders the complete demo allowlist only in demo mode and reloads after switching', async () => {
     vi.stubEnv('VITE_AUTH_MODE', 'demo');
     const fetchMock = vi

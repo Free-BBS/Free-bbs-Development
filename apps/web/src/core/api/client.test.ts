@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiClient } from './client.js';
+import { ApiClient, AUTH_TOKEN_STORAGE_KEY } from './client.js';
 
 const originalFetch = globalThis.fetch;
 
@@ -10,6 +10,9 @@ afterEach(() => {
 });
 
 describe('ApiClient browser transport', () => {
+  it('keeps the shared main-site token storage contract', () => {
+    expect(AUTH_TOKEN_STORAGE_KEY).toBe('free_bbs_auth_token');
+  });
   it('binds the native global fetch receiver', async () => {
     globalThis.fetch = vi.fn(function (this: unknown) {
       expect(this).toBe(globalThis);
