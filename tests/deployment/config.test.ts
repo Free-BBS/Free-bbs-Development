@@ -41,12 +41,45 @@ describe('deployment configuration', () => {
     expect(compose).toContain('profiles: [mysql, adminer, seed]');
     const database = composeService(compose, 'database');
     expect(database).toMatch(/expose:\s*\n\s*- ["']3306["']/);
-    expect(database).not.toContain('ports:');
+    expect(database).toContain('127.0.0.1:${MYSQL_PORT:-3306}:3306');
+    expect(database).not.toMatch(/\n\s+- ['"]?3306:3306/);
     expect(compose).toContain('adminer:');
     expect(compose).toContain('profiles: [adminer]');
     expect(compose).toContain('127.0.0.1:${ADMINER_PORT:-8081}:8080');
   });
 
+  it('gates real MySQL 8 integration without exposing the database publicly', () => {
+    const packageJson = JSON.parse(configuration('package.json')) as {
+      scripts: Record<string, string>;
+    };
+    expect(packageJson.scripts['test:mysql']).toBe(
+      'npm run db:migrate && npm run db:migrate && vitest run apps/api/src/core/database/mysql.integration.test.ts',
+    );
+
+    const workflow = configuration('.github/workflows/ci.yml');
+    expect(workflow).toContain('image: mysql:8.4');
+    expect(workflow).toContain('run: npm run test:mysql');
+
+    const database = composeService(configuration('docker-compose.yml'), 'database');
+    expect(database).toContain('127.0.0.1:${MYSQL_PORT:-3306}:3306');
+    expect(database).not.toMatch(/\n\s+- ['"]?3306:3306/);
+
+    const dockerignore = configuration('.dockerignore');
+    for (const entry of [
+      '.git',
+      '.worktrees',
+      'node_modules',
+      '**/dist',
+      '.env*',
+      '**/.env*',
+      '!**/.env.example',
+      'playwright-report',
+      'test-results',
+      'coverage',
+    ]) {
+      expect(dockerignore).toContain(entry);
+    }
+  });
   it('routes the development SPA and versioned API without losing the request path', () => {
     const nginx = configuration('deploy/nginx/freebbs-development.conf');
     const hostLocations = configuration('deploy/nginx/freebbs-development.locations.conf');

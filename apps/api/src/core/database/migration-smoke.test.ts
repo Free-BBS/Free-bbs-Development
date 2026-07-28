@@ -16,6 +16,7 @@ describe('database migrations', () => {
       '003_tag_definition_contract.sql',
       '004_production_governance.sql',
       '005_business_workflows.sql',
+      '006_domain_reference_integrity.sql',
     ]);
 
     const sql = (await Promise.all(migrations.map(({ path }) => readFile(path, 'utf8')))).join(
@@ -55,6 +56,28 @@ describe('database migrations', () => {
     }
   });
 
+  it('guards existing orphan rows before adding every domain reference constraint', async () => {
+    const migration = await readFile(
+      `${databaseDirectory}/migrations/006_domain_reference_integrity.sql`,
+      'utf8',
+    );
+    const normalized = migration.replace(/\s+/g, ' ');
+    expect(() => splitSqlStatements(migration)).not.toThrow();
+    expect(normalized.match(/SIGNAL SQLSTATE '45000'/g)).toHaveLength(1);
+    expect(normalized.match(/CALL freebbs_fail_domain_reference_integrity/g)).toHaveLength(8);
+    for (const constraint of [
+      'fk_club_memberships_club',
+      'fk_club_memberships_subject',
+      'fk_activities_club',
+      'fk_activity_registrations_activity',
+      'fk_activity_registrations_subject',
+      'fk_sports_checkins_team',
+      'fk_sports_checkins_subject',
+      'fk_finance_records_activity',
+    ]) {
+      expect(normalized).toContain(`ADD CONSTRAINT ${constraint}`);
+    }
+  });
   it('keeps business workflow DDL retry-aware and maps legacy states exactly', async () => {
     const migration = await readFile(
       `${databaseDirectory}/migrations/005_business_workflows.sql`,

@@ -25,6 +25,39 @@ jobs:
       - run: npm ci
       - run: npm run check
 
+  mysql-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: test-only-root-password
+          MYSQL_DATABASE: free_bbs_development
+          MYSQL_USER: freebbs_development
+          MYSQL_PASSWORD: test-only-password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --host=127.0.0.1 --user=root --password=test-only-root-password --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=15
+    env:
+      DATA_MODE: mysql
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: free_bbs_development
+      MYSQL_USER: freebbs_development
+      MYSQL_PASSWORD: test-only-password
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:mysql
   e2e:
     needs: verify
     runs-on: ubuntu-latest

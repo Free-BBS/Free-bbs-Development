@@ -157,7 +157,7 @@ export async function applyMigration(
   try {
     for (const statement of splitSqlStatements(contents)) {
       try {
-        await connection.execute(statement);
+        await connection.query(statement);
       } catch (error) {
         if (!isDuplicateForeignKeyError(error)) throw error;
         const expected = parseForeignKeyDefinition(statement);

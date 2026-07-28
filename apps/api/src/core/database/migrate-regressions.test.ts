@@ -100,10 +100,14 @@ describe('migration parser and integrity regressions', () => {
         }
         return [[], []];
       }),
+      query: vi.fn(),
       beginTransaction: vi.fn().mockResolvedValue(undefined),
       commit: vi.fn().mockResolvedValue(undefined),
       rollback: vi.fn().mockResolvedValue(undefined),
     } as unknown as PoolConnection;
+    (connection.query as unknown as ReturnType<typeof vi.fn>).mockImplementation((sql: string) =>
+      connection.execute(sql),
+    );
     const sql = await readFile(governanceMigrationPath, 'utf8');
     const checksum = calculateChecksum(sql);
     const migration = {
@@ -171,10 +175,14 @@ describe('migration parser and integrity regressions', () => {
         }
         return [[], []];
       }),
+      query: vi.fn(),
       beginTransaction: vi.fn().mockResolvedValue(undefined),
       commit: vi.fn().mockResolvedValue(undefined),
       rollback: vi.fn().mockResolvedValue(undefined),
     } as unknown as PoolConnection;
+    (connection.query as unknown as ReturnType<typeof vi.fn>).mockImplementation((sql: string) =>
+      connection.execute(sql),
+    );
     const sql = await readFile(governanceMigrationPath, 'utf8');
 
     await expect(
