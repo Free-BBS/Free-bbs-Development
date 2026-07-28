@@ -165,4 +165,37 @@ describe('deployment configuration', () => {
     expect(backupService).toContain('EnvironmentFile=/etc/freebbs-development/backup.env');
     expect(backupTimer).toContain('Persistent=true');
   });
+  it('documents the exact protected production release contract', () => {
+    const checklist = configuration('docs/production-release-checklist.md');
+    const index = configuration('docs/README.md');
+    const rootReadme = configuration('README.md');
+
+    for (const value of [
+      'FREEBBS_DOMAIN',
+      'FIRST_SUPER_ADMIN_UID',
+      'RELEASE_SHA',
+      'PREVIOUS_RELEASE_SHA',
+      'sudo scripts/install-server.sh',
+      '/etc/freebbs-development/development.env',
+      '/etc/freebbs-development/backup.env',
+      'production-database',
+      'scripts/create-release-archive.sh',
+      '/usr/local/sbin/deploy-freebbs-development',
+      'http://127.0.0.1:3100/api/development/v1/health',
+      'http://127.0.0.1:3100/api/development/v1/ready',
+      '--rollback-to',
+      '/development/',
+    ]) {
+      expect(checklist).toContain(value);
+    }
+    expect(checklist).toMatch(/protected\s+`main`/i);
+    expect(checklist).toMatch(/self-hosted[\s\S]*production-database/);
+    expect(checklist).toMatch(/不得在生产[^。\n]*seed/i);
+    expect(checklist).not.toMatch(/ALLOW_(?:DEMO|PRODUCTION)_DEMO_SEED/);
+    expect(checklist).toMatch(/forward-only/i);
+    expect(checklist).toContain('FIRST_RELEASE_EMPTY_DB');
+    expect(checklist).toMatch(/production[\s\S]*approval[\s\S]*待审批/);
+    expect(index).toContain('./production-release-checklist.md');
+    expect(rootReadme).toContain('./docs/production-release-checklist.md');
+  });
 });

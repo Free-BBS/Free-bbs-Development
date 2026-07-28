@@ -27,29 +27,30 @@ CREATE DATABASE `free_bbs_development`
   CHARACTER SET utf8mb4
   COLLATE utf8mb4_0900_ai_ci;
 
-CREATE USER 'freebbs_development'@'127.0.0.1'
+CREATE USER 'freebbs_development_app'@'127.0.0.1'
   IDENTIFIED BY '<运行时强密码>';
 GRANT SELECT, INSERT, UPDATE, DELETE
   ON `free_bbs_development`.*
-  TO 'freebbs_development'@'127.0.0.1';
+  TO 'freebbs_development_app'@'127.0.0.1';
 
-CREATE USER 'freebbs_migrator'@'127.0.0.1'
+CREATE USER 'freebbs_development_migration'@'127.0.0.1'
   IDENTIFIED BY '<迁移强密码>';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES,
+  CREATE TEMPORARY TABLES, CREATE ROUTINE, ALTER ROUTINE, EXECUTE
   ON `free_bbs_development`.*
-  TO 'freebbs_migrator'@'127.0.0.1';
+  TO 'freebbs_development_migration'@'127.0.0.1';
 
-CREATE USER 'freebbs_backup'@'127.0.0.1'
+CREATE USER 'freebbs_development_backup'@'127.0.0.1'
   IDENTIFIED BY '<备份强密码>';
 GRANT SELECT, SHOW VIEW, TRIGGER, EVENT
   ON `free_bbs_development`.*
-  TO 'freebbs_backup'@'127.0.0.1';
+  TO 'freebbs_development_backup'@'127.0.0.1';
 GRANT SHOW_ROUTINE ON *.*
-  TO 'freebbs_backup'@'127.0.0.1';
+  TO 'freebbs_development_backup'@'127.0.0.1';
 ```
 
-运行时环境使用 `freebbs_development`；只有执行迁移时临时把 `MYSQL_USER` 和 `MYSQL_PASSWORD` 切换为
-`freebbs_migrator`。当前迁移包含 `ALTER TABLE`，所以运行时账号不足以执行迁移是预期行为。
+运行时环境使用 `freebbs_development_app`；只有执行迁移时临时把 `MYSQL_USER` 和 `MYSQL_PASSWORD` 切换为
+`freebbs_development_migration`。当前迁移包含 `ALTER TABLE`，所以运行时账号不足以执行迁移是预期行为。
 
 若 API 与 MySQL 不在同一主机，应把账号 host 精确限制为 API 的私网来源地址或容器网段，并结合
 防火墙限制 3306；不要为了方便创建可从公网访问的 `'user'@'%'`。Compose 自带数据库用于本地/集成
@@ -186,7 +187,7 @@ npm run admin:bootstrap -- \
 仓库脚本 `scripts/backup.sh` 是 MySQL 逻辑备份入口。执行前：
 
 1. 确认目标目录不在仓库内，并由备份账号独占读写。
-2. 使用只读备份账号或受控的迁移账号；优先通过 `MYSQL_PWD`/选项文件或密钥注入，避免命令行密码。
+2. 只使用独立只读备份账号，通过受保护的 `backup.env` 注入凭据；不得复用应用或迁移账号。
 3. 记录数据库名、应用 commit、迁移列表、UTC 时间和操作者。
 4. 确认磁盘空间和保留策略。
 
@@ -255,8 +256,9 @@ mysql \
 如果 MySQL 实际在私网另一主机，把隧道右侧的 `127.0.0.1:3306` 替换为服务器可访问的精确私网
 地址。完成后关闭 SSH 会话。不得共享隧道、导出全库到个人设备或将查询结果贴到公开渠道。
 
-Adminer 只允许通过 `adminer` profile 临时启动，并绑定服务器 `127.0.0.1`；远程访问也必须经 SSH
-隧道。常规管理继续使用 Web 管理页。
+生产 systemd 拓扑不得使用 Compose 的 `adminer` profile，因为它会连带启动本地开发 MySQL 与迁移
+服务。临时只读账号、独立回环容器、SSH 隧道和停止/撤权命令统一见
+[生产发布与数据恢复检查清单](./production-release-checklist.md)。常规管理继续使用 Web 管理页。
 
 ## 定期核查
 
@@ -287,3 +289,7 @@ Adminer 只允许通过 `adminer` profile 临时启动，并绑定服务器 `127
 
 核对数据库字符集/排序规则、全部迁移记录、应用版本和 `databaseMode`。用 API 的
 `X-Request-Id` 关联日志，但不要记录原始 Token 或数据库密码。
+
+## 当前生产数据职责（2026-07）
+
+生产账号严格拆为 `freebbs_development_app`、`freebbs_development_migration` 和 `freebbs_development_backup`，凭据不得复用。定时备份、SHA-256、encrypted off-host copy、restore drill、恢复确认和 Adminer 隧道的逐条命令见[生产发布与数据恢复检查清单](./production-release-checklist.md)。迁移是 forward-only；应用回滚前必须确认旧 commit 与当前 schema 兼容，不能把反向删表当作常规回滚。

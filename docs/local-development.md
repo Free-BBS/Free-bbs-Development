@@ -188,3 +188,7 @@ Invoke-RestMethod http://127.0.0.1:3100/api/development/v1/health
 
 先检查五个 `MYSQL_*` 变量，再检查迁移是否成功。健康接口只报告 `databaseMode`，不会泄露数据库
 主机或凭据。更详细的迁移、备份和恢复步骤见 [数据管理](./data-administration.md)。
+
+## 本地与生产的强制边界（2026-07）
+
+`memory + demo` is only for local development and automated tests（仅用于本地开发和自动化测试）。`docker compose --profile seed` 与 `npm run db:seed` 也只处理可丢弃的本地数据；production 环境不得运行 `npm run db:seed`，不得使用 demo 身份或把本地 Compose 密码复制到服务器。生产操作统一转到[生产发布与数据恢复检查清单](./production-release-checklist.md)。

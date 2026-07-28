@@ -85,3 +85,7 @@ npx playwright test
 
 - [FreeBBS 主站](https://www.free-bbs.cn/)
 - [FreeBBS 主站源码](https://github.com/Free-BBS/freebbs-web)
+
+## 生产发布入口
+
+生产安装、三个数据库账号、备份与恢复、commit 归档、冒烟和回滚统一按[生产发布与数据恢复检查清单](./docs/production-release-checklist.md)执行。操作者必须先确认 `FREEBBS_DOMAIN` 与 `RELEASE_SHA`，从当前 release 证据派生可选的 `PREVIOUS_RELEASE_SHA`；`FIRST_SUPER_ADMIN_UID` 只在首次初始化时使用。本地 demo 或 seed 命令不能作为生产步骤。

@@ -48,3 +48,7 @@ npx playwright test
 ```
 
 本地 Web 入口为 `http://localhost:5173/development/`。生产路径约定为 `https://<主站域名>/development/`，实际域名和上线状态应以部署负责人公告为准。
+
+### 生产发布负责人
+
+- [生产发布与数据恢复检查清单](./production-release-checklist.md)：首次安装、三个最小权限数据库账号、备份/异地加密副本、迁移、发布、冒烟、回滚和恢复演练的唯一执行清单。

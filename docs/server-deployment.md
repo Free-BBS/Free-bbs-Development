@@ -13,9 +13,9 @@ https://<主站域名>/api/development/v1/  -> 发展端 API（Nginx 转发到 1
 ```
 
 访问 `/development` 时，Nginx 应以 308 跳转到 `/development/`。浏览器不应直接访问 API
-容器、MySQL 或 Adminer。主站和发展端同源时，`ALLOWED_ORIGINS` 保持为空。当前 API 只配置端口，
-没有单独的监听地址变量；systemd 部署必须用主机防火墙/安全组阻止公网访问 3100，只允许本机 Nginx
-连接。
+容器、MySQL 或 Adminer。主站和发展端同源时，`ALLOWED_ORIGINS` 保持为空。API 支持 `HOST`；
+生产 systemd unit 固定监听 `127.0.0.1:3100`，并继续用主机防火墙/安全组阻止公网访问 3100，
+只允许本机 Nginx 连接。
 
 ## 发布前检查
 
@@ -28,15 +28,15 @@ docker compose config
 docker compose build
 ```
 
-只有上述命令通过且数据库备份完成后，才进入迁移和切换。保存待发布 commit SHA 与当前线上
-commit SHA，后者是回滚目标。
+只有上述命令通过，并完成后续发布备份或首次发布空库证据，才进入迁移和切换。保存待发布 commit SHA
+与当前线上 commit SHA；后者是回滚目标，首次发布则明确记录没有上一版。
 
 ## GitHub Actions 发布前置条件
 
 `.github/workflows/deploy.yml` 只在受保护的 `main` 分支上运行，并要求 GitHub `production` environment
 批准。仓库或组织管理员必须配置：
 
-- environment variable：`PRODUCTION_URL`；
+- environment variables：`PRODUCTION_URL`、`FREEBBS_DOMAIN`（仅域名，不含协议和路径）；
 - secrets：`DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`。
 
 发布工作流上传不可变的 commit SHA 归档后，只调用服务器预置的受审计入口：
@@ -57,37 +57,21 @@ CI，不会触发发布或迁移。
 
 ## 生产环境文件
 
-systemd 单元统一读取：
-
-```text
-/etc/freebbs-development/development.env
-```
-
-建议由 root 创建并限制读取权限：
+每次发布都从精确 `RELEASE_SHA` 的受审计检出执行非启动、环境文件非覆盖的安装器：
 
 ```bash
-sudo install -d -m 0750 -o root -g freebbs-development /etc/freebbs-development
-sudo install -m 0640 -o root -g freebbs-development /dev/null \
-  /etc/freebbs-development/development.env
+sudo scripts/install-server.sh
+sudo stat -c '%U:%G %a %n' \
+  /etc/freebbs-development/development.env \
+  /etc/freebbs-development/backup.env
 sudoedit /etc/freebbs-development/development.env
+sudoedit /etc/freebbs-development/backup.env
 ```
 
-生产文件至少应由部署负责人填写以下值：
-
-```dotenv
-NODE_ENV=production
-PORT=3100
-DATA_MODE=mysql
-AUTH_MODE=main
-MAIN_SITE_API_BASE_URL=https://<主站域名>
-AUTH_TIMEOUT_MS=3000
-ALLOWED_ORIGINS=
-MYSQL_HOST=127.0.0.1
-MYSQL_PORT=3306
-MYSQL_DATABASE=free_bbs_development
-MYSQL_USER=freebbs_development
-MYSQL_PASSWORD=<从密钥管理系统注入的强密码>
-```
+安装器只在文件不存在时从 `deploy/env/*.env.example` 创建 0640 环境文件；重复执行不会清空已有凭据。
+`development.env` 使用 `freebbs_development_app`，`backup.env` 使用
+`freebbs_development_backup`。生产 API unit 另外固定 `NODE_ENV=production` 和
+`HOST=127.0.0.1`。逐项替换 `CHANGE_ME` 后再发布。
 
 规则：
 
@@ -115,11 +99,13 @@ MYSQL_PASSWORD=<从密钥管理系统注入的强密码>
 
 ## systemd 与主站 Nginx 部署
 
-仓库提供两个 systemd 单元：
+仓库提供应用、Web 验证和数据库备份 systemd 单元：
 
 - `deploy/systemd/freebbs-development-api.service`：持续运行 API；
 - `deploy/systemd/freebbs-development-web.service`：一次性验证静态入口和系统 Nginx 配置，不启动第二个
-  Nginx 进程。
+  Nginx 进程；
+- `deploy/systemd/freebbs-development-backup.service` 与 `.timer`：使用独立备份环境文件执行定时备份、
+  校验和与本机保留期清理。
 
 API 单元固定使用用户/组 `freebbs-development`、工作目录 `/opt/freebbs-development/current` 和
 `/usr/bin/node`。先构建 `apps/api/dist`、`packages/contracts/dist`、`apps/web/dist`，再把经过验证的发布
@@ -138,15 +124,9 @@ API 单元固定使用用户/组 `freebbs-development`、工作目录 `/opt/free
 `/api/development/v1/` 到 `127.0.0.1:3100` 的代理。它转发 Authorization header，以便 API 向主站核验
 登录身份。片段不包含生产域名和 TLS 配置。
 
-先安装静态产物和片段：
-
-```bash
-sudo install -d -m 0755 /usr/share/nginx/html/development
-sudo rsync -a --delete apps/web/dist/ /usr/share/nginx/html/development/
-sudo install -d -m 0755 /etc/nginx/snippets
-sudo install -m 0644 deploy/nginx/freebbs-development.locations.conf \
-  /etc/nginx/snippets/freebbs-development.locations.conf
-```
+Nginx 片段只由 `sudo scripts/install-server.sh` 安装；Web 产物只由 root-owned release hook 指向不可变
+release。不得手工把构建目录同步到 `/usr/share/nginx/html/development`，否则会绕过归档校验、部署锁和
+失败恢复。
 
 在主站对应的 HTTPS `server` 块中加入且只加入一次：
 
@@ -161,61 +141,20 @@ sudo nginx -t
 sudo systemctl reload nginx.service
 ```
 
-### 安装 systemd 单元
+### 安装与启用 systemd 单元
 
-先核对单元中的路径、用户和组是否与服务器一致。若不一致，应在受评审的部署包中调整配置。确认主站
-Nginx 已加载上述片段后安装：
-
-```bash
-sudo install -m 0644 deploy/systemd/freebbs-development-api.service \
-  /etc/systemd/system/freebbs-development-api.service
-sudo install -m 0644 deploy/systemd/freebbs-development-web.service \
-  /etc/systemd/system/freebbs-development-web.service
-sudo systemctl daemon-reload
-sudo systemctl enable --now freebbs-development-api.service
-sudo systemctl enable --now nginx.service
-sudo systemctl enable --now freebbs-development-web.service
-```
-
-Web 单元为 `Type=oneshot`：它只检查 `/usr/share/nginx/html/development/index.html` 与已安装的宿主机
-路由片段可读，随后保持 `active (exited)`。`nginx -t` 只在上面的 reload 前由部署者执行，避免 hardened
-oneshot 重复打开 Nginx 日志或运行文件。实际请求始终由系统 `nginx.service` 承载，因此不会与主站争用
-PID、端口或全局配置。
-检查状态和本机健康：
+API、Web 验证、备份 service/timer 均由 `sudo scripts/install-server.sh` 安装。安装器只执行
+`daemon-reload`，不启动任何服务。release hook 会在选择不可变版本时启动并验证 API/Web；首次发布
+成功后再执行：
 
 ```bash
-sudo systemctl status freebbs-development-api.service --no-pager
-sudo systemctl status nginx.service --no-pager
-sudo systemctl status freebbs-development-web.service --no-pager
-curl --fail --silent --show-error \
-  http://127.0.0.1:3100/api/development/v1/health
+sudo systemctl enable freebbs-development-api.service
+sudo systemctl enable freebbs-development-web.service
+sudo systemctl enable --now freebbs-development-backup.timer
 ```
 
-两个 FreeBBS 单元都启用了 `NoNewPrivileges`、`PrivateTmp`、`ProtectSystem=strict` 和 `ProtectHome`。若单元
-因权限失败，应修正明确的静态目录或服务目录权限，不要整体关闭沙箱保护。
-
-查看日志：
-
-```bash
-sudo journalctl -u freebbs-development-api.service -n 200 --no-pager
-sudo journalctl -u freebbs-development-web.service -n 100 --no-pager
-sudo journalctl -u nginx.service -n 100 --no-pager
-sudo journalctl -u freebbs-development-api.service -f
-```
-
-日志中不得出现 Authorization header、Bearer Token 或数据库密码。API 响应的 `X-Request-Id` 可用于
-关联请求；记录排障信息时优先记录它。
-
-同源冒烟测试（替换占位域名）：
-
-```bash
-curl --fail --silent --show-error --head \
-  https://<主站域名>/development
-curl --fail --silent --show-error \
-  https://<主站域名>/api/development/v1/health
-```
-
-首个请求应返回 308 且 `Location` 为 `/development/`；健康响应只应包含状态、版本和数据库模式。
+日常发布、首次/后续分支和精确验收命令统一见
+[生产发布与数据恢复检查清单](./production-release-checklist.md)。不要手工复制 unit、构建目录或切换链接。
 
 ## Docker Compose 部署
 
@@ -254,26 +193,16 @@ docker compose --profile mysql ps
 ## 回滚
 
 应用回滚不能自动撤销已经执行的数据库迁移。发布前必须判断新旧代码是否都兼容迁移后的结构。
-
-安全回滚流程：
-
-1. 暂停写入或进入维护窗口，保存当前日志和请求 ID。
-2. 将应用切回已记录的上一稳定 commit/image，不运行旧 seed。
-3. 重启 API 和 Web，重新执行健康与权限冒烟测试。
-4. 只有在新迁移不可向后兼容且业务确认允许丢弃迁移后写入时，才从发布前备份恢复数据库。
-5. 数据库恢复应先进入隔离实例验证，再按 [数据管理](./data-administration.md) 执行。
-
-systemd 重启命令：
+发布成功后的回滚只调用 root-owned、带部署锁和失败恢复的同一 hook：
 
 ```bash
-sudo systemctl restart freebbs-development-api.service
-sudo nginx -t
-sudo systemctl reload nginx.service
-sudo systemctl restart freebbs-development-web.service
+sudo /usr/local/sbin/deploy-freebbs-development \
+  --rollback-to "$PREVIOUS_RELEASE_SHA" \
+  --domain "$FREEBBS_DOMAIN"
 ```
 
-Compose 回滚应使用明确的上一 image tag 或上一提交重新构建；不要用无版本的 `latest` 作为唯一回滚
-依据。
+禁止手工分两次切 API/Web 链接或单独重启服务。目标 SHA 取得、首次发布无上一版、回滚验证和数据库
+forward-only 边界见[生产发布与数据恢复检查清单](./production-release-checklist.md)。
 
 ## 故障定位
 
@@ -296,3 +225,11 @@ upstream 和防火墙；端口 3100 不得从公网到达。
 
 用响应 `X-Request-Id` 关联 journal/container 日志，检查迁移状态和数据库连接。不要把数据库凭据或
 原始用户数据粘贴到公开问题单。
+
+## 当前生产执行入口
+
+逐次生产操作统一按[生产发布与数据恢复检查清单](./production-release-checklist.md)执行。服务器配置拆分为
+`/etc/freebbs-development/development.env` 与 `/etc/freebbs-development/backup.env`。首次安装执行
+`sudo scripts/install-server.sh`；正式发布只使用 commit 归档和
+`/usr/local/sbin/deploy-freebbs-development`，不手工复制构建目录。数据库迁移在私网 self-hosted
+runner 或服务器本地执行，Adminer 只能通过回环端口和 SSH 隧道访问。

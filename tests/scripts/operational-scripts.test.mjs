@@ -303,3 +303,75 @@ test('server installer is non-starting, non-overwriting, and installs the audite
   assert.match(backupEnvironment, /MYSQL_USER=freebbs_development_backup/);
   assert.doesNotMatch(environment, /ALLOW_(?:DEMO|PRODUCTION)_DEMO_SEED/);
 });
+
+test('production data runbook keeps accounts, backups, restore, and Adminer private', async () => {
+  const checklist = await readFile(
+    new URL('../../docs/production-release-checklist.md', import.meta.url),
+    'utf8',
+  );
+  const data = await readFile(
+    new URL('../../docs/data-administration.md', import.meta.url),
+    'utf8',
+  );
+  const server = await readFile(
+    new URL('../../docs/server-deployment.md', import.meta.url),
+    'utf8',
+  );
+  const local = await readFile(new URL('../../docs/local-development.md', import.meta.url), 'utf8');
+  const combined = `${checklist}\n${data}\n${server}`;
+
+  for (const account of [
+    'freebbs_development_app',
+    'freebbs_development_migration',
+    'freebbs_development_backup',
+  ]) {
+    assert.match(combined, new RegExp(account));
+  }
+  for (const migrationPrivilege of [
+    'CREATE TEMPORARY TABLES',
+    'CREATE ROUTINE',
+    'ALTER ROUTINE',
+    'EXECUTE',
+  ]) {
+    assert.ok(
+      data.includes(migrationPrivilege),
+      `missing migration privilege: ${migrationPrivilege}`,
+    );
+  }
+  for (const command of [
+    'systemctl enable --now freebbs-development-backup.timer',
+    'sha256sum --check',
+    'age -r "$BACKUP_RECIPIENT"',
+    'http://127.0.0.1:3100/api/development/v1/health',
+    'http://127.0.0.1:3100/api/development/v1/ready',
+    'npm run db:migrate',
+    '--setenv=NODE_ENV=production',
+    'npm run admin:bootstrap --',
+    'ssh -N -L 127.0.0.1:18081:127.0.0.1:8081',
+  ]) {
+    assert.ok(combined.includes(command), `missing production command: ${command}`);
+  }
+  assert.match(combined, /encrypted[\s\S]*off-host/i);
+  assert.match(combined, /restore drill/i);
+  assert.match(combined, /Adminer[\s\S]*127\.0\.0\.1/);
+  assert.match(checklist, /expand\/contract[\s\S]*当前运行版本/);
+  assert.match(checklist, /断网隔离[\s\S]*mysqldump --databases/);
+  assert.doesNotMatch(checklist, /free_bbs_development_restore/);
+  assert.doesNotMatch(checklist, /docker compose --profile adminer/);
+  assert.match(checklist, /--network host[\s\S]*php -S 127\.0\.0\.1:8081/);
+  assert.match(checklist, /\.release-sha[\s\S]*PREVIOUS_RELEASE_SHA/);
+  assert.match(checklist, /FIRST_RELEASE_EMPTY_DB/);
+  assert.match(checklist, /sudo -i[\s\S]*umask 077[\s\S]*age -r/);
+  assert.match(checklist, /release approval[\s\S]*待审批/);
+  assert.ok(
+    checklist.indexOf('## 8. 发布后冒烟与首次管理员初始化') <
+      checklist.indexOf('npm run admin:bootstrap --'),
+    'bootstrap must occur only after the release and initial smoke section',
+  );
+  assert.match(checklist, /--rollback-to "\$PREVIOUS_RELEASE_SHA"/);
+  assert.doesNotMatch(server, /install[^\n]*\/dev\/null[\s\S]{0,120}development\.env/);
+  assert.doesNotMatch(server, /rsync[^\n]*--delete/);
+  assert.doesNotMatch(`${server}\n${data}`, /docker compose --profile adminer/);
+  assert.match(local, /memory \+ demo[\s\S]*(?:only|仅)[\s\S]*(?:local|本地)/i);
+  assert.match(local, /production[\s\S]*(?:never|不得)[\s\S]*db:seed/i);
+});
