@@ -157,9 +157,9 @@ describe('liaison API', () => {
     expect(created.body.data).toMatchObject({ ownerUid: 'demo-admin', status: 'active' });
 
     await request(app)
-      .patch('/api/development/v1/liaison/resources')
+      .post(`/api/development/v1/liaison/resources/${created.body.data.id}/transitions`)
       .set(adminHeaders)
-      .send({ id: created.body.data.id, status: 'archived' })
+      .send({ to: 'archived' })
       .expect(200);
     expect(await store.auditLogs.list({ query: created.body.data.id })).toEqual(
       expect.arrayContaining([

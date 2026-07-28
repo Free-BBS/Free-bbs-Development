@@ -15,7 +15,17 @@ const student: UserContext = {
   tags: [],
 };
 
-const admin: UserContext = { ...student, uid: 'demo-admin', roles: ['platform.super_admin'] };
+const admin = {
+  ...student,
+  uid: 'demo-admin',
+  policies: [
+    {
+      action: 'liaison.resource.*',
+      resource: 'liaison_resource',
+      effect: 'allow' as const,
+    },
+  ],
+};
 
 const resource = {
   id: 'resource-1',
@@ -79,7 +89,7 @@ describe('LiaisonPage', () => {
         resources.push(created as typeof resource);
         return created;
       }
-      if (path === '/liaison/resources' && method === 'PATCH') {
+      if (path === '/liaison/resources/resource-1/transitions' && method === 'POST') {
         resources[0] = { ...resources[0], status: 'archived' };
         return resources[0];
       }
@@ -118,10 +128,10 @@ describe('LiaisonPage', () => {
     await user.click(screen.getByRole('button', { name: '归档 校友联络邮箱' }));
     expect(await screen.findByRole('status')).toHaveTextContent('联络资源已归档');
     expect(request).toHaveBeenCalledWith(
-      '/liaison/resources',
+      '/liaison/resources/resource-1/transitions',
       expect.objectContaining({
-        method: 'PATCH',
-        body: JSON.stringify({ id: 'resource-1', status: 'archived' }),
+        method: 'POST',
+        body: JSON.stringify({ to: 'archived' }),
       }),
     );
     expect(

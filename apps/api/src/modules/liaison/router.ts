@@ -66,7 +66,6 @@ const patchSchema = z
     description: description.optional(),
     category: category.optional(),
     visibility: visibility.optional(),
-    status: status.optional(),
     scope: scope.optional(),
   })
   .strict()
@@ -76,9 +75,10 @@ const patchSchema = z
       value.description !== undefined ||
       value.category !== undefined ||
       value.visibility !== undefined ||
-      value.status !== undefined ||
       value.scope !== undefined,
   );
+const resourceRouteSchema = z.object({ resourceId: identifier }).strict();
+const transitionSchema = z.object({ to: status }).strict();
 
 function send<T>(response: Response, statusCode: number, data: T): void {
   const envelope: ApiEnvelope<T> = {
@@ -198,13 +198,13 @@ export function createLiaisonRouter(options: LiaisonRouterOptions): Router {
     }
 
     const scopeRef = requestedScope(filters);
-    if (filters.visibility === 'organization') {
+    if (filters.visibility === 'organization' && scopeRef !== undefined) {
       if (!readDecision(authentication.actor, scopeRef).allowed) {
         forbid(response);
         return;
       }
     }
-    if (filters.visibility === 'restricted') {
+    if (filters.visibility === 'restricted' && scopeRef !== undefined) {
       const decision = readDecision(authentication.actor, scopeRef);
       if (!decision.allowed || decision.reason === 'base-role-grant') {
         await service.auditDeniedRead(authentication.actor.uid, scopeRef);
@@ -225,6 +225,14 @@ export function createLiaisonRouter(options: LiaisonRouterOptions): Router {
       return;
     }
     send(response, 201, await service.create(actor.uid, input));
+  });
+
+  router.post('/resources/:resourceId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { resourceId } = parse(resourceRouteSchema, request.params);
+    const { to } = parse(transitionSchema, request.body);
+    send(response, 200, await service.transition(actor, resourceId, to));
   });
 
   router.patch('/resources', async (request, response) => {

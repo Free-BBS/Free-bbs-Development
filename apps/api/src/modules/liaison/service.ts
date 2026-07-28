@@ -2,7 +2,6 @@ import type { ScopeRef } from '@freebbs-development/contracts';
 
 import { recordAuditEvent } from '../../core/audit/audit-service.js';
 import { authorize } from '../../core/authorization/authorize.js';
-
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type {
   DevelopmentStore,
@@ -10,6 +9,7 @@ import type {
   ListFilters,
 } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { canTransition } from '../../core/workflow/state-machine.js';
 
 export type LiaisonVisibility = LiaisonResourceRecord['visibility'];
 export type LiaisonStatus = 'active' | 'archived';
@@ -23,11 +23,21 @@ export interface LiaisonResourceInput {
   scope: ScopeRef;
 }
 
-export type LiaisonResourcePatch = Partial<LiaisonResourceInput>;
+export type LiaisonResourcePatch = Partial<Omit<LiaisonResourceInput, 'status'>>;
 
 export interface LiaisonResourceFilters extends ListFilters {
   visibility?: LiaisonVisibility;
 }
+
+const LIAISON_TRANSITIONS = {
+  active: ['archived'],
+  archived: ['active'],
+} as const;
+
+type TransitionResult =
+  | { kind: 'missing' }
+  | { kind: 'updated'; record: LiaisonResourceRecord }
+  | { kind: 'rejected'; from: string; to: string; scope: ScopeRef };
 
 function repositoryFilters(filters: LiaisonResourceFilters): ListFilters {
   return {
@@ -44,6 +54,18 @@ function isPublicResource(resource: LiaisonResourceRecord): boolean {
     resource.scope.type === 'public' &&
     resource.scope.id === '*'
   );
+}
+
+function canUpdate(actor: AuthorizationContext, scope: ScopeRef): boolean {
+  return authorize(actor, {
+    action: 'liaison.resource.update',
+    resource: 'liaison_resource',
+    scope,
+  }).allowed;
+}
+
+function resourceNotFound(): HttpError {
+  return new HttpError(404, 'liaison_resource_not_found', 'Liaison resource not found');
 }
 
 function assertVisibilityScope(visibility: LiaisonVisibility, scope: ScopeRef): void {
@@ -68,7 +90,7 @@ export class LiaisonService {
     const records = await this.store.liaisonResources.list(
       repositoryFilters({ ...filters, scopeType: 'public', scopeId: '*' }),
     );
-    return records.filter(isPublicResource);
+    return records.filter((resource) => isPublicResource(resource) && resource.status === 'active');
   }
 
   async listAuthorized(
@@ -81,6 +103,8 @@ export class LiaisonService {
       for (const resource of candidates) {
         if (filters.visibility !== undefined && resource.visibility !== filters.visibility)
           continue;
+        const mayUpdate = canUpdate(actor, resource.scope);
+        if (resource.status !== 'active' && !mayUpdate) continue;
         if (isPublicResource(resource)) {
           visible.push(resource);
           continue;
@@ -125,6 +149,17 @@ export class LiaisonService {
         ...input,
         ownerUid: actorUid,
       });
+      await recordAuditEvent(transactionStore, {
+        actorUid,
+        action: 'liaison.resource.created',
+        resourceType: 'liaison_resource',
+        resourceId: created.id,
+        details: {
+          status: created.status,
+          visibility: created.visibility,
+          scope: created.scope,
+        },
+      });
       if (created.visibility === 'restricted') {
         await recordAuditEvent(transactionStore, {
           actorUid,
@@ -144,25 +179,28 @@ export class LiaisonService {
     patch: LiaisonResourcePatch,
   ): Promise<LiaisonResourceRecord | null> {
     return this.store.transaction(async (transactionStore) => {
-      const current = await transactionStore.liaisonResources.get(id);
+      const current = await transactionStore.liaisonResources.getForUpdate(id);
       if (current === null) return null;
-      const canUpdate = (scope: ScopeRef) =>
-        authorize(actor, {
-          action: 'liaison.resource.update',
-          resource: 'liaison_resource',
-          scope,
-        }).allowed;
-      if (!canUpdate(current.scope)) {
-        throw new HttpError(404, 'liaison_resource_not_found', 'Liaison resource not found');
-      }
+      if (!canUpdate(actor, current.scope)) throw resourceNotFound();
       const targetScope = patch.scope ?? current.scope;
       const targetVisibility = patch.visibility ?? current.visibility;
       assertVisibilityScope(targetVisibility, targetScope);
-      if (!canUpdate(targetScope)) {
-        throw new HttpError(404, 'liaison_resource_not_found', 'Liaison resource not found');
-      }
+      if (!canUpdate(actor, targetScope)) throw resourceNotFound();
       const updated = await transactionStore.liaisonResources.update(id, patch);
       if (updated === null) return null;
+      await recordAuditEvent(transactionStore, {
+        actorUid: actor.uid,
+        action: 'liaison.resource.updated',
+        resourceType: 'liaison_resource',
+        resourceId: id,
+        details: {
+          changedFields: Object.keys(patch).sort(),
+          fromScope: current.scope,
+          toScope: updated.scope,
+          fromVisibility: current.visibility,
+          toVisibility: updated.visibility,
+        },
+      });
       if (current.visibility === 'restricted' || updated.visibility === 'restricted') {
         await recordAuditEvent(transactionStore, {
           actorUid: actor.uid,
@@ -176,15 +214,6 @@ export class LiaisonService {
           },
         });
       }
-      if (patch.status !== undefined && patch.status !== current.status) {
-        await recordAuditEvent(transactionStore, {
-          actorUid: actor.uid,
-          action: 'liaison.resource.status_changed',
-          resourceType: 'liaison_resource',
-          resourceId: id,
-          details: { from: current.status, to: patch.status, scope: updated.scope },
-        });
-      }
       if (patch.visibility !== undefined && patch.visibility !== current.visibility) {
         await recordAuditEvent(transactionStore, {
           actorUid: actor.uid,
@@ -196,5 +225,54 @@ export class LiaisonService {
       }
       return updated;
     });
+  }
+
+  async transition(
+    actor: AuthorizationContext,
+    id: string,
+    to: LiaisonStatus,
+  ): Promise<LiaisonResourceRecord> {
+    const result = await this.store.transaction<TransitionResult>(async (transactionStore) => {
+      const current = await transactionStore.liaisonResources.getForUpdate(id);
+      if (current === null || !canUpdate(actor, current.scope)) return { kind: 'missing' };
+      const from = current.status;
+      if (
+        !Object.hasOwn(LIAISON_TRANSITIONS, from) ||
+        !canTransition(LIAISON_TRANSITIONS, from as LiaisonStatus, to)
+      ) {
+        return { kind: 'rejected', from, to, scope: current.scope };
+      }
+      const updated = await transactionStore.liaisonResources.update(id, { status: to });
+      if (updated === null) return { kind: 'missing' };
+      await recordAuditEvent(transactionStore, {
+        actorUid: actor.uid,
+        action: 'liaison.resource.status_changed',
+        resourceType: 'liaison_resource',
+        resourceId: id,
+        details: { from, to, outcome: 'accepted', scope: updated.scope },
+      });
+      return { kind: 'updated', record: updated };
+    });
+    if (result.kind === 'missing') throw resourceNotFound();
+    if (result.kind === 'rejected') {
+      await recordAuditEvent(this.store, {
+        actorUid: actor.uid,
+        action: 'liaison.resource.status_changed',
+        resourceType: 'liaison_resource',
+        resourceId: id,
+        details: {
+          from: result.from,
+          to: result.to,
+          outcome: 'rejected',
+          scope: result.scope,
+        },
+      });
+      throw new HttpError(
+        409,
+        'invalid_state_transition',
+        'Invalid liaison resource state transition',
+      );
+    }
+    return result.record;
   }
 }
