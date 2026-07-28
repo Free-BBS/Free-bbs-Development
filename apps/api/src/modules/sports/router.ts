@@ -36,7 +36,7 @@ const createTeamSchema = z
   .object({
     name: z.string().trim().min(1).max(200),
     description: z.string().trim().min(1).max(20_000),
-    status: teamStatus.default('draft'),
+    status: z.literal('draft').default('draft'),
   })
   .strict();
 const patchTeamSchema = z
@@ -44,14 +44,13 @@ const patchTeamSchema = z
     id: identifier,
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().min(1).max(20_000).optional(),
-    status: teamStatus.optional(),
   })
   .strict()
-  .refine(
-    (value) =>
-      value.name !== undefined || value.description !== undefined || value.status !== undefined,
-  );
+  .refine((value) => value.name !== undefined || value.description !== undefined);
 const teamRouteSchema = z.object({ teamId: identifier }).strict();
+const memberRouteSchema = z.object({ teamId: identifier, memberUid: identifier }).strict();
+const transitionSchema = z.object({ to: teamStatus }).strict();
+const memberSchema = z.object({ memberUid: identifier }).strict();
 const checkinDate = z.string().refine((value) => {
   try {
     encodeDateOnly(value);
@@ -137,12 +136,58 @@ export function createSportsRouter(options: SportsRouterOptions): Router {
     send(response, 201, await service.createTeam(actor, input));
   });
 
+  router.post('/teams/:teamId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { teamId } = parse(teamRouteSchema, request.params);
+    const { to } = parse(transitionSchema, request.body);
+    send(response, 200, await service.transitionTeam(actor, teamId, to));
+  });
+
   router.patch('/teams', async (request, response) => {
     const actor = await requireActor(options, request, response);
     if (actor === null) return;
     const input = parse(patchTeamSchema, request.body);
     const { id, ...patch } = input;
     send(response, 200, await service.updateTeam(actor, id, patch));
+  });
+
+  router.get('/teams/:teamId/members', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { teamId } = parse(teamRouteSchema, request.params);
+    send(response, 200, await service.listMembers(actor, teamId));
+  });
+
+  router.post('/teams/:teamId/members', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { teamId } = parse(teamRouteSchema, request.params);
+    const { memberUid } = parse(memberSchema, request.body);
+    send(response, 201, await service.addMember(actor, teamId, memberUid));
+  });
+
+  router.delete('/teams/:teamId/members/:memberUid', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { teamId, memberUid } = parse(memberRouteSchema, request.params);
+    await service.removeMember(actor, teamId, memberUid);
+    response.status(204).send();
+  });
+
+  router.post('/teams/:teamId/captains', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { teamId } = parse(teamRouteSchema, request.params);
+    const { memberUid } = parse(memberSchema, request.body);
+    send(response, 201, await service.grantCaptain(actor, teamId, memberUid));
+  });
+
+  router.delete('/teams/:teamId/captains/:memberUid', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { teamId, memberUid } = parse(memberRouteSchema, request.params);
+    send(response, 200, await service.revokeCaptain(actor, teamId, memberUid));
   });
 
   router.get('/teams/:teamId/checkins', async (request, response) => {

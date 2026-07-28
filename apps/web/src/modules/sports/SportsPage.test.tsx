@@ -30,13 +30,34 @@ const teams = [
   },
 ];
 
-const captain: UserContext = {
+const captain: UserContext & {
+  policies: Array<{
+    action: string;
+    resource: string;
+    effect: 'allow';
+    scope: { type: string; id: string };
+  }>;
+} = {
   uid: 'captain-1',
   displayName: '篮球队队长',
   avatarUrl: null,
   baseRole: 'student',
   roles: [],
   tags: [{ key: 'sports.team_captain', scope: { type: 'sports_team', id: 'team-basketball' } }],
+  policies: [
+    {
+      action: 'sports.checkin.read',
+      resource: 'sports_checkin',
+      effect: 'allow',
+      scope: { type: 'sports_team', id: 'team-basketball' },
+    },
+    {
+      action: 'sports.checkin.create',
+      resource: 'sports_checkin',
+      effect: 'allow',
+      scope: { type: 'sports_team', id: 'team-basketball' },
+    },
+  ],
 };
 
 function authClient(user: UserContext): ApiClient {
@@ -55,6 +76,46 @@ function apiWith(request: DevelopmentApi['request']): DevelopmentApi {
 }
 
 describe('SportsPage', () => {
+  it('manages a scoped team with server-confirmed member and captain state', async () => {
+    const manager: UserContext & {
+      policies: Array<{ action: string; resource: string; scope: { type: string; id: string } }>;
+    } = {
+      ...captain,
+      uid: 'manager-1',
+      tags: [],
+      policies: [
+        {
+          action: 'sports.*',
+          resource: 'sports_team',
+          scope: { type: 'sports_team', id: 'team-basketball' },
+        },
+      ],
+    };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce([teams[0]])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce({ id: 'member-1', memberUid: 'student-18' })
+      .mockResolvedValueOnce([{ id: 'member-1', memberUid: 'student-18' }]);
+    const user = userEvent.setup();
+
+    render(
+      <AuthProvider client={authClient(manager)}>
+        <SportsPage client={apiWith(request as DevelopmentApi['request'])} />
+      </AuthProvider>,
+    );
+
+    const team = await screen.findByRole('article', { name: teams[0].name });
+    expect(within(team).getByText('sports_team/team-basketball')).toBeInTheDocument();
+    await user.type(within(team).getByLabelText('添加成员 UID'), 'student-18');
+    await user.click(within(team).getByRole('button', { name: '添加成员' }));
+    expect(request).toHaveBeenCalledWith('/sports/teams/team-basketball/members', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ memberUid: 'student-18' }),
+    });
+    expect(await within(team).findByText('student-18')).toBeInTheDocument();
+  });
   it('shows loading, empty and error list states', async () => {
     let release: ((value: unknown[]) => void) | undefined;
     const loadingApi = apiWith(
@@ -123,8 +184,111 @@ describe('SportsPage', () => {
     await waitFor(() => expect(within(ownTeam).getByText(/student-18/)).toBeInTheDocument());
   });
 
+  it('loads check-in history for a read-only scoped user without showing create controls', async () => {
+    const reader = {
+      ...captain,
+      uid: 'sports-reader',
+      tags: [],
+      policies: [
+        {
+          action: 'sports.checkin.read',
+          resource: 'sports_checkin',
+          effect: 'allow' as const,
+          scope: { type: 'sports_team', id: 'team-basketball' },
+        },
+      ],
+    };
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce([teams[0]])
+      .mockResolvedValueOnce([
+        {
+          id: 'checkin-read-only',
+          teamId: 'team-basketball',
+          memberUid: 'student-18',
+          checkinDate: '2026-07-22',
+          status: 'present',
+        },
+      ]);
+
+    render(
+      <AuthProvider client={authClient(reader)}>
+        <SportsPage client={apiWith(request as DevelopmentApi['request'])} />
+      </AuthProvider>,
+    );
+
+    const team = await screen.findByRole('article', { name: teams[0].name });
+    expect(await within(team).findByText(/student-18/)).toBeInTheDocument();
+    expect(within(team).queryByRole('button', { name: '记录签到' })).not.toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith('/sports/teams/team-basketball/checkins');
+  });
+  it('keeps draft roster controls but makes non-active check-ins and archived teams read-only', async () => {
+    const manager = {
+      ...captain,
+      uid: 'sports-manager',
+      tags: [],
+      policies: [
+        { action: 'sports.team.update', resource: 'sports_team', effect: 'allow' as const },
+        { action: 'sports.checkin.read', resource: 'sports_checkin', effect: 'allow' as const },
+        { action: 'sports.checkin.create', resource: 'sports_checkin', effect: 'allow' as const },
+      ],
+    };
+    const stateTeams = [
+      { ...teams[0], id: 'team-draft', name: 'Draft team', status: 'draft' },
+      { ...teams[1], id: 'team-archived', name: 'Archived team', status: 'archived' },
+    ];
+    const request = vi.fn().mockImplementation((path: string) => {
+      if (path === '/sports/teams') return Promise.resolve(stateTeams);
+      if (path.endsWith('/members')) {
+        return Promise.resolve(
+          path.includes('archived')
+            ? [{ id: 'member-old', memberUid: 'archived-member', isCaptain: false }]
+            : [],
+        );
+      }
+      if (path.endsWith('/checkins')) {
+        return Promise.resolve([
+          {
+            id: `checkin-${path}`,
+            teamId: path.includes('archived') ? 'team-archived' : 'team-draft',
+            memberUid: path.includes('archived') ? 'archived-member' : 'draft-member',
+            checkinDate: '2026-07-22',
+            status: 'present',
+          },
+        ]);
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+
+    render(
+      <AuthProvider client={authClient(manager)}>
+        <SportsPage client={apiWith(request as DevelopmentApi['request'])} />
+      </AuthProvider>,
+    );
+
+    const draft = await screen.findByRole('article', { name: 'Draft team' });
+    expect(await within(draft).findByText(/draft-member/)).toBeInTheDocument();
+    expect(within(draft).getByRole('button', { name: '添加成员' })).toBeInTheDocument();
+    expect(within(draft).queryByRole('button', { name: '记录签到' })).not.toBeInTheDocument();
+
+    const archived = screen.getByRole('article', { name: 'Archived team' });
+    expect(
+      within(within(archived).getByRole('list', { name: 'Archived team成员列表' })).getByText(
+        /archived-member/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(archived).queryByRole('button', { name: '添加成员' })).not.toBeInTheDocument();
+    expect(within(archived).queryByRole('button', { name: '授予队长' })).not.toBeInTheDocument();
+    expect(within(archived).queryByRole('button', { name: '记录签到' })).not.toBeInTheDocument();
+  });
   it('does not expose captain controls to an unscoped student', async () => {
-    const student = { ...captain, uid: 'student-1', displayName: '普通同学', tags: [] };
+    const student = {
+      ...captain,
+      uid: 'student-1',
+      displayName: '普通同学',
+      tags: [],
+      policies: [],
+    };
     const request = vi.fn().mockResolvedValue(teams);
     render(
       <AuthProvider client={authClient(student)}>

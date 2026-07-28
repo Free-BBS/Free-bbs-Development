@@ -82,11 +82,17 @@ describe('sports teams API', () => {
     await request(app)
       .patch('/api/development/v1/sports/teams')
       .set(sportsLead)
-      .send({ id: created.body.data.id, status: 'active' })
+      .send({ id: created.body.data.id, description: 'Updated swimming team.' })
+      .expect(200);
+    await request(app)
+      .post(`/api/development/v1/sports/teams/${created.body.data.id}/transitions`)
+      .set(sportsLead)
+      .send({ to: 'active' })
       .expect(200);
     expect(await store.auditLogs.list({ query: created.body.data.id })).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ action: 'sports.team.created' }),
+        expect.objectContaining({ action: 'sports.team.updated' }),
         expect.objectContaining({ action: 'sports.team.status_changed' }),
       ]),
     );
@@ -224,6 +230,11 @@ describe('sports check-ins API', () => {
       .get('/api/development/v1/sports/teams/team-basketball/checkins')
       .set(sportsLead)
       .expect(200);
+    await request(app)
+      .post('/api/development/v1/sports/teams/team-badminton/members')
+      .set(sportsLead)
+      .send({ memberUid: 'demo-student' })
+      .expect(201);
     await request(app)
       .post('/api/development/v1/sports/teams/team-badminton/checkins')
       .set(sportsLead)
