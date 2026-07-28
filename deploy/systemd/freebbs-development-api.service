@@ -8,10 +8,8 @@ Type=simple
 User=freebbs-development
 Group=freebbs-development
 WorkingDirectory=/opt/freebbs-development/current
-Environment=NODE_ENV=production
-Environment=HOST=127.0.0.1
 EnvironmentFile=/etc/freebbs-development/development.env
-ExecStart=/usr/bin/node apps/api/dist/server.js
+ExecStart=/usr/bin/env NODE_ENV=production HOST=127.0.0.1 /usr/bin/node apps/api/dist/server.js
 Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=20s

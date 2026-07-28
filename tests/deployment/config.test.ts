@@ -105,6 +105,10 @@ describe('deployment configuration', () => {
     }
 
     const webUnit = configuration('deploy/systemd/freebbs-development-web.service');
+    const apiUnit = configuration('deploy/systemd/freebbs-development-api.service');
+    expect(apiUnit).toContain(
+      'ExecStart=/usr/bin/env NODE_ENV=production HOST=127.0.0.1 /usr/bin/node apps/api/dist/server.js',
+    );
     expect(webUnit).toContain('Type=oneshot');
     expect(webUnit).toContain('Requires=nginx.service');
     expect(webUnit).not.toContain('daemon off;');
