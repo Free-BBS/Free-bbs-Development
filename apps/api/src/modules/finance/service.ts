@@ -2,20 +2,35 @@ import type { ScopeRef } from '@freebbs-development/contracts';
 
 import { recordAuditEvent } from '../../core/audit/audit-service.js';
 import { authorize } from '../../core/authorization/authorize.js';
+import { loadAuthorizationContext } from '../../core/authorization/load-authorization-context.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore, FinanceRecord, ListFilters } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { canTransition } from '../../core/workflow/state-machine.js';
 
-export type FinanceStatus = 'draft' | 'submitted' | 'approved' | 'settled' | 'rejected';
+export type FinanceStatus = 'draft' | 'submitted' | 'approved' | 'rejected' | 'archived';
 export interface FinanceInput {
   title: string;
   kind: 'budget' | 'settlement';
   amountCents: number;
   activityId: string | null;
-  status: FinanceStatus;
+  status: 'draft';
   scope: ScopeRef;
 }
-export type FinancePatch = Partial<FinanceInput>;
+export type FinancePatch = Partial<Omit<FinanceInput, 'status'>>;
+
+const FINANCE_TRANSITIONS = {
+  draft: ['submitted'],
+  submitted: ['approved', 'rejected'],
+  approved: ['archived'],
+  rejected: ['draft', 'archived'],
+  archived: [],
+} as const;
+
+type TransitionResult =
+  | { kind: 'missing' }
+  | { kind: 'updated'; record: FinanceRecord }
+  | { kind: 'rejected'; from: string; to: string; scope: ScopeRef };
 
 function can(actor: AuthorizationContext, action: string, scope?: ScopeRef): boolean {
   return authorize(actor, { action, resource: 'finance_record', scope }).allowed;
@@ -42,6 +57,21 @@ function hasScopedReadGrant(actor: AuthorizationContext): boolean {
 
 function financeNotFound(): HttpError {
   return new HttpError(404, 'finance_record_not_found', 'Finance record not found');
+}
+
+function canMaintain(
+  actor: AuthorizationContext,
+  record: FinanceRecord,
+  targetScope: ScopeRef = record.scope,
+): boolean {
+  const manager =
+    can(actor, 'finance.record.update', record.scope) &&
+    can(actor, 'finance.record.update', targetScope);
+  const creator =
+    record.ownerUid === actor.uid &&
+    can(actor, 'finance.record.create', record.scope) &&
+    can(actor, 'finance.record.create', targetScope);
+  return manager || creator;
 }
 
 function assertActivityScope(activityId: string | null, scope: ScopeRef): void {
@@ -79,7 +109,11 @@ export class FinanceService {
         const activity = await store.activities.getForUpdate(input.activityId);
         if (activity === null) throw new HttpError(404, 'activity_not_found', 'Activity not found');
       }
-      const created = await store.financeRecords.create({ ...input, ownerUid: actor.uid });
+      const created = await store.financeRecords.create({
+        ...input,
+        status: 'draft',
+        ownerUid: actor.uid,
+      });
       await recordAuditEvent(store, {
         actorUid: actor.uid,
         action: 'finance.record.created',
@@ -103,16 +137,10 @@ export class FinanceService {
   ): Promise<FinanceRecord> {
     return this.store.transaction(async (store) => {
       const current = await store.financeRecords.getForUpdate(id);
-      if (current === null || !can(actor, 'finance.record.update', current.scope)) {
-        throw financeNotFound();
-      }
+      if (current === null) throw financeNotFound();
+      const freshActor = await loadAuthorizationContext(store, actor, new Date());
       const targetScope = patch.scope ?? current.scope;
-      if (!can(actor, 'finance.record.update', targetScope)) throw financeNotFound();
-      if (
-        patch.status === 'approved' &&
-        (!can(actor, 'finance.record.approve', current.scope) ||
-          !can(actor, 'finance.record.approve', targetScope))
-      ) {
+      if (current.status !== 'draft' || !canMaintain(freshActor, current, targetScope)) {
         throw financeNotFound();
       }
       const targetActivityId =
@@ -126,21 +154,66 @@ export class FinanceService {
       if (updated === null) throw financeNotFound();
       await recordAuditEvent(store, {
         actorUid: actor.uid,
-        action:
-          patch.status !== undefined && patch.status !== current.status
-            ? 'finance.record.status_changed'
-            : 'finance.record.updated',
+        action: 'finance.record.updated',
         resourceType: 'finance_record',
         resourceId: id,
         details: {
           changedFields: Object.keys(patch).sort(),
-          fromStatus: current.status,
-          toStatus: updated.status,
           fromScope: current.scope,
           toScope: updated.scope,
         },
       });
       return updated;
     });
+  }
+
+  async transition(
+    actor: AuthorizationContext,
+    id: string,
+    to: FinanceStatus,
+  ): Promise<FinanceRecord> {
+    const result = await this.store.transaction<TransitionResult>(async (store) => {
+      const current = await store.financeRecords.getForUpdate(id);
+      if (current === null) return { kind: 'missing' };
+      const freshActor = await loadAuthorizationContext(store, actor, new Date());
+      const from = current.status as FinanceStatus;
+      const approvalEdge = from === 'submitted' && (to === 'approved' || to === 'rejected');
+      const creatorEdge =
+        (from === 'draft' && to === 'submitted') || (from === 'rejected' && to === 'draft');
+      const permitted = approvalEdge
+        ? can(freshActor, 'finance.record.approve', current.scope)
+        : creatorEdge
+          ? canMaintain(freshActor, current)
+          : can(freshActor, 'finance.record.update', current.scope);
+      if (!permitted) return { kind: 'missing' };
+      if (
+        !Object.hasOwn(FINANCE_TRANSITIONS, from) ||
+        !canTransition(FINANCE_TRANSITIONS, from, to)
+      ) {
+        return { kind: 'rejected', from, to, scope: current.scope };
+      }
+      const updated = await store.financeRecords.update(id, { status: to });
+      if (updated === null) return { kind: 'missing' };
+      await recordAuditEvent(store, {
+        actorUid: actor.uid,
+        action: 'finance.record.status_changed',
+        resourceType: 'finance_record',
+        resourceId: id,
+        details: { from, to, outcome: 'accepted', scope: updated.scope },
+      });
+      return { kind: 'updated', record: updated };
+    });
+    if (result.kind === 'missing') throw financeNotFound();
+    if (result.kind === 'rejected') {
+      await recordAuditEvent(this.store, {
+        actorUid: actor.uid,
+        action: 'finance.record.status_changed',
+        resourceType: 'finance_record',
+        resourceId: id,
+        details: { from: result.from, to: result.to, outcome: 'rejected', scope: result.scope },
+      });
+      throw new HttpError(409, 'invalid_state_transition', 'Invalid finance state transition');
+    }
+    return result.record;
   }
 }

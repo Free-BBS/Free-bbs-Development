@@ -2,10 +2,80 @@ import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import { createApp } from '../../app.js';
+import { DemoAuthClient } from '../../core/auth/demo-auth-client.js';
+import { loadAuthorizationContext } from '../../core/authorization/load-authorization-context.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import { createMemoryStore } from '../../core/database/memory-store.js';
+import { FinanceService } from './service.js';
+
+const adminHeaders = { 'X-Demo-User': 'demo-admin' };
 
 describe('finance security regressions', () => {
+  it('recompiles scoped permissions after locking transitions and updates', async () => {
+    const store = createMemoryStore();
+    const scope = { type: 'organization', id: 'revoked-finance-scope' } as const;
+    const identity: AuthorizationContext = {
+      uid: 'revoked-finance-lead',
+      displayName: 'Revoked finance lead',
+      avatarUrl: null,
+      baseRole: 'student',
+      roles: [],
+      tags: [],
+    };
+    await store.subjects.create({
+      uid: identity.uid,
+      displayName: identity.displayName,
+      avatarUrl: identity.avatarUrl,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
+    const assignment = await store.roleAssignments.create({
+      subjectUid: identity.uid,
+      roleKey: 'domain.rights_development_lead',
+      expiresAt: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope,
+    });
+    const submitted = await store.financeRecords.create({
+      title: 'Submitted before revocation',
+      kind: 'budget',
+      amountCents: 1000,
+      activityId: null,
+      status: 'submitted',
+      ownerUid: identity.uid,
+      scope,
+    });
+    const draft = await store.financeRecords.create({
+      title: 'Draft before revocation',
+      kind: 'budget',
+      amountCents: 2000,
+      activityId: null,
+      status: 'draft',
+      ownerUid: 'another-owner',
+      scope,
+    });
+    const staleActor = await loadAuthorizationContext(store, identity, new Date());
+    await store.roleAssignments.update(assignment.id, { status: 'inactive' });
+
+    const service = new FinanceService(store);
+    await expect(service.transition(staleActor, submitted.id, 'approved')).rejects.toMatchObject({
+      status: 404,
+      code: 'finance_record_not_found',
+    });
+    await expect(
+      service.update(staleActor, draft.id, { title: 'Stale update' }),
+    ).rejects.toMatchObject({
+      status: 404,
+      code: 'finance_record_not_found',
+    });
+    expect(await store.financeRecords.get(submitted.id)).toMatchObject({ status: 'submitted' });
+    expect(await store.financeRecords.get(draft.id)).toMatchObject({
+      title: 'Draft before revocation',
+    });
+  });
+
   it('does not let an update-only finance director approve a record', async () => {
     const store = createMemoryStore();
     const actor: AuthorizationContext = {
@@ -16,6 +86,22 @@ describe('finance security regressions', () => {
       roles: ['department.rights_development_director'],
       tags: [],
     };
+    await store.subjects.create({
+      uid: actor.uid,
+      displayName: actor.displayName,
+      avatarUrl: actor.avatarUrl,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
+    await store.roleAssignments.create({
+      subjectUid: actor.uid,
+      roleKey: 'department.rights_development_director',
+      expiresAt: null,
+      status: 'active',
+      ownerUid: 'demo-admin',
+      scope: { type: 'public', id: '*' },
+    });
     const record = await store.financeRecords.create({
       title: 'Submitted budget',
       kind: 'budget',
@@ -32,17 +118,59 @@ describe('finance security regressions', () => {
     });
 
     const known = await request(app)
-      .patch('/api/development/v1/finance/records')
+      .post(`/api/development/v1/finance/records/${record.id}/transitions`)
       .set('X-Demo-User', actor.uid)
-      .send({ id: record.id, status: 'approved' })
+      .send({ to: 'approved' })
       .expect(404);
     const unknown = await request(app)
-      .patch('/api/development/v1/finance/records')
+      .post('/api/development/v1/finance/records/missing-record/transitions')
       .set('X-Demo-User', actor.uid)
-      .send({ id: 'missing-record', status: 'approved' })
+      .send({ to: 'approved' })
       .expect(404);
     expect(known.body.data.error.code).toBe(unknown.body.data.error.code);
     expect(await store.financeRecords.get(record.id)).toMatchObject({ status: 'submitted' });
+  });
+
+  it('requires rejected records to return to draft before editing', async () => {
+    const store = createMemoryStore();
+    const app = createApp({
+      store,
+      authMode: 'demo',
+      authClient: new DemoAuthClient(['demo-admin']),
+    });
+    const created = await request(app)
+      .post('/api/development/v1/finance/records')
+      .set(adminHeaders)
+      .send({
+        title: 'Editable after rejection',
+        kind: 'budget',
+        amountCents: 1000,
+        scope: { type: 'public', id: '*' },
+      })
+      .expect(201);
+    for (const to of ['submitted', 'rejected']) {
+      await request(app)
+        .post(`/api/development/v1/finance/records/${created.body.data.id}/transitions`)
+        .set(adminHeaders)
+        .send({ to })
+        .expect(200);
+    }
+    await request(app)
+      .patch('/api/development/v1/finance/records')
+      .set(adminHeaders)
+      .send({ id: created.body.data.id, title: 'Too early' })
+      .expect(404);
+    await request(app)
+      .post(`/api/development/v1/finance/records/${created.body.data.id}/transitions`)
+      .set(adminHeaders)
+      .send({ to: 'draft' })
+      .expect(200);
+    const edited = await request(app)
+      .patch('/api/development/v1/finance/records')
+      .set(adminHeaders)
+      .send({ id: created.body.data.id, title: 'Revised draft' })
+      .expect(200);
+    expect(edited.body.data.title).toBe('Revised draft');
   });
 
   it('rejects numeric strings and omits titles and amounts from transactional audit details', async () => {
@@ -95,7 +223,6 @@ describe('finance security regressions', () => {
         title: 'Sensitive vendor alpha',
         kind: 'settlement',
         amountCents: 712345,
-        status: 'submitted',
         scope: { type: 'public', id: '*' },
       })
       .expect(201);

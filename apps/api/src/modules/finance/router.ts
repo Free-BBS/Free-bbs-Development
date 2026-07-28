@@ -22,7 +22,7 @@ interface ErrorData {
 
 const identifier = z.string().trim().min(1).max(128);
 const scope = z.object({ type: identifier.regex(/^[a-z][a-z0-9_]*$/), id: identifier }).strict();
-const status = z.enum(['draft', 'submitted', 'approved', 'settled', 'rejected']);
+const status = z.enum(['draft', 'submitted', 'approved', 'rejected', 'archived']);
 const kind = z.enum(['budget', 'settlement']);
 const amountCents = z.number().int().safe().nonnegative();
 const querySchema = z
@@ -40,7 +40,7 @@ const createSchema = z
     kind,
     amountCents,
     activityId: identifier.nullable().default(null),
-    status: status.default('draft'),
+    status: z.literal('draft').default('draft'),
     scope,
   })
   .strict();
@@ -51,7 +51,6 @@ const patchSchema = z
     kind: kind.optional(),
     amountCents: amountCents.optional(),
     activityId: identifier.nullable().optional(),
-    status: status.optional(),
     scope: scope.optional(),
   })
   .strict()
@@ -61,9 +60,10 @@ const patchSchema = z
       value.kind !== undefined ||
       value.amountCents !== undefined ||
       value.activityId !== undefined ||
-      value.status !== undefined ||
       value.scope !== undefined,
   );
+const routeSchema = z.object({ recordId: identifier }).strict();
+const transitionSchema = z.object({ to: status }).strict();
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
   const result = schema.safeParse(value);
@@ -134,9 +134,6 @@ export function createFinanceRouter(options: FinanceRouterOptions): Router {
     if (actor === null) return;
     const input = parse(createSchema, request.body);
     if (!allowed(actor, 'finance.record.create', input.scope)) return forbid(response);
-    if (input.status === 'approved' && !allowed(actor, 'finance.record.approve', input.scope)) {
-      return forbid(response);
-    }
     send(response, 201, await service.create(actor, input));
   });
 
@@ -146,6 +143,14 @@ export function createFinanceRouter(options: FinanceRouterOptions): Router {
     const input = parse(patchSchema, request.body);
     const { id, ...patch } = input;
     send(response, 200, await service.update(actor, id, patch));
+  });
+
+  router.post('/records/:recordId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { recordId } = parse(routeSchema, request.params);
+    const { to } = parse(transitionSchema, request.body);
+    send(response, 200, await service.transition(actor, recordId, to));
   });
 
   return router;

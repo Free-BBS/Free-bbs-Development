@@ -45,7 +45,6 @@ describe('finance API', () => {
         kind: 'budget',
         amountCents: 0,
         activityId: 'activity-orientation',
-        status: 'submitted',
         scope: { type: 'activity', id: 'activity-orientation' },
       })
       .expect(201);
@@ -53,15 +52,27 @@ describe('finance API', () => {
       amountCents: 0,
       ownerUid: 'demo-admin',
       activityId: 'activity-orientation',
+      status: 'draft',
     });
 
     await request(app)
       .patch('/api/development/v1/finance/records')
       .set(admin)
-      .send({ id: created.body.data.id, amountCents: 2500, status: 'approved' })
+      .send({ id: created.body.data.id, amountCents: 2500 })
       .expect(200);
+    await request(app)
+      .post(`/api/development/v1/finance/records/${created.body.data.id}/transitions`)
+      .set(admin)
+      .send({ to: 'submitted' })
+      .expect(200);
+    await request(app)
+      .post(`/api/development/v1/finance/records/${created.body.data.id}/transitions`)
+      .set(admin)
+      .send({ to: 'approved' })
+      .expect(200);
+
     const audit = await store.auditLogs.list({ query: created.body.data.id });
-    expect(audit.length).toBeGreaterThanOrEqual(2);
+    expect(audit.length).toBeGreaterThanOrEqual(4);
     expect(JSON.stringify(audit)).not.toContain('2500');
   });
 
@@ -82,6 +93,32 @@ describe('finance API', () => {
         .expect(400);
     },
   );
+
+  it('rejects invalid and cross-scope activity references without creating records', async () => {
+    const { app } = fixture();
+    for (const body of [
+      {
+        title: 'Missing activity',
+        kind: 'budget',
+        amountCents: 100,
+        activityId: 'activity-missing',
+        scope: { type: 'activity', id: 'activity-missing' },
+      },
+      {
+        title: 'Cross-scope activity',
+        kind: 'budget',
+        amountCents: 100,
+        activityId: 'activity-orientation',
+        scope: { type: 'public', id: '*' },
+      },
+    ]) {
+      await request(app)
+        .post('/api/development/v1/finance/records')
+        .set(admin)
+        .send(body)
+        .expect(body.activityId === 'activity-missing' ? 404 : 400);
+    }
+  });
 
   it('strictly rejects client-owned fields and fails closed without a module row', async () => {
     const { app } = fixture();
