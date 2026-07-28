@@ -375,3 +375,11 @@ test('production data runbook keeps accounts, backups, restore, and Adminer priv
   assert.match(local, /memory \+ demo[\s\S]*(?:only|仅)[\s\S]*(?:local|本地)/i);
   assert.match(local, /production[\s\S]*(?:never|不得)[\s\S]*db:seed/i);
 });
+
+test('demo seed leaves highest authority to the guarded bootstrap workflow', async () => {
+  const seed = await readFile(
+    new URL('../../database/seeds/001_demo.sql', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(seed, /'demo-admin'\s*,\s*'platform\.super_admin'/);
+});

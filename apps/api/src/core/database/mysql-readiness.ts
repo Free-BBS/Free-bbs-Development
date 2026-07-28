@@ -1,4 +1,4 @@
-import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import type { Pool, RowDataPacket } from 'mysql2/promise';
 
@@ -10,7 +10,7 @@ interface AppliedMigrationRow extends RowDataPacket {
 }
 
 function defaultMigrationsDirectory(): string {
-  return resolve(process.cwd(), 'database/migrations');
+  return fileURLToPath(new URL('../../../../../database/migrations/', import.meta.url));
 }
 
 export async function checkMySqlReadiness(

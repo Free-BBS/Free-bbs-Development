@@ -1,11 +1,12 @@
 import { createHash } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import type { Pool } from 'mysql2/promise';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { discoverMigrations } from './migrate.js';
 import { checkMySqlReadiness } from './mysql-readiness.js';
 
 const temporaryDirectories: string[] = [];
@@ -86,5 +87,21 @@ describe('MySQL readiness', () => {
       .mockResolvedValueOnce([rows]);
 
     await expect(checkMySqlReadiness({ execute } as unknown as Pool, directory)).rejects.toThrow();
+  });
+
+  it('finds repository migrations when the API starts from its workspace directory', async () => {
+    const repositoryRoot = process.cwd();
+    const migrations = await discoverMigrations(resolve(repositoryRoot, 'database/migrations'));
+    const execute = vi
+      .fn()
+      .mockResolvedValueOnce([[{ alive: 1 }]])
+      .mockResolvedValueOnce([migrations.map(({ name, checksum }) => ({ name, checksum }))]);
+    const cwd = vi.spyOn(process, 'cwd').mockReturnValue(resolve(repositoryRoot, 'apps/api'));
+
+    try {
+      await expect(checkMySqlReadiness({ execute } as unknown as Pool)).resolves.toBeUndefined();
+    } finally {
+      cwd.mockRestore();
+    }
   });
 });

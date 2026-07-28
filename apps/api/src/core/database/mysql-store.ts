@@ -469,7 +469,7 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
     );
     const total = Number(countRows[0]?.total ?? 0);
     const offset = (request.page - 1) * request.pageSize;
-    const [rows] = await this.executor.execute<RowDataPacket[]>(
+    const [rows] = await this.executor.query<RowDataPacket[]>(
       `SELECT * FROM ${this.definition.table}${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
       [...values, request.pageSize, offset],
     );

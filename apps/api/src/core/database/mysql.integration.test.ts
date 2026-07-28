@@ -13,6 +13,7 @@ let handle: MySqlStoreHandle;
 
 async function cleanCreatedRecords(): Promise<void> {
   for (const table of [
+    'audit_logs',
     'finance_records',
     'liaison_resources',
     'sports_checkins',
@@ -211,5 +212,43 @@ integration('real MySQL 8 store integration', () => {
         scope: publicScope,
       }),
     ).rejects.toMatchObject(foreignKeyFailure);
+  });
+  it('pages generic repository records through the real MySQL 8 adapter', async () => {
+    await expect(
+      handle.store.subjects.page({ query: runId }, { page: 1, pageSize: 1 }),
+    ).resolves.toMatchObject({
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      items: [{ uid: expect.stringContaining(runId) }],
+    });
+  });
+  it('pages filtered audit logs through the real MySQL 8 adapter', async () => {
+    for (const resourceId of [`${runId}-audit-a`, `${runId}-audit-b`]) {
+      await handle.store.auditLogs.create({
+        actorUid: runId,
+        action: 'admin.integration',
+        resourceType: 'integration',
+        resourceId,
+        details: {},
+        status: 'active',
+        ownerUid: runId,
+        scope: publicScope,
+      });
+    }
+
+    await expect(
+      handle.store.queryAuditLogs({
+        actorUid: runId,
+        action: 'admin.integration',
+        page: 1,
+        pageSize: 1,
+      }),
+    ).resolves.toMatchObject({
+      page: 1,
+      pageSize: 1,
+      total: 2,
+      items: [{ actorUid: runId, action: 'admin.integration' }],
+    });
   });
 });

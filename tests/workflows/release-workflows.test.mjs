@@ -21,6 +21,13 @@ test('CI validates pull requests without deploying and preserves Playwright evid
   assert.match(source, /npm run check/);
   assert.match(source, /npx playwright install --with-deps chromium/);
   assert.match(source, /npx playwright test/);
+  assert.match(source, /\be2e-memory:/);
+  assert.match(source, /\be2e-production:/);
+  assert.match(source, /playwright\.production\.config\.ts/);
+  assert.match(source, /ALLOW_DEMO_SEED:\s*true/);
+  assert.match(source, /PRODUCTION_E2E_SHUTDOWN_DB:\s*true/);
+  assert.match(source, /admin:bootstrap --\s*--uid demo-admin/);
+  assert.match(source, /BOOTSTRAP_SUPER_ADMIN:demo-admin/);
   assert.match(source, /actions\/upload-artifact@v5/);
   assert.match(source, /playwright-report/);
 });
@@ -49,6 +56,10 @@ test('production deployment only runs for a protected main push through its envi
   assert.match(publishStep, /for required in DEPLOY_HOST DEPLOY_USER/);
   assert.match(source, /npm run check/);
   assert.match(source, /npx playwright test/);
+  assert.match(source, /needs:\s*\[verify,\s*mysql-integration,\s*e2e-memory,\s*e2e-production\]/);
+  assert.match(source, /playwright\.production\.config\.ts/);
+  assert.match(source, /admin:bootstrap --\s*--uid demo-admin/);
+  assert.match(source, /BOOTSTRAP_SUPER_ADMIN:demo-admin/);
   assert.match(source, /deploy-freebbs-development/);
   assert.match(source, /scripts\/create-release-archive\.sh/);
   assert.match(source, /--sha "\$\{GITHUB_SHA\}"/);

@@ -117,7 +117,7 @@ export async function queryMySqlAuditLogs(
     throw new Error('MySQL returned an invalid audit log count');
   }
   const offset = (query.page - 1) * query.pageSize;
-  const [rows] = await executor.execute<RowDataPacket[]>(
+  const [rows] = await executor.query<RowDataPacket[]>(
     `SELECT * FROM audit_logs${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
     [...values, query.pageSize, offset],
   );

@@ -143,6 +143,7 @@ for (const viewport of viewports) {
       await page.getByLabel('Demo user').selectOption('demo-admin');
       await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
       await expect(page.locator('.user-card')).toContainText('demo-admin');
+      await page.waitForLoadState('networkidle');
       await expect(
         page.getByRole('heading', { name: route.heading, exact: true }).first(),
       ).toBeVisible();
@@ -156,7 +157,10 @@ for (const viewport of viewports) {
       const primaryAction = route.primaryAction(page);
       await expect(primaryAction).toBeVisible();
       await primaryAction.scrollIntoViewIfNeeded();
-      await expect(primaryAction).toBeInViewport();
+      await expect(
+        primaryAction,
+        `${viewport.name}/${route.path} primary action should be reachable`,
+      ).toBeInViewport();
 
       await expectNoHorizontalOverflow(page);
 

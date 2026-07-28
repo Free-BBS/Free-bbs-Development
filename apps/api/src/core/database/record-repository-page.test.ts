@@ -78,10 +78,8 @@ describe('RecordRepository page contract', () => {
       updated_at: timestamp,
     };
     const pool = {
-      execute: vi
-        .fn()
-        .mockResolvedValueOnce([[{ total: 5 }], []])
-        .mockResolvedValueOnce([[row], []]),
+      execute: vi.fn().mockResolvedValueOnce([[{ total: 5 }], []]),
+      query: vi.fn().mockResolvedValueOnce([[row], []]),
       end: vi.fn().mockResolvedValue(undefined),
     } as unknown as Pool;
     const handle = createMySqlStore({ pool });
@@ -92,14 +90,15 @@ describe('RecordRepository page contract', () => {
     );
 
     const execute = pool.execute as ReturnType<typeof vi.fn>;
+    const query = pool.query as ReturnType<typeof vi.fn>;
     expect(execute.mock.calls[0]).toEqual([
       'SELECT COUNT(*) AS total FROM audit_logs WHERE status = ?',
       ['active'],
     ]);
-    expect(execute.mock.calls[1]?.[0]).toContain(
+    expect(query.mock.calls[0]?.[0]).toContain(
       'ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?',
     );
-    expect(execute.mock.calls[1]?.[1]).toEqual(['active', 2, 2]);
+    expect(query.mock.calls[0]?.[1]).toEqual(['active', 2, 2]);
     expect(result).toMatchObject({ page: 2, pageSize: 2, total: 5, items: [{ id: 'audit-c' }] });
   });
 });

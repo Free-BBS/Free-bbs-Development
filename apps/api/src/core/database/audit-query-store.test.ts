@@ -25,6 +25,7 @@ function newAudit(actorUid: string, resourceId = 'sports') {
 function fakePool() {
   const pool = {
     execute: vi.fn(),
+    query: vi.fn(),
     getConnection: vi.fn(),
     end: vi.fn().mockResolvedValue(undefined),
   };
@@ -75,7 +76,8 @@ describe('bounded audit queries', () => {
   it('uses exact parameterized MySQL predicates, count and stable bounded ordering', async () => {
     const { pool, typedPool } = fakePool();
     const timestamp = '2026-07-27 10:00:00.000';
-    pool.execute.mockResolvedValueOnce([[{ total: 2 }], []]).mockResolvedValueOnce([
+    pool.execute.mockResolvedValueOnce([[{ total: 2 }], []]);
+    pool.query.mockResolvedValueOnce([
       [
         {
           id: 'audit-b',
@@ -108,7 +110,7 @@ describe('bounded audit queries', () => {
     });
 
     const [countSql, countValues] = pool.execute.mock.calls[0] ?? [];
-    const [selectSql, selectValues] = pool.execute.mock.calls[1] ?? [];
+    const [selectSql, selectValues] = pool.query.mock.calls[0] ?? [];
     expect(countSql).toBe(
       'SELECT COUNT(*) AS total FROM audit_logs WHERE actor_uid = ? AND action = ? AND resource_type = ? AND resource_id = ? AND created_at >= ? AND created_at <= ?',
     );

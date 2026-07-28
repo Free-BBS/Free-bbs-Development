@@ -4,6 +4,7 @@ const useSystemChrome = !process.env.CI && process.env.PLAYWRIGHT_USE_SYSTEM_CHR
 
 export default defineConfig({
   testDir: './tests/e2e',
+  testIgnore: ['admin.spec.ts', 'release-smoke.spec.ts'],
   fullyParallel: false,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
