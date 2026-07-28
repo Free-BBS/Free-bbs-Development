@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
 
+const apiRoot = '/api/development/v1';
+const adminHeaders = {
+  'Content-Type': 'application/json',
+  'X-Demo-User': 'demo-admin',
+};
+
 const modules = [
   ['/dashboard', '发展端工作台'],
   ['/knowledge', '经验条目'],
@@ -14,7 +20,9 @@ const modules = [
 
 test('navigates to every development module from the shell', async ({ page }) => {
   await page.goto('./dashboard');
+  await expect(page.locator('.user-card')).toContainText('demo-student');
   await page.getByLabel('Demo user').selectOption('demo-admin');
+  await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
   await expect(page.locator('.user-card')).toContainText('demo-admin');
 
   for (const [route, heading] of modules) {
@@ -37,4 +45,65 @@ test('lets an ordinary student submit a consultation', async ({ page }) => {
 
   await expect(page.getByRole('status')).toHaveText('咨询已提交');
   await expect(page.getByRole('heading', { name: title })).toBeVisible();
+});
+test('replaces module owners and persists the new ownership set', async ({ page, request }) => {
+  test.setTimeout(90_000);
+  page.on('dialog', (dialog) => dialog.accept());
+  const originalResponse = await request.get(`${apiRoot}/admin/modules/liaison/owners`, {
+    headers: adminHeaders,
+  });
+  expect(originalResponse.status()).toBe(200);
+  const original = (await originalResponse.json()) as {
+    data: {
+      owners: Array<{ ownerType: 'role' | 'subject' | 'team'; ownerId: string }>;
+    };
+  };
+  const originalOwners = original.data.owners.map(({ ownerType, ownerId }) => ({
+    ownerType,
+    ownerId,
+  }));
+
+  try {
+    const first = await request.put(`${apiRoot}/admin/modules/liaison/owners`, {
+      headers: adminHeaders,
+      data: { owners: [{ ownerType: 'subject', ownerId: 'demo-admin' }] },
+    });
+    expect(first.status(), await first.text()).toBe(200);
+
+    await page.goto('./admin');
+    await expect(page.locator('.user-card')).toContainText('demo-student');
+    await page.getByLabel('Demo user').selectOption('demo-admin');
+    await expect(page.locator('.user-card')).toContainText('demo-admin');
+    await page.getByRole('tab', { name: '模块与负责人' }).click();
+    await page.locator('.admin-definition-list button').filter({ hasText: 'liaison' }).click();
+    const panel = page.getByRole('tabpanel', { name: '模块与负责人' });
+    await expect(panel.locator('.record-card').filter({ hasText: 'demo-admin' })).toContainText(
+      'subject',
+    );
+
+    const second = await request.put(`${apiRoot}/admin/modules/liaison/owners`, {
+      headers: adminHeaders,
+      data: { owners: [{ ownerType: 'role', ownerId: 'platform.super_admin' }] },
+    });
+    expect(second.status(), await second.text()).toBe(200);
+
+    await page.reload();
+    await expect(page.locator('.user-card')).toContainText('demo-student');
+    await page.getByLabel('Demo user').selectOption('demo-admin');
+    await expect(page.locator('.user-card')).toContainText('demo-admin');
+    await page.getByRole('tab', { name: '模块与负责人' }).click();
+    await page.locator('.admin-definition-list button').filter({ hasText: 'liaison' }).click();
+    await expect(
+      page
+        .getByRole('tabpanel', { name: '模块与负责人' })
+        .locator('.record-card')
+        .filter({ hasText: 'platform.super_admin' }),
+    ).toContainText('role');
+  } finally {
+    const restored = await request.put(`${apiRoot}/admin/modules/liaison/owners`, {
+      headers: adminHeaders,
+      data: { owners: originalOwners },
+    });
+    expect(restored.status(), await restored.text()).toBe(200);
+  }
 });

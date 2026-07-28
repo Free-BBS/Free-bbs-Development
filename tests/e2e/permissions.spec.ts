@@ -28,7 +28,7 @@ test('a captain can check in their own team but is denied across teams', async (
   await expect(otherTeam.getByRole('form')).toHaveCount(0);
 
   const checkinForm = ownTeam.getByRole('form', { name: '院篮球队签到' });
-  await checkinForm.getByLabel('成员 UID').fill(`e2e-member-${Date.now()}`);
+  await checkinForm.getByLabel('成员 UID').fill('demo-captain');
   await checkinForm.getByLabel('签到日期').fill('2026-07-22');
   await checkinForm.getByRole('button', { name: '记录签到' }).click();
   await expect(page.getByRole('status')).toHaveText('签到已记录');
@@ -47,13 +47,14 @@ test('the administrator can grant and revoke a role with visible audit history',
   page,
   request,
 }) => {
+  page.on('dialog', (dialog) => dialog.accept());
   const existingResponse = await request.get(`${apiRoot}/admin/role-assignments`, {
     headers: demoHeaders('demo-admin'),
   });
   const existing = (await existingResponse.json()) as {
-    data: Array<{ id: string; subjectUid: string; roleKey: string }>;
+    data: { items: Array<{ id: string; subjectUid: string; roleKey: string }> };
   };
-  for (const assignment of existing.data.filter(
+  for (const assignment of existing.data.items.filter(
     (item) => item.subjectUid === 'demo-student' && item.roleKey === 'department.arts_member',
   )) {
     await request.delete(`${apiRoot}/admin/role-assignments/${assignment.id}`, {
@@ -63,35 +64,51 @@ test('the administrator can grant and revoke a role with visible audit history',
 
   await page.goto('./admin');
   await page.getByLabel('Demo user').selectOption('demo-admin');
-  await expect(page.getByRole('heading', { name: '角色分配' })).toBeVisible();
+  const panel = page.getByRole('tabpanel', { name: '用户与授权' });
+  const grant = panel.getByRole('form', { name: '授予角色' });
+  await grant.getByLabel('用户 UID').fill('demo-student');
+  await grant.getByLabel('角色').selectOption('department.arts_member');
+  await grant.getByRole('button', { name: '授予角色' }).click();
+  await expect(page.getByText('已向 demo-student 授予 department.arts_member。')).toBeVisible();
 
-  const roles = page.getByRole('region', { name: '角色分配' });
-  await roles.getByLabel('用户 UID').fill('demo-student');
-  await roles.getByRole('combobox').selectOption('department.arts_member');
-  await roles.getByRole('button', { name: '授予角色' }).click();
-  await expect(page.getByRole('status')).toHaveText('角色已授予');
-  await expect(roles).toContainText('department.arts_member');
+  const afterGrant = await request.get(`${apiRoot}/admin/role-assignments`, {
+    headers: demoHeaders('demo-admin'),
+  });
+  const granted = (await afterGrant.json()) as {
+    data: { items: Array<{ id: string; subjectUid: string; roleKey: string }> };
+  };
+  const assignment = granted.data.items.find(
+    (item) => item.subjectUid === 'demo-student' && item.roleKey === 'department.arts_member',
+  );
+  expect(assignment).toBeTruthy();
+  await panel.getByRole('button', { name: '归档 demo-student 的角色授权' }).click();
+  await expect(
+    page.getByText('已归档 demo-student 的 department.arts_member 授权。'),
+  ).toBeVisible();
 
-  await roles.getByRole('button', { name: '撤销 demo-student 的角色' }).click();
-  await expect(page.getByRole('status')).toHaveText('角色已撤销');
-  await expect(page.getByRole('region', { name: '审计日志' })).toContainText(
-    'admin.role_assignment.grant',
-  );
-  await expect(page.getByRole('region', { name: '审计日志' })).toContainText(
-    'admin.role_assignment.revoke',
-  );
+  await page.getByRole('tab', { name: '审计日志' }).click();
+  const filters = page.getByRole('form', { name: '审计筛选' });
+  await filters.getByLabel('操作人 UID').fill('demo-admin');
+  await filters.getByLabel('动作').fill('admin.role_assignment.revoke');
+  await filters.getByLabel('资源 ID').fill(assignment!.id);
+  await filters.getByRole('button', { name: '筛选日志' }).click();
+  await expect(page.locator('.audit-list')).toContainText('admin.role_assignment.revoke');
 });
 
 test('module disabling removes navigation and rejects the module API', async ({
   page,
   request,
 }) => {
+  test.setTimeout(60_000);
+  page.on('dialog', (dialog) => dialog.accept());
   await setModule(request, 'liaison', true);
   try {
     await page.goto('./admin');
     await page.getByLabel('Demo user').selectOption('demo-admin');
-    await page.getByRole('button', { name: '停用联络资源' }).click();
-    await expect(page.getByRole('status')).toHaveText('模块已停用');
+    await page.getByRole('tab', { name: '模块与负责人' }).click();
+    await page.locator('.admin-definition-list button').filter({ hasText: 'liaison' }).click();
+    await page.getByRole('button', { name: '停用 联络资源' }).click();
+    await expect(page.getByText('模块 liaison 已停用。')).toBeVisible();
 
     await page.goto('./dashboard');
     await expect(page.locator('.sidebar a[href="/development/liaison"]')).toHaveCount(0);
@@ -111,5 +128,140 @@ test('module disabling removes navigation and rejects the module API', async ({
     });
   } finally {
     await setModule(request, 'liaison', true);
+  }
+});
+test('governs subjects, expiring grants, binding replacement and audit filters', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(90_000);
+  page.on('dialog', (dialog) => dialog.accept());
+  const expiry = '2030-01-01T00:00:00.000Z';
+  const roleKey = 'department.arts_member';
+  const rolePermissionsResponse = await request.get(`${apiRoot}/admin/role-permissions`, {
+    headers: demoHeaders('demo-admin'),
+  });
+  expect(rolePermissionsResponse.status()).toBe(200);
+  const rolePermissions = (await rolePermissionsResponse.json()) as {
+    data: Array<{
+      roleKey: string;
+      action: string;
+      resource: string;
+      effect: 'allow' | 'deny';
+      scope: { type: string; id: string };
+      status: string;
+    }>;
+  };
+  const originalBindings = rolePermissions.data
+    .filter((binding) => binding.roleKey === roleKey && binding.status === 'active')
+    .map(({ action, resource, effect, scope }) => ({ action, resource, effect, scope }));
+
+  let roleAssignmentId = '';
+  let tagAssignmentId = '';
+  try {
+    const roleGrant = await request.post(`${apiRoot}/admin/role-assignments`, {
+      headers: demoHeaders('demo-admin'),
+      data: {
+        subjectUid: 'demo-student',
+        roleKey,
+        scope: { type: 'public', id: '*' },
+        expiresAt: expiry,
+      },
+    });
+    expect(roleGrant.status(), await roleGrant.text()).toBe(201);
+    const roleGrantBody = (await roleGrant.json()) as {
+      data: { id: string; expiresAt: string };
+    };
+    roleAssignmentId = roleGrantBody.data.id;
+    expect(roleGrantBody.data.expiresAt).toBe(expiry);
+
+    const tagGrant = await request.post(`${apiRoot}/admin/tag-assignments`, {
+      headers: demoHeaders('demo-admin'),
+      data: {
+        subjectUid: 'demo-student',
+        tagKey: 'sports.team_captain',
+        scope: { type: 'sports_team', id: 'team-basketball' },
+        expiresAt: expiry,
+      },
+    });
+    expect(tagGrant.status(), await tagGrant.text()).toBe(201);
+    const tagGrantBody = (await tagGrant.json()) as {
+      data: { id: string; expiresAt: string };
+    };
+    tagAssignmentId = tagGrantBody.data.id;
+    expect(tagGrantBody.data.expiresAt).toBe(expiry);
+
+    const replaced = await request.put(`${apiRoot}/admin/roles/${roleKey}/permissions`, {
+      headers: demoHeaders('demo-admin'),
+      data: {
+        bindings: [
+          {
+            action: 'knowledge.read',
+            resource: 'knowledge_entry',
+            effect: 'allow',
+            scope: { type: 'public', id: '*' },
+          },
+        ],
+      },
+    });
+    expect(replaced.status(), await replaced.text()).toBe(200);
+    await expect(replaced.json()).resolves.toMatchObject({
+      data: {
+        roleKey,
+        bindings: [
+          {
+            action: 'knowledge.read',
+            resource: 'knowledge_entry',
+            effect: 'allow',
+            scope: { type: 'public', id: '*' },
+          },
+        ],
+      },
+    });
+
+    await page.goto('./admin');
+    await page.getByLabel('Demo user').selectOption('demo-admin');
+    const directory = page.getByRole('tabpanel', { name: '用户与授权' });
+    await expect(directory).toContainText('共 4 位用户');
+    await directory.getByLabel('搜索用户').fill('demo-student');
+    await directory.getByRole('button', { name: '筛选用户' }).click();
+    await expect(directory).toContainText('共 1 位用户');
+    await expect(
+      directory
+        .getByRole('region', { name: '用户目录' })
+        .locator('.record-card')
+        .filter({ hasText: 'demo-student' }),
+    ).toBeVisible();
+    await expect(directory).toContainText(expiry.slice(0, 10));
+
+    await page.getByRole('tab', { name: '审计日志' }).click();
+    const filters = page.getByRole('form', { name: '审计筛选' });
+    await filters.getByLabel('操作人 UID').fill('demo-admin');
+    await filters.getByLabel('动作').fill('admin.role_permissions.replace');
+    await filters.getByLabel('资源类型').fill('role');
+    await filters.getByLabel('资源 ID').fill(roleKey);
+    await filters.getByRole('button', { name: '筛选日志' }).click();
+    const auditRows = page.locator('.audit-list .record-card');
+    await expect(auditRows.first()).toContainText('admin.role_permissions.replace');
+    await expect(auditRows.first()).toContainText(`demo-admin · role/${roleKey}`);
+  } finally {
+    const restore = await request.put(`${apiRoot}/admin/roles/${roleKey}/permissions`, {
+      headers: demoHeaders('demo-admin'),
+      data: { bindings: originalBindings },
+    });
+    expect(restore.status(), await restore.text()).toBe(200);
+    if (roleAssignmentId) {
+      const archived = await request.delete(
+        `${apiRoot}/admin/role-assignments/${roleAssignmentId}`,
+        { headers: demoHeaders('demo-admin') },
+      );
+      expect(archived.status()).toBe(200);
+    }
+    if (tagAssignmentId) {
+      const archived = await request.delete(`${apiRoot}/admin/tag-assignments/${tagAssignmentId}`, {
+        headers: demoHeaders('demo-admin'),
+      });
+      expect(archived.status()).toBe(200);
+    }
   }
 });
