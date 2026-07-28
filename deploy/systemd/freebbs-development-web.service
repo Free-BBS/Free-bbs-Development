@@ -4,6 +4,8 @@ After=network-online.target freebbs-development-api.service nginx.service
 Wants=network-online.target
 Requires=freebbs-development-api.service
 Requires=nginx.service
+ConditionPathIsSymbolicLink=/usr/share/nginx/html/development
+ConditionPathExists=/etc/freebbs-development/development.env
 
 [Service]
 Type=oneshot

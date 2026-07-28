@@ -147,4 +147,22 @@ describe('deployment configuration', () => {
     expect(webUnit).not.toContain('daemon off;');
     expect(webUnit).not.toContain('nginx -t');
   });
+  it('ships installable atomic release and backup configuration', () => {
+    const deployScript = configuration('scripts/deploy-release.sh');
+    const installer = configuration('scripts/install-server.sh');
+    const environment = configuration('deploy/env/development.env.example');
+    const backupService = configuration('deploy/systemd/freebbs-development-backup.service');
+    const backupTimer = configuration('deploy/systemd/freebbs-development-backup.timer');
+
+    expect(deployScript).toContain('.release-sha');
+    expect(deployScript).toContain('FREEBBS_APP_ROOT');
+    expect(deployScript).toContain('rollback');
+    expect(deployScript).not.toContain('db:seed');
+    expect(installer).toContain('/usr/local/sbin/deploy-freebbs-development');
+    expect(installer).toContain('-m 0640');
+    expect(environment).toContain('DATA_MODE=mysql');
+    expect(backupService).toContain('ReadWritePaths=/var/backups/freebbs-development');
+    expect(backupService).toContain('EnvironmentFile=/etc/freebbs-development/backup.env');
+    expect(backupTimer).toContain('Persistent=true');
+  });
 });

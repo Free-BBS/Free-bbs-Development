@@ -1,20 +1,17 @@
 [Unit]
-Description=FreeBBS Development API
+Description=Back up the FreeBBS Development MySQL database
 After=network-online.target
 Wants=network-online.target
 ConditionPathIsSymbolicLink=/opt/freebbs-development/current
-ConditionPathExists=/etc/freebbs-development/development.env
+ConditionPathExists=/etc/freebbs-development/backup.env
 
 [Service]
-Type=simple
+Type=oneshot
 User=freebbs-development
 Group=freebbs-development
 WorkingDirectory=/opt/freebbs-development/current
-EnvironmentFile=/etc/freebbs-development/development.env
-ExecStart=/usr/bin/env NODE_ENV=production HOST=127.0.0.1 /usr/bin/node apps/api/dist/server.js
-Restart=on-failure
-RestartSec=5s
-TimeoutStopSec=20s
+EnvironmentFile=/etc/freebbs-development/backup.env
+ExecStart=/bin/sh -c 'set -eu; output=/var/backups/freebbs-development/freebbs-development-$(date -u +%%Y%%m%%dT%%H%%M%%SZ).sql; /bin/sh scripts/backup.sh "$output"; sha256sum "$output" >"$output.sha256"; find /var/backups/freebbs-development -type f -mtime +"${BACKUP_RETENTION_DAYS:-14}" -delete'
 UMask=0027
 
 NoNewPrivileges=true
@@ -33,7 +30,4 @@ RestrictRealtime=true
 RestrictSUIDSGID=true
 RestrictNamespaces=true
 SystemCallArchitectures=native
-ReadOnlyPaths=/opt/freebbs-development/current
-
-[Install]
-WantedBy=multi-user.target
+ReadWritePaths=/var/backups/freebbs-development

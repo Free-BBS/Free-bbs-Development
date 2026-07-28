@@ -48,6 +48,11 @@ test('production deployment only runs for a protected main push through its envi
   assert.match(source, /npm run check/);
   assert.match(source, /npx playwright test/);
   assert.match(source, /deploy-freebbs-development/);
+  assert.match(source, /scripts\/create-release-archive\.sh/);
+  assert.match(source, /--sha "\$\{GITHUB_SHA\}"/);
+  assert.ok(
+    source.indexOf('scripts/create-release-archive.sh') < source.indexOf('secrets.DEPLOY_SSH_KEY'),
+  );
   const guide = await readFile(new URL('docs/server-deployment.md', root), 'utf8');
   assert.ok(guide.includes('/usr/local/sbin/deploy-freebbs-development'));
 });
@@ -62,6 +67,7 @@ test('database migration requires exact RUN confirmation and a protected environ
   assert.match(source, /github\.ref == 'refs\/heads\/main'/);
   assert.match(source, /github\.ref_protected == true/);
   assert.match(source, /environment:\s*\n\s*name:\s*production-database/);
+  assert.match(source, /runs-on:\s*\[self-hosted, linux, production-database\]/);
   assert.match(source, /DATA_MODE:\s*mysql/);
   assert.match(source, /secrets\.MYSQL_HOST/);
   assert.match(source, /secrets\.MYSQL_MIGRATION_USER/);

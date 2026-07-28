@@ -268,3 +268,38 @@ test('backup script requires an explicit target and keeps passwords off mysqldum
   assert.match(script, /trap cleanup 0 HUP INT TERM/);
   assert.match(script, /Refusing to overwrite/);
 });
+
+test('server installer is non-starting, non-overwriting, and installs the audited hook', async () => {
+  const installer = await readFile(
+    new URL('../../scripts/install-server.sh', import.meta.url),
+    'utf8',
+  );
+  const backupService = await readFile(
+    new URL('../../deploy/systemd/freebbs-development-backup.service', import.meta.url),
+    'utf8',
+  );
+  const backupTimer = await readFile(
+    new URL('../../deploy/systemd/freebbs-development-backup.timer', import.meta.url),
+    'utf8',
+  );
+  const environment = await readFile(
+    new URL('../../deploy/env/development.env.example', import.meta.url),
+    'utf8',
+  );
+  const backupEnvironment = await readFile(
+    new URL('../../deploy/env/backup.env.example', import.meta.url),
+    'utf8',
+  );
+
+  assert.match(installer, /install[\s\S]*-m 0755[\s\S]*deploy-release\.sh/);
+  assert.match(installer, /if \[\[ ! -e \$target \]\]/);
+  assert.match(installer, /root -g root -m 0755 \/opt\/freebbs-development/);
+  assert.match(installer, /-m 0640/);
+  assert.doesNotMatch(installer, /systemctl\s+(?:start|restart)/);
+  assert.match(backupService, /scripts\/backup\.sh/);
+  assert.match(backupService, /sha256sum/);
+  assert.match(backupTimer, /Persistent=true/);
+  assert.match(environment, /DATA_MODE=mysql/);
+  assert.match(backupEnvironment, /MYSQL_USER=freebbs_development_backup/);
+  assert.doesNotMatch(environment, /ALLOW_(?:DEMO|PRODUCTION)_DEMO_SEED/);
+});

@@ -46,13 +46,10 @@ jobs:
       - run: npm run build
       - name: Build immutable release archive
         shell: bash
-        run: |
-          tar -czf "freebbs-development-${GITHUB_SHA}.tar.gz" \
-            package.json package-lock.json \
-            apps/api/package.json apps/api/dist \
-            apps/web/package.json apps/web/dist \
-            packages/contracts/package.json packages/contracts/dist \
-            database scripts deploy
+        run: >-
+          bash scripts/create-release-archive.sh
+          --sha "${GITHUB_SHA}"
+          --output "freebbs-development-${GITHUB_SHA}.tar.gz"
       - name: Preserve release archive
         uses: actions/upload-artifact@v5
         with:
