@@ -77,16 +77,23 @@ jobs:
         env:
           DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          FREEBBS_DOMAIN: ${{ vars.FREEBBS_DOMAIN }}
         shell: bash
         run: |
-          for required in DEPLOY_HOST DEPLOY_USER; do
+          for required in DEPLOY_HOST DEPLOY_USER FREEBBS_DOMAIN; do
             if [[ -z "${!required}" ]]; then
-              echo "Required production secret is not configured: ${required}" >&2
+              echo "Required production setting is not configured: ${required}" >&2
               exit 1
             fi
           done
+          if [[ ${#FREEBBS_DOMAIN} -gt 253 ||
+                ! $FREEBBS_DOMAIN =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; then
+            echo 'FREEBBS_DOMAIN must be a fully qualified DNS name' >&2
+            exit 1
+          fi
+          FREEBBS_DOMAIN=${FREEBBS_DOMAIN,,}
           archive="freebbs-development-${GITHUB_SHA}.tar.gz"
           remote_archive="/tmp/${archive}"
           scp -o BatchMode=yes "$archive" "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_archive}"
           ssh -o BatchMode=yes "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "sudo /usr/local/sbin/deploy-freebbs-development --archive '${remote_archive}' --sha '${GITHUB_SHA}'"
+            "sudo /usr/local/sbin/deploy-freebbs-development --archive '${remote_archive}' --sha '${GITHUB_SHA}' --domain '${FREEBBS_DOMAIN}'"

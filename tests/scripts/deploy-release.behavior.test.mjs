@@ -153,12 +153,15 @@ exit 0
     join(bin, 'curl'),
     `#!/bin/sh
 if [ "\${FREEBBS_FAIL_PHASE:-}" = readiness ]; then exit 44; fi
-case "$*" in
-  */development/) [ "\${FREEBBS_FAIL_PHASE:-}" != web ] ;;
-  *) exit 0 ;;
-esac
+output=
+while [ "\$#" -gt 0 ]; do
+  if [ "\$1" = --output ]; then output=\$2; shift 2; else shift; fi
+done
+if [ -n "\$output" ]; then printf 'web-response' >"\$output"; fi
+exit 0
 `,
   );
+  await executable(join(bin, 'cmp'), '#!/bin/sh\n[ "${FREEBBS_FAIL_PHASE:-}" != web ]\n');
 
   return {
     directory,
@@ -169,14 +172,15 @@ esac
       FREEBBS_TEST_MODE: '1',
       FREEBBS_APP_ROOT: appRoot,
       FREEBBS_WEB_PARENT: webParent,
-      FREEBBS_READY_URL: 'http://127.0.0.1/ready',
-      FREEBBS_WEB_URL: 'http://127.0.0.1/development/',
+      FREEBBS_READY_URL: 'http://127.0.0.1/api/development/v1/ready',
+      FREEBBS_WEB_URL: 'https://development.example.test/development/',
       FREEBBS_READY_ATTEMPTS: '1',
       FREEBBS_READY_DELAY: '0',
       FREEBBS_NPM_BIN: join(bin, 'npm'),
       FREEBBS_NGINX_BIN: join(bin, 'nginx'),
       FREEBBS_SYSTEMCTL_BIN: join(bin, 'systemctl'),
       FREEBBS_CURL_BIN: join(bin, 'curl'),
+      FREEBBS_CMP_BIN: join(bin, 'cmp'),
       FREEBBS_FAIL_PHASE: failPhase,
       MYSQL_PASSWORD: 'SENTINEL_DATABASE_SECRET',
       DEPLOY_SSH_KEY: 'SENTINEL_SSH_SECRET',
@@ -264,9 +268,13 @@ exit 99
       );
       const placeholder = join(fixture.directory, 'archive.tar.gz');
       await writeFile(placeholder, 'placeholder');
-      const result = await run(deployScript, ['--archive', placeholder, '--sha', sha], {
-        env: { ...fixture.env, FREEBBS_TAR_BIN: fakeTar },
-      });
+      const result = await run(
+        deployScript,
+        ['--archive', placeholder, '--sha', sha, '--domain', 'development.example.test'],
+        {
+          env: { ...fixture.env, FREEBBS_TAR_BIN: fakeTar },
+        },
+      );
       assert.notEqual(result.code, 0);
     }
 
@@ -277,17 +285,25 @@ exit 99
       sha,
       'ffffffffffffffffffffffffffffffffffffffff',
     );
-    const mismatchResult = await run(deployScript, ['--archive', mismatchArchive, '--sha', sha], {
-      env: mismatch.env,
-    });
+    const mismatchResult = await run(
+      deployScript,
+      ['--archive', mismatchArchive, '--sha', sha, '--domain', 'development.example.test'],
+      {
+        env: mismatch.env,
+      },
+    );
     assert.notEqual(mismatchResult.code, 0);
 
     const escaping = await deploymentFixture();
     context.after(() => rm(escaping.directory, { recursive: true, force: true }));
     const escapingArchive = await fixtureArchive(escaping.directory, sha, sha, true);
-    const escapingResult = await run(deployScript, ['--archive', escapingArchive, '--sha', sha], {
-      env: escaping.env,
-    });
+    const escapingResult = await run(
+      deployScript,
+      ['--archive', escapingArchive, '--sha', sha, '--domain', 'development.example.test'],
+      {
+        env: escaping.env,
+      },
+    );
     assert.notEqual(escapingResult.code, 0);
     assert.match(escapingResult.stderr, /escaping symbolic link/);
   },
@@ -301,9 +317,13 @@ test(
     const success = await deploymentFixture();
     context.after(() => rm(success.directory, { recursive: true, force: true }));
     const archive = await fixtureArchive(success.directory, sha);
-    const deployed = await run(deployScript, ['--archive', archive, '--sha', sha], {
-      env: success.env,
-    });
+    const deployed = await run(
+      deployScript,
+      ['--archive', archive, '--sha', sha, '--domain', 'development.example.test'],
+      {
+        env: success.env,
+      },
+    );
     assert.equal(deployed.code, 0, deployed.stderr);
     assert.equal(
       await readlink(join(success.appRoot, 'current')),
@@ -335,9 +355,13 @@ test(
       context.after(() => rm(fixture.directory, { recursive: true, force: true }));
       const phaseSha = `${phase.length}`.padStart(40, '3');
       const phaseArchive = await fixtureArchive(fixture.directory, phaseSha);
-      const result = await run(deployScript, ['--archive', phaseArchive, '--sha', phaseSha], {
-        env: fixture.env,
-      });
+      const result = await run(
+        deployScript,
+        ['--archive', phaseArchive, '--sha', phaseSha, '--domain', 'development.example.test'],
+        {
+          env: fixture.env,
+        },
+      );
       assert.notEqual(result.code, 0, `${phase} unexpectedly succeeded`);
       assert.equal(await readlink(join(fixture.appRoot, 'current')), fixture.oldRelease);
       assert.equal(
@@ -345,6 +369,59 @@ test(
         join(fixture.oldRelease, 'apps/web/dist'),
       );
       assert.doesNotMatch(result.stdout + result.stderr, /SENTINEL_/);
+    }
+  },
+);
+test(
+  'audited post-release rollback switches both links and restores the selected release on failure',
+  { skip: process.platform !== 'linux' },
+  async (context) => {
+    const createRollbackTarget = async (fixture, sha) => {
+      const target = join(fixture.appRoot, 'releases', sha);
+      await mkdir(join(target, 'apps/api/dist'), { recursive: true });
+      await mkdir(join(target, 'apps/web/dist'), { recursive: true });
+      await writeFile(join(target, '.release-sha'), `${sha}\n`);
+      await writeFile(join(target, 'apps/api/dist/server.js'), 'rollback-api');
+      await writeFile(join(target, 'apps/web/dist/index.html'), 'rollback-web');
+      return target;
+    };
+
+    const targetSha = '4123456789abcdef0123456789abcdef01234567';
+    const success = await deploymentFixture();
+    context.after(() => rm(success.directory, { recursive: true, force: true }));
+    const target = await createRollbackTarget(success, targetSha);
+    const rolledBack = await run(
+      deployScript,
+      ['--rollback-to', targetSha, '--domain', 'development.example.test'],
+      {
+        env: success.env,
+      },
+    );
+    assert.equal(rolledBack.code, 0, rolledBack.stderr);
+    assert.equal(await readlink(join(success.appRoot, 'current')), target);
+    assert.equal(
+      await readlink(join(success.webParent, 'development')),
+      join(target, 'apps/web/dist'),
+    );
+
+    for (const phase of ['static-link', 'nginx', 'restart', 'readiness', 'web']) {
+      const fixture = await deploymentFixture(phase);
+      context.after(() => rm(fixture.directory, { recursive: true, force: true }));
+      const phaseSha = `${phase.length}`.padStart(40, '5');
+      await createRollbackTarget(fixture, phaseSha);
+      const result = await run(
+        deployScript,
+        ['--rollback-to', phaseSha, '--domain', 'development.example.test'],
+        {
+          env: fixture.env,
+        },
+      );
+      assert.notEqual(result.code, 0, `${phase} rollback unexpectedly succeeded`);
+      assert.equal(await readlink(join(fixture.appRoot, 'current')), fixture.oldRelease);
+      assert.equal(
+        await readlink(join(fixture.webParent, 'development')),
+        join(fixture.oldRelease, 'apps/web/dist'),
+      );
     }
   },
 );

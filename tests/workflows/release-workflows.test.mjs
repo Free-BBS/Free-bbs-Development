@@ -37,6 +37,8 @@ test('production deployment only runs for a protected main push through its envi
   assert.match(source, /secrets\.DEPLOY_USER/);
   assert.match(source, /secrets\.DEPLOY_SSH_KEY/);
   assert.match(source, /secrets\.DEPLOY_KNOWN_HOSTS/);
+  assert.match(source, /vars\.FREEBBS_DOMAIN/);
+  assert.match(source, /--domain/);
   assert.ok(source.indexOf('secrets.DEPLOY_HOST') > source.indexOf('npm run build'));
   const installStep = source.slice(
     source.indexOf('- name: Install SSH credentials'),

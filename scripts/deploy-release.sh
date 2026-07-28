@@ -4,7 +4,10 @@ set -Eeuo pipefail
 umask 027
 
 usage() {
-  printf '%s\n' 'Usage: scripts/deploy-release.sh --archive ARCHIVE.tar.gz --sha 40_HEX_COMMIT_SHA'
+  printf '%s\n' 'Usage:'
+  printf '%s\n' \
+    '  scripts/deploy-release.sh --archive ARCHIVE.tar.gz --sha 40_HEX_COMMIT_SHA --domain FQDN'
+  printf '%s\n' '  scripts/deploy-release.sh --rollback-to 40_HEX_COMMIT_SHA --domain FQDN'
 }
 
 fail() {
@@ -14,6 +17,9 @@ fail() {
 
 archive=
 release_sha=
+rollback_sha=
+mode=deploy
+freebbs_domain=
 while (($#)); do
   case "$1" in
     --archive)
@@ -23,7 +29,20 @@ while (($#)); do
       ;;
     --sha)
       (($# >= 2)) || fail '--sha requires a value'
+      [[ -z $release_sha ]] || fail '--sha may be specified once'
       release_sha=$2
+      shift 2
+      ;;
+    --rollback-to)
+      (($# >= 2)) || fail '--rollback-to requires a value'
+      [[ -z $rollback_sha ]] || fail '--rollback-to may be specified once'
+      rollback_sha=$2
+      shift 2
+      ;;
+    --domain)
+      (($# >= 2)) || fail '--domain requires a value'
+      [[ -z $freebbs_domain ]] || fail '--domain may be specified once'
+      freebbs_domain=$2
       shift 2
       ;;
     -h|--help)
@@ -36,10 +55,26 @@ while (($#)); do
   esac
 done
 
+if [[ -n $rollback_sha ]]; then
+  [[ -z $archive && -z $release_sha ]] ||
+    fail '--rollback-to cannot be combined with --archive or --sha'
+  mode=rollback
+  release_sha=$rollback_sha
+else
+  [[ -n $archive && -n $release_sha ]] || fail '--archive and --sha are required for deployment'
+fi
 [[ $release_sha =~ ^[0-9a-fA-F]{40}$ ]] ||
   fail 'SHA must be a 40-character hexadecimal commit identifier'
+[[ -n $freebbs_domain ]] || fail '--domain is required'
+(
+  ((${#freebbs_domain} <= 253)) &&
+    [[ $freebbs_domain =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]
+) || fail '--domain must be a valid fully qualified DNS name'
+freebbs_domain=${freebbs_domain,,}
 release_sha=${release_sha,,}
-[[ -f $archive ]] || fail 'archive does not exist or is not a regular file'
+if [[ $mode == deploy ]]; then
+  [[ -f $archive ]] || fail 'archive does not exist or is not a regular file'
+fi
 
 test_mode=${FREEBBS_TEST_MODE:-0}
 installed_hook=/usr/local/sbin/deploy-freebbs-development
@@ -48,8 +83,10 @@ if [[ $test_mode == 1 ]]; then
     fail 'test mode is disabled for the installed production hook'
   app_root=${FREEBBS_APP_ROOT:-/opt/freebbs-development}
   web_parent=${FREEBBS_WEB_PARENT:-/usr/share/nginx/html}
-  ready_url=${FREEBBS_READY_URL:-http://127.0.0.1:3100/ready}
-  web_url=${FREEBBS_WEB_URL:-http://127.0.0.1/development/}
+  ready_url=${FREEBBS_READY_URL:-http://127.0.0.1:3100/api/development/v1/ready}
+  web_url=${FREEBBS_WEB_URL:-https://$freebbs_domain/development/}
+  cmp_bin=${FREEBBS_CMP_BIN:-cmp}
+  mktemp_bin=${FREEBBS_MKTEMP_BIN:-mktemp}
   ready_attempts=${FREEBBS_READY_ATTEMPTS:-30}
   ready_delay=${FREEBBS_READY_DELAY:-1}
   tar_bin=${FREEBBS_TAR_BIN:-tar}
@@ -62,9 +99,11 @@ else
   [[ $EUID -eq 0 ]] || fail 'deployment hook must run as root'
   app_root=/opt/freebbs-development
   web_parent=/usr/share/nginx/html
-  ready_url=http://127.0.0.1:3100/ready
-  web_url=http://127.0.0.1/development/
+  ready_url=http://127.0.0.1:3100/api/development/v1/ready
+  web_url=https://$freebbs_domain/development/
   ready_attempts=30
+  cmp_bin=/usr/bin/cmp
+  mktemp_bin=/usr/bin/mktemp
   ready_delay=1
   tar_bin=/usr/bin/tar
   npm_bin=/usr/bin/npm
@@ -88,7 +127,12 @@ mkdir -p -- "$releases" "$web_parent"
 exec 9>"$lock_file"
 flock -n 9 || fail 'another deployment is already running'
 [[ ! -e $staging ]] || fail 'staging directory already exists'
-[[ ! -e $release_directory ]] || fail 'immutable release directory already exists'
+if [[ $mode == deploy ]]; then
+  [[ ! -e $release_directory ]] || fail 'immutable release directory already exists'
+else
+  [[ -d $release_directory && ! -L $release_directory ]] ||
+    fail 'rollback target is not an immutable release directory'
+fi
 
 old_current=
 old_web=
@@ -111,6 +155,7 @@ published=false
 current_switch_started=false
 web_switch_started=false
 incoming_archive=
+web_response=
 atomic_link_count=0
 
 atomic_link() {
@@ -155,15 +200,72 @@ rollback() {
     "$systemctl_bin" restart freebbs-development-web.service >/dev/null 2>&1 || true
   fi
   rm -rf -- "$staging"
-  rm -f -- "$incoming_archive"
+  [[ -z $incoming_archive ]] || rm -f -- "$incoming_archive"
+  [[ -z $web_response ]] || rm -f -- "$web_response"
   if [[ $published == true ]]; then
     rm -rf -- "$release_directory"
   fi
   printf '%s\n' 'Deployment rolled back; the previous release remains selected.' >&2
   exit "$status"
 }
+
+validate_existing_release() {
+  local target=$1
+  [[ -f $target/.release-sha ]] || fail 'rollback target is missing .release-sha'
+  local -a target_sha
+  mapfile -t target_sha <"$target/.release-sha"
+  [[ ${#target_sha[@]} -eq 1 && ${target_sha[0]} == "$release_sha" ]] ||
+    fail 'rollback target .release-sha does not match --rollback-to'
+  [[ -r $target/apps/api/dist/server.js ]] || fail 'rollback API build is missing'
+  [[ -r $target/apps/web/dist/index.html ]] || fail 'rollback Web build is missing'
+}
+
+select_release() {
+  local target=$1
+  current_switch_started=true
+  atomic_link "$target" "$current_link"
+
+  web_switch_started=true
+  atomic_link "$target/apps/web/dist" "$web_link"
+
+  "$nginx_bin" -t
+  "$systemctl_bin" restart freebbs-development-api.service
+  "$systemctl_bin" reload nginx.service
+  "$systemctl_bin" restart freebbs-development-web.service
+
+  local ready=false
+  for ((attempt = 1; attempt <= ready_attempts; attempt++)); do
+    if "$curl_bin" --fail --silent --show-error --max-time 5 "$ready_url" >/dev/null 2>&1; then
+      ready=true
+      break
+    fi
+    sleep "$ready_delay"
+  done
+  [[ $ready == true ]] || fail 'readiness endpoint did not become healthy'
+  web_response=$("$mktemp_bin" "$app_root/web-smoke.XXXXXX")
+  "$curl_bin" --fail --silent --show-error --max-time 10 \
+    --resolve "$freebbs_domain:443:127.0.0.1" \
+    --noproxy '*' \
+    --output "$web_response" \
+    "$web_url"
+  "$cmp_bin" --silent "$web_response" "$target/apps/web/dist/index.html" ||
+    fail 'HTTPS Web response does not match the selected release'
+  rm -f -- "$web_response"
+  web_response=
+}
+
 trap 'rollback $?' ERR
 trap 'rollback 130' HUP INT TERM
+
+if [[ $mode == rollback ]]; then
+  [[ $current_existed == true && $web_existed == true ]] ||
+    fail 'post-release rollback requires both currently selected links'
+  validate_existing_release "$release_directory"
+  select_release "$release_directory"
+  trap - ERR HUP INT TERM
+  printf 'Rollback selected release %s\n' "$release_sha"
+  exit 0
+fi
 
 incoming_archive="$app_root/incoming.$$.tar.gz"
 install -m 0600 -- "$archive" "$incoming_archive"
@@ -229,27 +331,7 @@ chmod -R u=rwX,go=rX "$staging"
 
 mv -- "$staging" "$release_directory"
 published=true
-current_switch_started=true
-atomic_link "$release_directory" "$current_link"
-
-web_switch_started=true
-atomic_link "$release_directory/apps/web/dist" "$web_link"
-
-"$nginx_bin" -t
-"$systemctl_bin" restart freebbs-development-api.service
-"$systemctl_bin" reload nginx.service
-"$systemctl_bin" restart freebbs-development-web.service
-
-ready=false
-for ((attempt = 1; attempt <= ready_attempts; attempt++)); do
-  if "$curl_bin" --fail --silent --show-error --max-time 5 "$ready_url" >/dev/null 2>&1; then
-    ready=true
-    break
-  fi
-  sleep "$ready_delay"
-done
-[[ $ready == true ]] || fail 'readiness endpoint did not become healthy'
-"$curl_bin" --fail --silent --show-error --max-time 5 "$web_url" >/dev/null
+select_release "$release_directory"
 
 rm -f -- "$incoming_archive"
 trap - ERR HUP INT TERM

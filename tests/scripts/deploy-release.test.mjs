@@ -32,6 +32,7 @@ test('release tooling is repository-owned and exposes the documented CLIs', asyn
   assert.doesNotMatch(archive, /\.env(?:\s|["'])/);
 
   assert.match(deploy, /40-character hexadecimal/);
+  assert.match(deploy, /--rollback-to/);
   assert.match(deploy, /\.release-sha/);
   assert.match(deploy, /\[\[:cntrl:\]\]/);
   assert.match(deploy, /realpath/);
@@ -39,8 +40,14 @@ test('release tooling is repository-owned and exposes the documented CLIs', asyn
   assert.match(deploy, /"\$npm_bin" ci/);
   assert.match(deploy, /"\$npm_bin" run build/);
   assert.match(deploy, /nginx/);
-  assert.match(deploy, /\/ready/);
-  assert.match(deploy, /\/development\//);
+  assert.match(deploy, /ready_url=http:\/\/127\.0\.0\.1:3100\/api\/development\/v1\/ready/);
+  assert.doesNotMatch(deploy, /ready_url=http:\/\/127\.0\.0\.1:3100\/ready/);
+  assert.match(deploy, /--domain/);
+  assert.match(deploy, /--resolve/);
+  assert.match(deploy, /https:\/\/\$freebbs_domain\/development\//);
+  assert.match(deploy, /--noproxy ['"]\*['"]/);
+  assert.match(deploy, /"\$cmp_bin"/);
+  assert.doesNotMatch(deploy, /web_url=http:\/\/127\.0\.0\.1/);
   assert.match(deploy, /rollback/);
   assert.doesNotMatch(deploy, /db:seed/);
 
