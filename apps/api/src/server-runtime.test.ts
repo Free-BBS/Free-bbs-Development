@@ -40,12 +40,12 @@ const fakes = vi.hoisted(() => {
     }),
   };
   const app = { listen };
-  const appliedMigrationCount = vi.fn();
+  const checkReadiness = vi.fn();
   const close = vi.fn();
   const handle = {
     mode: 'mysql' as const,
     store: { marker: 'store' },
-    appliedMigrationCount,
+    checkReadiness,
     close,
   };
   const createStore = vi.fn(() => handle);
@@ -55,11 +55,11 @@ const fakes = vi.hoisted(() => {
     listen,
     server,
     app,
-    appliedMigrationCount,
     close,
     handle,
     createStore,
     createApp,
+    checkReadiness,
   };
 });
 
@@ -79,31 +79,32 @@ describe('production server composition', () => {
       });
       return fakes.server;
     });
-    fakes.appliedMigrationCount.mockResolvedValue(4);
+    fakes.checkReadiness.mockResolvedValue(undefined);
     fakes.close.mockResolvedValue(undefined);
     fakes.createStore.mockReturnValue(fakes.handle);
     fakes.createApp.mockReturnValue(fakes.app);
   });
 
-  it('awaits and injects the applied migration count before listening', async () => {
+  it('injects readiness without probing MySQL before binding the configured loopback host', async () => {
     await import('./server.js');
 
-    expect(fakes.appliedMigrationCount).toHaveBeenCalledOnce();
     expect(fakes.createApp).toHaveBeenCalledWith({
       store: fakes.handle.store,
       databaseMode: 'mysql',
-      appliedMigrationCount: 4,
+      checkReadiness: fakes.checkReadiness,
     });
-    expect(fakes.listen).toHaveBeenCalledOnce();
+    expect(fakes.checkReadiness).not.toHaveBeenCalled();
+    expect(fakes.listen).toHaveBeenCalledWith(3100, '127.0.0.1');
   });
 
-  it('fails startup and closes the store when migration count cannot be read', async () => {
-    fakes.appliedMigrationCount.mockRejectedValueOnce(new Error('schema_migrations unavailable'));
+  it('starts liveness even when the later readiness check would reject', async () => {
+    fakes.checkReadiness.mockRejectedValueOnce(new Error('schema_migrations unavailable'));
 
-    await expect(import('./server.js')).rejects.toThrow('schema_migrations unavailable');
-    expect(fakes.createApp).not.toHaveBeenCalled();
-    expect(fakes.listen).not.toHaveBeenCalled();
-    expect(fakes.close).toHaveBeenCalledOnce();
+    await import('./server.js');
+
+    expect(fakes.createApp).toHaveBeenCalledOnce();
+    expect(fakes.listen).toHaveBeenCalledOnce();
+    expect(fakes.checkReadiness).not.toHaveBeenCalled();
   });
 
   it('closes the store when app creation fails', async () => {
@@ -140,7 +141,7 @@ describe('production server composition', () => {
 
   it('closes the server and store only once when shutdown repeats', async () => {
     const { startServerRuntime } = await import('./server-runtime.js');
-    const runtime = await startServerRuntime({ port: 3100 });
+    const runtime = await startServerRuntime({ host: '127.0.0.1', port: 3100 });
 
     await Promise.all([runtime.close(), runtime.close()]);
 

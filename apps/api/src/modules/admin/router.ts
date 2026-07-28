@@ -19,7 +19,7 @@ export interface AdminRouterOptions {
   authenticate: Authenticate;
   version: string;
   dataMode: DataMode;
-  appliedMigrationCount: number;
+  getAppliedMigrationCount(): Promise<number>;
 }
 
 export function createAdminRouter(options: AdminRouterOptions): Router {
@@ -63,7 +63,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
       store: options.store,
       version: options.version,
       dataMode: options.dataMode,
-      appliedMigrationCount: options.appliedMigrationCount,
+      getAppliedMigrationCount: options.getAppliedMigrationCount,
     }),
   );
 

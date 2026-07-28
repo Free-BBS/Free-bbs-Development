@@ -9,6 +9,7 @@ export interface ServerRuntimeDependencies {
 }
 
 export interface StartServerRuntimeOptions {
+  host: string;
   port: number;
   dependencies?: ServerRuntimeDependencies;
 }
@@ -67,6 +68,7 @@ function closeServer(server: Server): Promise<void> {
 }
 
 export async function startServerRuntime({
+  host,
   port,
   dependencies = defaultDependencies,
 }: StartServerRuntimeOptions): Promise<ServerRuntime> {
@@ -75,13 +77,13 @@ export async function startServerRuntime({
   let server: Server;
 
   try {
-    const appliedMigrationCount = await handle.appliedMigrationCount();
     const app = dependencies.createApp({
       store: handle.store,
       databaseMode: handle.mode,
-      appliedMigrationCount,
+      getAppliedMigrationCount: handle.getAppliedMigrationCount,
+      checkReadiness: handle.checkReadiness,
     });
-    server = app.listen(port);
+    server = app.listen(port, host);
     await waitForListening(server);
   } catch (error) {
     await closeStore();

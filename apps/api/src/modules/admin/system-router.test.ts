@@ -46,6 +46,24 @@ describe('admin system status', () => {
     }
   });
 
+  it('reads the current migration count from an injected provider for each system-status request', async () => {
+    let currentCount = 4;
+    const getAppliedMigrationCount = async () => currentCount;
+    const app = createApp({
+      store: createMemoryStore(),
+      databaseMode: 'mysql',
+      getAppliedMigrationCount,
+      authMode: 'demo',
+      authClient: new DemoAuthClient(['demo-admin']),
+    });
+
+    const first = await request(app).get(statusPath).set('X-Demo-User', 'demo-admin').expect(200);
+    currentCount = 5;
+    const second = await request(app).get(statusPath).set('X-Demo-User', 'demo-admin').expect(200);
+
+    expect(first.body.data.appliedMigrationCount).toBe(4);
+    expect(second.body.data.appliedMigrationCount).toBe(5);
+  });
   it('uses existing admin authorization and reflects current module state', async () => {
     const store = createMemoryStore();
     const app = createApp({

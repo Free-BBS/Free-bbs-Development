@@ -16,6 +16,7 @@ import {
   encodeUtcDateTime,
 } from './date-codec.js';
 import { loadMySqlConfig, type MySqlConfig } from './migrate.js';
+import { checkMySqlReadiness } from './mysql-readiness.js';
 import { RecordConflictError } from './record-conflict-error.js';
 import type {
   ActivityRecord,
@@ -601,7 +602,8 @@ export interface MySqlStoreOptions {
 export interface MySqlStoreHandle {
   store: DevelopmentStore;
   pool: Pool;
-  appliedMigrationCount(): Promise<number>;
+  getAppliedMigrationCount(): Promise<number>;
+  checkReadiness(): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -615,7 +617,6 @@ async function countAppliedMigrations(pool: Pool): Promise<number> {
   }
   return count;
 }
-
 export function buildMySqlPoolOptions(config: MySqlConfig) {
   return { ...config, connectionLimit: 10, dateStrings: true, timezone: 'Z' as const };
 }
@@ -626,7 +627,8 @@ export function createMySqlStore(options: MySqlStoreOptions = {}): MySqlStoreHan
   return {
     store: buildMySqlStore(pool, pool, false),
     pool,
-    appliedMigrationCount: () => countAppliedMigrations(pool),
+    getAppliedMigrationCount: () => countAppliedMigrations(pool),
+    checkReadiness: () => checkMySqlReadiness(pool),
     close: () => pool.end(),
   };
 }

@@ -11,6 +11,12 @@ describe('store configuration', () => {
     await handle.close();
   });
 
+  it('reports memory mode as immediately ready without creating a database connection', async () => {
+    const handle = createStore({});
+
+    await expect(handle.checkReadiness()).resolves.toBeUndefined();
+    await handle.close();
+  });
   it('rejects unknown data modes and incomplete MySQL settings', () => {
     expect(() => createStore({ DATA_MODE: 'sqlite' })).toThrow('Unsupported DATA_MODE: sqlite');
     expect(() => createStore({ DATA_MODE: 'mysql' })).toThrow('MYSQL_HOST is required');

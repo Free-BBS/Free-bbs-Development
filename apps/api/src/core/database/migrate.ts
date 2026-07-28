@@ -9,6 +9,8 @@ import { splitSqlStatements } from './sql-splitter.js';
 
 export { splitSqlStatements } from './sql-splitter.js';
 
+export const migrationFileNamePattern = /^\d+_[a-z0-9_-]+\.sql$/i;
+
 export interface MigrationFile {
   name: string;
   path: string;
@@ -29,7 +31,7 @@ export function calculateChecksum(contents: string): string {
 
 export async function discoverMigrations(directory: string): Promise<MigrationFile[]> {
   const names = (await readdir(directory))
-    .filter((name) => /^\d+_[a-z0-9_-]+\.sql$/i.test(name))
+    .filter((name) => migrationFileNamePattern.test(name))
     .sort((left, right) => left.localeCompare(right));
   return Promise.all(
     names.map(async (name) => {

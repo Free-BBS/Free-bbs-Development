@@ -135,7 +135,7 @@ describe('bounded audit queries', () => {
   it('reports zero applied migrations for the memory store handle', async () => {
     const handle = createStore({ DATA_MODE: 'memory' });
 
-    await expect(handle.appliedMigrationCount()).resolves.toBe(0);
+    await expect(handle.getAppliedMigrationCount()).resolves.toBe(0);
     await handle.close();
   });
 
@@ -144,7 +144,7 @@ describe('bounded audit queries', () => {
     pool.execute.mockResolvedValueOnce([[{ total: 4 }], []]);
     const handle = createMySqlStore({ pool: typedPool });
 
-    await expect(handle.appliedMigrationCount()).resolves.toBe(4);
+    await expect(handle.getAppliedMigrationCount()).resolves.toBe(4);
     expect(pool.execute).toHaveBeenCalledWith('SELECT COUNT(*) AS total FROM schema_migrations');
   });
 });

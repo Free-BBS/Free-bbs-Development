@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { DemoAuthClient } from './core/auth/demo-auth-client.js';
 import { IdentityProviderUnavailableError } from './core/auth/auth-client.js';
@@ -24,6 +24,44 @@ describe('development API core', () => {
     expect(response.headers['x-content-type-options']).toBe('nosniff');
   });
 
+  it('keeps health as pure liveness while ready uses the injected readiness check', async () => {
+    const checkReadiness = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const app = createApp({
+      store: createMemoryStore(),
+      databaseMode: 'memory',
+      checkReadiness,
+    });
+
+    await request(app).get('/api/development/v1/health').expect(200);
+    expect(checkReadiness).not.toHaveBeenCalled();
+    await request(app).get('/api/development/v1/ready').expect(200);
+    expect(checkReadiness).toHaveBeenCalledOnce();
+  });
+
+  it('returns a stable readiness failure without database details', async () => {
+    const app = createApp({
+      store: createMemoryStore(),
+      checkReadiness: async () => {
+        throw new Error('ER_ACCESS_DENIED: mysql://secret@database/internal schema_migrations');
+      },
+    });
+
+    const response = await request(app).get('/api/development/v1/ready').expect(503);
+    expect(response.body).toEqual({
+      data: { error: { code: 'not_ready', message: 'Service is not ready' } },
+      requestId: expect.any(String),
+    });
+    expect(JSON.stringify(response.body)).not.toMatch(/mysql|secret|schema_migrations|internal/i);
+  });
+  it('fails closed for MySQL readiness when no readiness check was injected', async () => {
+    const app = createApp({ store: createMemoryStore(), databaseMode: 'mysql' });
+
+    const response = await request(app).get('/api/development/v1/ready').expect(503);
+    expect(response.body.data.error).toEqual({
+      code: 'not_ready',
+      message: 'Service is not ready',
+    });
+  });
   it('returns all nine enabled module manifests in stable order', async () => {
     const app = createApp({ store: createMemoryStore(), databaseMode: 'memory' });
     const response = await request(app).get('/api/development/v1/modules').expect(200);

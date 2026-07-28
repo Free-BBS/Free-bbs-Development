@@ -10,7 +10,7 @@ export interface SystemRouterOptions {
   store: DevelopmentStore;
   version: string;
   dataMode: DataMode;
-  appliedMigrationCount: number;
+  getAppliedMigrationCount(): Promise<number>;
 }
 
 function send<T>(response: Response, status: number, data: T): void {
@@ -25,12 +25,15 @@ export function createSystemRouter(options: SystemRouterOptions): Router {
   const router = Router();
 
   router.get('/system-status', async (_request, response) => {
-    const modules = await listModuleManifests(options.store);
+    const [modules, appliedMigrationCount] = await Promise.all([
+      listModuleManifests(options.store),
+      options.getAppliedMigrationCount(),
+    ]);
     const enabled = modules.filter(({ status }) => status === 'enabled').length;
     send(response, 200, {
       version: options.version,
       dataMode: options.dataMode,
-      appliedMigrationCount: options.appliedMigrationCount,
+      appliedMigrationCount,
       moduleCounts: {
         total: modules.length,
         enabled,

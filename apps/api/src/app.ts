@@ -44,10 +44,15 @@ function bodyParserHttpError(error: unknown): HttpError | undefined {
   return undefined;
 }
 
+export type ReadinessCheck = () => Promise<void>;
+export type AppliedMigrationCountProvider = () => Promise<number>;
+
 export interface CreateAppOptions {
   store?: DevelopmentStore;
   databaseMode?: DataMode;
   appliedMigrationCount?: number;
+  getAppliedMigrationCount?: AppliedMigrationCountProvider;
+  checkReadiness?: ReadinessCheck;
   authMode?: AuthMode;
   authClient?: AuthClient;
   allowedOrigins?: readonly string[];
@@ -90,6 +95,15 @@ export function createApp(options: CreateAppOptions = {}) {
   const environment = loadEnvironment();
   const store = options.store ?? createMemoryStore();
   const databaseMode = options.databaseMode ?? 'memory';
+  const getAppliedMigrationCount =
+    options.getAppliedMigrationCount ?? (async () => options.appliedMigrationCount ?? 0);
+  const checkReadiness =
+    options.checkReadiness ??
+    (databaseMode === 'mysql'
+      ? async () => {
+          throw new Error('MySQL readiness check is required');
+        }
+      : async () => undefined);
   const authMode = options.authMode ?? environment.authMode;
   if (environment.nodeEnv === 'production' && authMode === 'demo') {
     throw new Error('Demo authentication is disabled in production');
@@ -145,6 +159,16 @@ export function createApp(options: CreateAppOptions = {}) {
       databaseMode,
     });
   });
+  app.get(`${API_BASE_PATH}/ready`, async (_request, response) => {
+    try {
+      await checkReadiness();
+      sendEnvelope(response, 200, { status: 'ok' });
+    } catch {
+      sendEnvelope<ApiErrorData>(response, 503, {
+        error: { code: 'not_ready', message: 'Service is not ready' },
+      });
+    }
+  });
   app.get(`${API_BASE_PATH}/modules`, async (_request, response, next) => {
     try {
       sendEnvelope(response, 200, await listModuleManifests(store));
@@ -174,7 +198,7 @@ export function createApp(options: CreateAppOptions = {}) {
       authenticate,
       version: options.version ?? API_VERSION,
       dataMode: databaseMode,
-      appliedMigrationCount: options.appliedMigrationCount ?? 0,
+      getAppliedMigrationCount,
     }),
   );
   app.use(`${API_BASE_PATH}/clubs`, createClubsRouter({ store, authenticate }));
