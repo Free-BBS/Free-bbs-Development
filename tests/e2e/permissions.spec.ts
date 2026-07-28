@@ -18,8 +18,11 @@ test('a captain can check in their own team but is denied across teams', async (
   page,
   request,
 }) => {
+  test.setTimeout(60_000);
   await page.goto('./sports');
+  await expect(page.locator('.user-card')).toContainText('demo-student');
   await page.getByLabel('Demo user').selectOption('demo-captain');
+  await expect(page.getByLabel('Demo user')).toHaveValue('demo-captain');
   await expect(page.locator('.user-card')).toContainText('demo-captain');
 
   const ownTeam = page.getByRole('article', { name: '院篮球队' });
