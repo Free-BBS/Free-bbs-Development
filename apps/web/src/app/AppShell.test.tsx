@@ -90,6 +90,27 @@ describe('AppShell', () => {
     );
   });
 
+  it('keeps the current mobile navigation item horizontally reachable', () => {
+    mockUseAuth.mockReturnValue(authenticatedAuth());
+    const originalScrollIntoView = Element.prototype.scrollIntoView;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(Element.prototype, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    try {
+      renderShell('/sports');
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+    } finally {
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: originalScrollIntoView,
+      });
+    }
+  });
+
   it('keeps a disabled module visible without rendering a dead link', () => {
     mockUseAuth.mockReturnValue(authenticatedAuth());
 

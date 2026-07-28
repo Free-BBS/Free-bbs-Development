@@ -15,6 +15,8 @@
   border-radius: var(--radius-lg);
   background: var(--color-paper);
   box-shadow: var(--shadow-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   color: var(--color-text);
   text-decoration: none;
   transition:
@@ -126,6 +128,8 @@ button:disabled {
   border-radius: var(--radius-lg);
   background: var(--color-paper);
   box-shadow: var(--shadow-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   text-align: center;
 }
 
@@ -306,6 +310,8 @@ button:disabled {
   border-radius: var(--radius-lg);
   background: var(--color-paper);
   box-shadow: var(--shadow-card);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }
 
 .panel > h3 {
@@ -447,19 +453,32 @@ button:disabled {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(6, 54, 65, 0.62);
-  backdrop-filter: blur(8px);
+  background: rgba(12, 19, 32, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .dialog-form {
   width: min(100%, 640px);
   max-height: min(90vh, 820px);
-  overflow: auto;
-  padding: 28px;
-  border: 1px solid var(--color-line);
+  max-height: min(90dvh, 820px);
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--glass-stroke);
   border-radius: var(--radius-lg);
-  background: var(--color-paper);
+  background: rgba(255, 252, 246, 0.96);
   box-shadow: var(--shadow-raised);
+}
+
+.dialog-form-layout {
+  display: grid;
+  max-height: min(90vh, 820px);
+  max-height: min(90dvh, 820px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.dialog-form-header {
+  padding: 28px 28px 0;
 }
 
 .dialog-form-header h2,
@@ -472,21 +491,48 @@ button:disabled {
   color: var(--color-muted);
 }
 
+.dialog-form-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 28px 24px;
+  scrollbar-gutter: stable;
+}
+
 .dialog-form-fields {
   margin-top: 22px;
 }
 
 .dialog-form-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
-  margin-top: 22px;
+  margin: 0;
+  padding: 18px 28px calc(18px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-line);
+  background: rgba(255, 252, 246, 0.92);
+  box-shadow: 0 -10px 26px rgba(12, 19, 32, 0.06);
 }
 
 .dialog-form-actions button:first-child {
   border-color: var(--color-line);
   background: transparent;
   color: var(--color-text);
+}
+
+.record-card > *,
+.record-card article,
+.record-list > li > * {
+  min-width: 0;
+}
+
+code,
+.record-card strong,
+.record-card p,
+.audit-list pre {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 @media (max-width: 900px) {
@@ -505,11 +551,13 @@ button:disabled {
     overflow-x: auto;
     overscroll-behavior-x: contain;
     scrollbar-width: thin;
+    touch-action: pan-x;
   }
 
   .mobile-nav > [data-testid='module-navigation-item'] {
     min-width: 68px;
     flex: 0 0 68px;
+    scroll-snap-align: center;
   }
 }
 
@@ -519,10 +567,36 @@ button:disabled {
   }
 
   .panel,
-  .dialog-form,
   .empty-state {
     padding: 20px;
     border-radius: var(--radius-md);
+  }
+
+  .dialog-backdrop {
+    padding: 8px;
+  }
+
+  .dialog-form,
+  .dialog-form-layout {
+    max-height: calc(100dvh - 16px);
+  }
+
+  .dialog-form-header {
+    padding: 20px 20px 0;
+  }
+
+  .dialog-form-body {
+    padding: 0 20px 18px;
+    scrollbar-gutter: auto;
+  }
+
+  .dialog-form-actions {
+    padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .dialog-form-actions button {
+    min-width: min(132px, 100%);
+    flex: 1 1 132px;
   }
 
   .record-card {

@@ -1,27 +1,38 @@
 :root {
   color-scheme: light;
 
-  --color-sidebar: #063641;
-  --color-active: #278898;
-  --color-page: #f4f6f8;
-  --color-line: #dde3e8;
-  --color-text: #07090b;
-  --color-muted: rgba(7, 9, 11, 0.58);
-  --color-sidebar-text: #f5fbfd;
-  --color-paper: #ffffff;
-  --color-paper-muted: #eef2f4;
-  --color-focus: #66d9e8;
+  --color-sidebar: #101823;
+  --color-sidebar-deep: #0c1320;
+  --color-active: #2d8374;
+  --color-accent: #d59a25;
+  --color-page: #edf3f0;
+  --color-line: rgba(16, 24, 35, 0.14);
+  --color-text: #101823;
+  --color-muted: rgba(16, 24, 35, 0.64);
+  --color-sidebar-text: #f4efe7;
+  --color-paper: rgba(255, 252, 246, 0.82);
+  --color-paper-muted: rgba(239, 241, 235, 0.82);
+  --color-focus: #168c9e;
   --color-danger: #a23d38;
-  --color-warning: #8a5d0a;
+  --color-warning: #825707;
   --color-success: #176b56;
+  --glass-fill: rgba(255, 252, 246, 0.72);
+  --glass-stroke: rgba(255, 255, 255, 0.62);
+  --glass-blur: blur(18px);
+  --gradient-deep: linear-gradient(145deg, #0c1320 0%, #142431 48%, #172b31 100%);
+  --gradient-page:
+    radial-gradient(circle at 8% 8%, rgba(120, 217, 198, 0.22), transparent 32%),
+    radial-gradient(circle at 92% 4%, rgba(255, 211, 109, 0.18), transparent 26%),
+    radial-gradient(circle at 72% 88%, rgba(89, 216, 255, 0.13), transparent 34%), #edf3f0;
 
+  --font-display: 'Syne', 'Noto Serif SC', 'Songti SC', serif;
   --font-ui:
     'Syne', 'PingFang SC', 'Microsoft YaHei', system-ui, -apple-system, BlinkMacSystemFont,
     'Segoe UI', sans-serif;
   --font-serif: 'Noto Serif SC', 'Songti SC', SimSun, serif;
 
-  --sidebar-width: 344px;
-  --titlebar-height: 96px;
+  --sidebar-width: 300px;
+  --titlebar-height: 92px;
   --content-max-width: 1440px;
   --mobile-nav-height: 76px;
 
@@ -35,12 +46,12 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 22px;
-  --shadow-card: 0 1px 1px rgba(7, 9, 11, 0.03), 0 12px 32px rgba(6, 54, 65, 0.06);
-  --shadow-raised: 0 18px 45px rgba(6, 54, 65, 0.12);
-  --transition-fast: 160ms ease;
+  --radius-sm: 14px;
+  --radius-md: 22px;
+  --radius-lg: 28px;
+  --shadow-card: 0 1px 1px rgba(12, 19, 32, 0.04), 0 16px 42px rgba(12, 19, 32, 0.1);
+  --shadow-raised: 0 24px 70px rgba(5, 10, 18, 0.22);
+  --transition-fast: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 *,
@@ -51,7 +62,7 @@
 
 html {
   min-width: 320px;
-  background: var(--color-page);
+  background: var(--gradient-page);
   font-family: var(--font-ui);
   scroll-behavior: smooth;
   text-rendering: optimizeLegibility;
@@ -62,7 +73,8 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background: var(--color-page);
+  background: var(--gradient-page);
+  background-attachment: fixed;
   color: var(--color-text);
 }
 

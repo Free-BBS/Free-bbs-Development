@@ -55,6 +55,19 @@ export function DialogForm({
       return;
     }
 
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
     const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(focusableSelector);
     (initialFocusRef?.current ?? firstFocusable ?? dialogRef.current)?.focus();
@@ -122,16 +135,18 @@ export function DialogForm({
         tabIndex={-1}
         onKeyDown={handleKeyDown}
       >
-        <form onSubmit={handleSubmit}>
+        <form className="dialog-form-layout" onSubmit={handleSubmit}>
           <header className="dialog-form-header">
             <h2 id={titleId}>{title}</h2>
             {description ? <p id={descriptionId}>{description}</p> : null}
           </header>
 
-          <div className="dialog-form-fields">{children}</div>
+          <div className="dialog-form-body">
+            <div className="dialog-form-fields">{children}</div>
 
-          {error ? <p role="alert">{error}</p> : null}
-          {feedback ? <p role="status">{feedback}</p> : null}
+            {error ? <p role="alert">{error}</p> : null}
+            {feedback ? <p role="status">{feedback}</p> : null}
+          </div>
 
           <footer className="dialog-form-actions">
             <button type="button" onClick={onClose}>

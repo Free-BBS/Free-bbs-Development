@@ -116,6 +116,32 @@ describe('DialogForm', () => {
     expect(screen.getByLabelText('标题')).toHaveFocus();
   });
 
+  it('keeps a bounded scroll body and reachable footer while open', () => {
+    document.body.style.overflow = 'clip';
+    const { rerender } = render(
+      <DialogForm open title="新建经验" onClose={vi.fn()} onSubmit={vi.fn()}>
+        <label htmlFor="bounded-title">标题</label>
+        <input id="bounded-title" />
+      </DialogForm>,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: '新建经验' });
+    const body = dialog.querySelector('.dialog-form-body');
+    const actions = dialog.querySelector('.dialog-form-actions');
+    expect(document.body).toHaveStyle({ overflow: 'hidden' });
+    expect(body).toContainElement(screen.getByLabelText('标题'));
+    expect(actions?.parentElement).toHaveClass('dialog-form-layout');
+    expect(body?.nextElementSibling).toBe(actions);
+
+    rerender(
+      <DialogForm open={false} title="新建经验" onClose={vi.fn()} onSubmit={vi.fn()}>
+        <span>内容</span>
+      </DialogForm>,
+    );
+    expect(document.body).toHaveStyle({ overflow: 'clip' });
+    document.body.style.overflow = '';
+  });
+
   it('traps forward and backward focus inside the dialog', async () => {
     const user = userEvent.setup();
     render(<Harness />);

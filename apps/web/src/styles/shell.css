@@ -27,9 +27,9 @@
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
   background:
-    linear-gradient(90deg, transparent 0, transparent calc(100% - 1px), rgba(6, 54, 65, 0.035) 1px)
-      0 0 / 96px 96px,
-    var(--color-page);
+    linear-gradient(rgba(16, 24, 35, 0.035) 1px, transparent 1px) 0 0 / 72px 72px,
+    linear-gradient(90deg, rgba(16, 24, 35, 0.035) 1px, transparent 1px) 0 0 / 72px 72px,
+    var(--gradient-page);
 }
 
 .sidebar {
@@ -43,10 +43,12 @@
   min-height: 640px;
   overflow: auto;
   padding: 30px 24px 24px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
   background:
-    radial-gradient(circle at 26px 28px, rgba(245, 251, 253, 0.1) 1px, transparent 1.5px) 0 0 / 22px
-      22px,
-    var(--color-sidebar);
+    radial-gradient(circle at 18% 4%, rgba(255, 211, 109, 0.18), transparent 26%),
+    radial-gradient(circle at 88% 72%, rgba(120, 217, 198, 0.14), transparent 32%),
+    var(--gradient-deep);
+  box-shadow: 18px 0 54px rgba(12, 19, 32, 0.14);
   color: var(--color-sidebar-text);
 }
 
@@ -69,7 +71,7 @@
   border: 1px solid rgba(245, 251, 253, 0.32);
   border-radius: 50%;
   background: rgba(245, 251, 253, 0.08);
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 22px;
 }
 
@@ -86,7 +88,7 @@
 
 .brand-subtitle {
   color: rgba(245, 251, 253, 0.64);
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 12px;
   letter-spacing: 0.13em;
 }
@@ -199,7 +201,7 @@
   border-radius: 50%;
   background: rgba(245, 251, 253, 0.11);
   color: var(--color-sidebar-text);
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: 15px;
   font-weight: 700;
 }
@@ -218,6 +220,11 @@
 }
 
 .user-copy > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.user-copy strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -225,6 +232,7 @@
 
 .user-copy small {
   color: rgba(245, 251, 253, 0.58);
+  line-height: 1.45;
 }
 
 .titlebar {
@@ -237,14 +245,16 @@
   justify-content: space-between;
   gap: var(--space-6);
   padding: 18px clamp(24px, 4vw, 64px);
-  border-bottom: 1px solid rgba(221, 227, 232, 0.82);
-  background: rgba(244, 246, 248, 0.91);
-  backdrop-filter: blur(18px);
+  border-bottom: 1px solid var(--glass-stroke);
+  background: var(--glass-fill);
+  box-shadow: 0 12px 34px rgba(12, 19, 32, 0.06);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }
 
 .titlebar h1 {
   margin: 0;
-  font-family: var(--font-serif);
+  font-family: var(--font-display);
   font-size: clamp(24px, 2.2vw, 34px);
   font-weight: 650;
   letter-spacing: -0.025em;
@@ -297,11 +307,15 @@
     gap: 2px;
     padding: 7px max(8px, env(safe-area-inset-right)) calc(7px + env(safe-area-inset-bottom))
       max(8px, env(safe-area-inset-left));
-    border-top: 1px solid rgba(245, 251, 253, 0.16);
-    background: rgba(6, 54, 65, 0.97);
+    overflow-x: auto;
+    scroll-padding-inline: 12px;
+    overscroll-behavior-x: contain;
+    border-top: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(12, 19, 32, 0.94);
     color: var(--color-sidebar-text);
     box-shadow: 0 -12px 34px rgba(6, 54, 65, 0.15);
-    backdrop-filter: blur(18px);
+    backdrop-filter: var(--glass-blur);
+    -webkit-backdrop-filter: var(--glass-blur);
   }
 
   .mobile-nav .module-link {

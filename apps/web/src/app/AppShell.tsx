@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import type { ModuleManifest } from '@freebbs-development/contracts';
@@ -17,14 +17,34 @@ export interface AppShellProps {
 }
 
 interface ModuleNavigationProps {
+  activePath?: string;
   className: string;
+  ensureCurrentVisible?: boolean;
   label: string;
   moduleStates?: ModuleStateOverrides;
 }
 
-function ModuleNavigation({ className, label, moduleStates }: ModuleNavigationProps) {
+function ModuleNavigation({
+  activePath,
+  className,
+  ensureCurrentVisible = false,
+  label,
+  moduleStates,
+}: ModuleNavigationProps) {
+  const navigationRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!ensureCurrentVisible) {
+      return;
+    }
+
+    navigationRef.current
+      ?.querySelector<HTMLElement>('a[aria-current="page"]')
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+  }, [activePath, ensureCurrentVisible]);
+
   return (
-    <nav className={className} aria-label={label}>
+    <nav ref={navigationRef} className={className} aria-label={label}>
       {MODULE_MANIFESTS.map((module) => {
         const content = (
           <>
@@ -185,7 +205,13 @@ export function AppShell({ children, moduleStates }: AppShellProps) {
         </div>
       </div>
 
-      <ModuleNavigation className="mobile-nav" label="移动导航" moduleStates={moduleStates} />
+      <ModuleNavigation
+        activePath={location.pathname}
+        className="mobile-nav"
+        ensureCurrentVisible
+        label="移动导航"
+        moduleStates={moduleStates}
+      />
     </>
   );
 }
