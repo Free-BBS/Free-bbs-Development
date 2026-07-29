@@ -69,12 +69,18 @@ export async function synchronizeSubject(
       scope: { type: 'public', id: '*' },
     });
   }
-  if (existing.displayName === identity.displayName && existing.avatarUrl === identity.avatarUrl) {
+  const activatePending = existing.status === 'pending';
+  if (
+    existing.displayName === identity.displayName &&
+    existing.avatarUrl === identity.avatarUrl &&
+    !activatePending
+  ) {
     return existing;
   }
   const updated = await store.subjects.update(existing.id, {
     displayName: identity.displayName,
     avatarUrl: identity.avatarUrl,
+    ...(activatePending ? { status: 'active' as const } : {}),
   });
   if (updated === null) throw new Error('Subject disappeared during synchronization');
   return updated;

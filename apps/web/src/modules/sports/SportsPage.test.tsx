@@ -299,4 +299,74 @@ describe('SportsPage', () => {
     expect(screen.queryByRole('form')).not.toBeInTheDocument();
     expect(request).toHaveBeenCalledTimes(1);
   });
+
+  it('previews and confirms a two-column CSV roster before refreshing members', async () => {
+    const manager = {
+      ...captain,
+      uid: 'sports-manager',
+      tags: [],
+      policies: [
+        {
+          action: 'sports.*',
+          resource: 'sports_team',
+          effect: 'allow' as const,
+          scope: { type: 'sports_team', id: 'team-basketball' },
+        },
+      ],
+    };
+    const header = '\u59d3\u540d,\u5b66\u53f7';
+    const name = '\u5f20\u4e09';
+    const csv = `${header}\n${name},20260001`;
+    const preview = [
+      {
+        row: 2,
+        name,
+        studentNumber: '20260001',
+        outcome: 'ready',
+        blocking: false,
+      },
+    ];
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce([teams[0]])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(preview)
+      .mockResolvedValueOnce({ imported: 1, skipped: 0, rows: preview })
+      .mockResolvedValueOnce([{ id: 'member-imported', memberUid: '20260001', isCaptain: false }]);
+    const user = userEvent.setup();
+
+    render(
+      <AuthProvider client={authClient(manager)}>
+        <SportsPage client={apiWith(request as DevelopmentApi['request'])} />
+      </AuthProvider>,
+    );
+
+    const team = await screen.findByRole('article', { name: teams[0].name });
+    const input = within(team).getByLabelText(
+      '\u9009\u62e9\u540d\u5355 CSV\uff08\u59d3\u540d,\u5b66\u53f7\uff09',
+    );
+    await user.upload(input, new File([csv], 'roster.csv', { type: 'text/csv' }));
+
+    expect(await within(team).findByText('20260001')).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith('/sports/teams/team-basketball/roster-import/preview', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/csv' },
+      body: csv,
+    });
+    await user.click(
+      within(team).getByRole('button', {
+        name: '\u786e\u8ba4\u5bfc\u5165',
+      }),
+    );
+
+    expect(request).toHaveBeenCalledWith('/sports/teams/team-basketball/roster-import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rows: [{ row: 2, name, studentNumber: '20260001', outcome: 'ready' }],
+      }),
+    });
+    expect(await within(team).findByText('20260001')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('\u540d\u5355\u5bfc\u5165\u5b8c\u6210');
+  });
 });

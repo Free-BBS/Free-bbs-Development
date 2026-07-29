@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 
 import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
 import { createApiClient } from '../../core/api/client.js';
@@ -32,6 +32,20 @@ interface SportsCheckinRecord {
   checkinDate: string;
   status: string;
 }
+type RosterImportOutcome = 'ready' | 'already_member' | 'duplicate_in_file' | 'name_mismatch';
+interface RosterPreviewRow {
+  row: number;
+  name: string;
+  studentNumber: string;
+  outcome: RosterImportOutcome;
+  blocking: boolean;
+}
+interface RosterImportResult {
+  imported: number;
+  skipped: number;
+  rows: RosterPreviewRow[];
+}
+
 interface SportsPolicy {
   action: string;
   resource: string;
@@ -51,9 +65,37 @@ const statusLabels: Record<SportsTeamStatus, string> = {
   active: '活跃',
   archived: '已归档',
 };
+const rosterLabels = {
+  title: '\u6279\u91cf\u5bfc\u5165\u540d\u5355',
+  choose: '\u9009\u62e9\u540d\u5355 CSV\uff08\u59d3\u540d,\u5b66\u53f7\uff09',
+  help: '\u4ec5\u652f\u6301\u4e24\u5217\uff1a\u59d3\u540d\u3001\u5b66\u53f7\u3002\u8bf7\u5148\u9884\u89c8\uff0c\u518d\u786e\u8ba4\u5bfc\u5165\u3002',
+  preview: '\u540d\u5355\u9884\u89c8',
+  confirm: '\u786e\u8ba4\u5bfc\u5165',
+  row: '\u884c',
+  name: '\u59d3\u540d',
+  studentNumber: '\u5b66\u53f7',
+  outcome: '\u6821\u9a8c\u7ed3\u679c',
+  complete: '\u540d\u5355\u5bfc\u5165\u5b8c\u6210',
+  previewFailed: '\u540d\u5355\u9884\u89c8\u5931\u8d25',
+  importFailed: '\u540d\u5355\u5bfc\u5165\u5931\u8d25',
+} as const;
 
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim() ? error.message : '未知错误';
+}
+
+function readTextFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') resolve(reader.result);
+      else reject(new Error('CSV file could not be read as text'));
+    });
+    reader.addEventListener('error', () => {
+      reject(reader.error ?? new Error('CSV file could not be read'));
+    });
+    reader.readAsText(file, 'utf-8');
+  });
 }
 
 function matches(pattern: string, value: string): boolean {
@@ -185,6 +227,130 @@ function TeamCheckinForm({
   );
 }
 
+function RosterImport({
+  client,
+  onFeedback,
+  onImported,
+  team,
+}: {
+  client: DevelopmentApi;
+  onFeedback: (message: string, error?: boolean) => void;
+  onImported: () => Promise<void>;
+  team: SportsTeamRecord;
+}) {
+  const [preview, setPreview] = useState<RosterPreviewRow[] | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function previewFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0];
+    if (file === undefined) return;
+    setBusy(true);
+    setPreview(null);
+    try {
+      const csv = await readTextFile(file);
+      setPreview(
+        await client.request<RosterPreviewRow[]>(
+          `/sports/teams/${encodeURIComponent(team.id)}/roster-import/preview`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/csv' },
+            body: csv,
+          },
+        ),
+      );
+    } catch (error) {
+      onFeedback(`${rosterLabels.previewFailed}\uff1a${errorMessage(error)}`, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmImport() {
+    if (preview === null || preview.length === 0 || preview.some((row) => row.blocking)) return;
+    setBusy(true);
+    try {
+      const rows = preview.map(({ row, name, studentNumber, outcome }) => ({
+        row,
+        name,
+        studentNumber,
+        outcome,
+      }));
+      const result = await client.request<RosterImportResult>(
+        `/sports/teams/${encodeURIComponent(team.id)}/roster-import`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows }),
+        },
+      );
+      setPreview(null);
+      onFeedback(
+        `${rosterLabels.complete}\uff1a\u65b0\u589e ${result.imported} \u4eba\uff0c\u8df3\u8fc7 ${result.skipped} \u4eba`,
+      );
+      await onImported();
+    } catch (error) {
+      onFeedback(`${rosterLabels.importFailed}\uff1a${errorMessage(error)}`, true);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const hasBlockingRows = preview?.some((row) => row.blocking) ?? false;
+  const outcomeLabels: Record<RosterImportOutcome, string> = {
+    ready: '\u53ef\u5bfc\u5165',
+    already_member: '\u5df2\u5728\u961f\u4f0d\u4e2d',
+    duplicate_in_file: '\u6587\u4ef6\u5185\u5b66\u53f7\u91cd\u590d',
+    name_mismatch: '\u59d3\u540d\u4e0e\u73b0\u6709\u8d26\u53f7\u4e0d\u4e00\u81f4',
+  };
+
+  return (
+    <section aria-label={`${team.name}${rosterLabels.title}`}>
+      <h5>{rosterLabels.title}</h5>
+      <label>
+        {rosterLabels.choose}
+        <input
+          accept=".csv,text/csv"
+          disabled={busy}
+          type="file"
+          onChange={(event) => void previewFile(event)}
+        />
+      </label>
+      <p>{rosterLabels.help}</p>
+      {preview !== null && (
+        <>
+          <table aria-label={`${team.name}${rosterLabels.preview}`}>
+            <thead>
+              <tr>
+                <th>{rosterLabels.row}</th>
+                <th>{rosterLabels.name}</th>
+                <th>{rosterLabels.studentNumber}</th>
+                <th>{rosterLabels.outcome}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.map((row) => (
+                <tr key={`${row.row}-${row.studentNumber}`}>
+                  <td>{row.row}</td>
+                  <td>{row.name}</td>
+                  <td>{row.studentNumber}</td>
+                  <td>{outcomeLabels[row.outcome]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <button
+            type="button"
+            disabled={busy || preview.length === 0 || hasBlockingRows}
+            onClick={() => void confirmImport()}
+          >
+            {rosterLabels.confirm}
+          </button>
+        </>
+      )}
+    </section>
+  );
+}
+
 function TeamMemberManagement({
   canManage,
   client,
@@ -288,6 +454,14 @@ function TeamMemberManagement({
             添加成员
           </button>
         </form>
+      ) : null}
+      {canManage ? (
+        <RosterImport
+          client={client}
+          onFeedback={onFeedback}
+          onImported={loadMembers}
+          team={team}
+        />
       ) : null}
       {members === null && loadError === null && <p role="status">正在加载成员…</p>}
       {loadError !== null && <p role="alert">成员加载失败：{loadError}</p>}

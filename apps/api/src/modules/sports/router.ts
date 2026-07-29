@@ -1,5 +1,5 @@
 import type { ApiEnvelope, ScopeRef } from '@freebbs-development/contracts';
-import { Router } from 'express';
+import { Router, text } from 'express';
 import { z } from 'zod';
 
 import type { AuthenticationResult, AuthHeaders } from '../../core/auth/auth-middleware.js';
@@ -8,6 +8,8 @@ import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import { encodeDateOnly } from '../../core/database/date-codec.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { RosterCsvError } from './csv-roster.js';
+import { RosterImportService } from './roster-import-service.js';
 import { SportsService } from './service.js';
 
 import type { Request, Response } from 'express';
@@ -60,6 +62,25 @@ const checkinDate = z.string().refine((value) => {
   }
 });
 const createCheckinSchema = z.object({ memberUid: identifier, checkinDate }).strict();
+const rosterOutcome = z.enum(['ready', 'already_member', 'duplicate_in_file', 'name_mismatch']);
+const rosterImportSchema = z
+  .object({
+    rows: z
+      .array(
+        z
+          .object({
+            blocking: z.boolean().optional(),
+            row: z.number().int().positive(),
+            name: z.string().trim().min(1).max(200),
+            studentNumber: identifier,
+            outcome: rosterOutcome,
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(5_000),
+  })
+  .strict();
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
   const result = schema.safeParse(value);
@@ -104,6 +125,7 @@ function forbid(response: Response): void {
 export function createSportsRouter(options: SportsRouterOptions): Router {
   const router = Router();
   const service = new SportsService(options.store);
+  const rosterImport = new RosterImportService(options.store);
 
   router.use(async (_request, response, next) => {
     try {
@@ -165,6 +187,35 @@ export function createSportsRouter(options: SportsRouterOptions): Router {
     const { teamId } = parse(teamRouteSchema, request.params);
     const { memberUid } = parse(memberSchema, request.body);
     send(response, 201, await service.addMember(actor, teamId, memberUid));
+  });
+
+  router.post(
+    '/teams/:teamId/roster-import/preview',
+    text({ type: 'text/csv', limit: '256kb' }),
+    async (request, response) => {
+      const actor = await requireActor(options, request, response);
+      if (actor === null) return;
+      const { teamId } = parse(teamRouteSchema, request.params);
+      if (typeof request.body !== 'string') {
+        throw new HttpError(400, 'invalid_roster_csv', 'A text/csv request body is required');
+      }
+      try {
+        send(response, 200, await rosterImport.preview(actor, teamId, request.body));
+      } catch (error) {
+        if (error instanceof RosterCsvError) {
+          throw new HttpError(400, 'invalid_roster_csv', error.message);
+        }
+        throw error;
+      }
+    },
+  );
+
+  router.post('/teams/:teamId/roster-import', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { teamId } = parse(teamRouteSchema, request.params);
+    const { rows } = parse(rosterImportSchema, request.body);
+    send(response, 201, await rosterImport.confirm(actor, teamId, rows));
   });
 
   router.delete('/teams/:teamId/members/:memberUid', async (request, response) => {

@@ -35,6 +35,30 @@ describe('main-site subject synchronization', () => {
     ]);
   });
 
+  it('activates a pending roster subject when the matching main-site user signs in', async () => {
+    const store = createMemoryStore({ seed: false });
+    const existing = await store.subjects.create({
+      uid: identity.uid,
+      displayName: identity.displayName,
+      avatarUrl: null,
+      status: 'pending',
+      ownerUid: 'sports-director',
+      scope: { type: 'public', id: '*' },
+    });
+
+    const synchronized = await synchronizeSubject(store, identity, now);
+
+    expect(synchronized).toMatchObject({
+      id: existing.id,
+      uid: identity.uid,
+      displayName: identity.displayName,
+      avatarUrl: identity.avatarUrl,
+      status: 'active',
+      ownerUid: 'sports-director',
+      scope: { type: 'public', id: '*' },
+    });
+  });
+
   it('updates profile fields without reactivating or taking ownership of an existing subject', async () => {
     const store = createMemoryStore({ seed: false });
     const existing = await store.subjects.create({
