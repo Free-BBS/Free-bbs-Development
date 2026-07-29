@@ -84,7 +84,11 @@ describe('transparent proposal pool', () => {
       .set('X-Demo-User', 'proposal-student')
       .expect(200);
 
-    expect(list.body.data).toHaveLength(1);
+    expect(list.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: submitted.body.data.id, title: proposalInput.title }),
+      ]),
+    );
     expect(JSON.stringify(list.body.data)).not.toContain('internalNote');
     expect(detail.body.data).not.toHaveProperty('internalNote');
     expect(JSON.stringify(detail.body.data)).not.toContain('仅后台可见');

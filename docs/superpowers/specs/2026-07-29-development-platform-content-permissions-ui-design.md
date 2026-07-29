@@ -43,15 +43,15 @@ The implementation must preserve existing authentication integration, existing U
 
 The platform has seven built-in social-work organizations:
 
-| Organization ID | Display name | Built-in Tag key |
-| --- | --- | --- |
-| `arts_center` | 文艺中心 | `social_org.arts_center` |
-| `liaison_center` | 联络中心 | `social_org.liaison_center` |
-| `sports_center` | 体育中心 | `social_org.sports_center` |
+| Organization ID             | Display name | Built-in Tag key                       |
+| --------------------------- | ------------ | -------------------------------------- |
+| `arts_center`               | 文艺中心     | `social_org.arts_center`               |
+| `liaison_center`            | 联络中心     | `social_org.liaison_center`            |
+| `sports_center`             | 体育中心     | `social_org.sports_center`             |
 | `rights_development_center` | 权益发展中心 | `social_org.rights_development_center` |
-| `tuanwei` | 团委 | `social_org.tuanwei` |
-| `sast` | 科协 | `social_org.sast` |
-| `tms` | TMS | `social_org.tms` |
+| `tuanwei`                   | 团委         | `social_org.tuanwei`                   |
+| `sast`                      | 科协         | `social_org.sast`                      |
+| `tms`                       | TMS          | `social_org.tms`                       |
 
 All seven Tags count as social-organization membership. Existing extensible Tags remain supported. `sports.team_captain` remains an independent, team-scoped Tag.
 
@@ -59,11 +59,11 @@ All seven Tags count as social-organization membership. Existing extensible Tags
 
 Every active membership has exactly one level inside one organization:
 
-| Internal level | User-facing label | Meaning |
-| --- | --- | --- |
-| `member` | 部员 | Works on content and drafts within the assigned organization. |
-| `director` | 部长 | Publishes and manages work within the assigned organization. |
-| `lead` | 负责人 | Holds the highest organization-level authority. “主席” is a display alias for this level. |
+| Internal level | User-facing label | Meaning                                                                                   |
+| -------------- | ----------------- | ----------------------------------------------------------------------------------------- |
+| `member`       | 部员              | Works on content and drafts within the assigned organization.                             |
+| `director`     | 部长              | Publishes and manages work within the assigned organization.                              |
+| `lead`         | 负责人            | Holds the highest organization-level authority. “主席” is a display alias for this level. |
 
 A subject may belong to multiple organizations and may hold a different level in each. A subject may not hold two active levels in the same organization.
 

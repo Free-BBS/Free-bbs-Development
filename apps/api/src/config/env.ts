@@ -16,8 +16,12 @@ export interface Environment {
 const deterministicDemoUserIds = [
   'demo-student',
   'demo-admin',
+  'demo-rights-member',
+  'demo-liaison-member',
   'demo-sports-lead',
+  'demo-sports-director',
   'demo-captain',
+  'demo-tuanwei-lead',
 ] as const;
 
 function readNodeEnvironment(value: string | undefined): NodeEnvironment {

@@ -4,8 +4,12 @@ import type { AuthClient } from './auth-client.js';
 const demoUsers: Readonly<Record<string, Pick<UserContext, 'displayName' | 'avatarUrl'>>> = {
   'demo-student': { displayName: '普通同学', avatarUrl: null },
   'demo-admin': { displayName: '发展端管理员', avatarUrl: null },
+  'demo-rights-member': { displayName: '权益发展中心部员', avatarUrl: null },
+  'demo-liaison-member': { displayName: '联络中心部员', avatarUrl: null },
   'demo-sports-lead': { displayName: '体育负责人', avatarUrl: null },
+  'demo-sports-director': { displayName: '体育中心部长', avatarUrl: null },
   'demo-captain': { displayName: '篮球队队长', avatarUrl: null },
+  'demo-tuanwei-lead': { displayName: '团委负责人', avatarUrl: null },
 };
 
 export class DemoAuthClient implements AuthClient {

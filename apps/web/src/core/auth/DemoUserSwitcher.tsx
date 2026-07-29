@@ -4,8 +4,12 @@ import { useAuth } from './AuthProvider.js';
 const DEMO_USER_LABELS: Readonly<Record<DemoUserId, string>> = {
   'demo-student': 'Demo student',
   'demo-admin': 'Demo administrator',
-  'demo-captain': 'Demo team captain',
+  'demo-rights-member': 'Rights member',
+  'demo-liaison-member': 'Liaison member',
   'demo-sports-lead': 'Demo sports lead',
+  'demo-sports-director': 'Sports director',
+  'demo-captain': 'Demo team captain',
+  'demo-tuanwei-lead': 'Tuanwei lead',
 };
 
 export function DemoUserSwitcher() {

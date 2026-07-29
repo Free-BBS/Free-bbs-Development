@@ -25,6 +25,7 @@
 ### Task 1: Social-Organization Authorization Foundation
 
 **Files:**
+
 - Create: `packages/contracts/src/organizations.ts`
 - Create: `packages/contracts/src/organizations.test.ts`
 - Create: `apps/api/src/core/organizations/catalog.ts`
@@ -40,6 +41,7 @@
 - Modify: `apps/api/src/modules/admin/assignment-service.ts`
 
 **Interfaces:**
+
 - Produces: `SocialOrganizationId`, `OrganizationLevel`, `SOCIAL_ORGANIZATIONS`, `organizationForRole(roleKey)`.
 - Produces: `setOrganizationMembership(store, { subjectUid, organizationId, level }, context)`.
 - Produces: `DELETE /admin/organization-memberships/:subjectUid/:organizationId`.
@@ -58,16 +60,24 @@ expect(SOCIAL_ORGANIZATIONS.map(({ id }) => id)).toEqual([
   'tms',
 ]);
 
-await setOrganizationMembership(store, {
-  subjectUid: 'multi-org-user',
-  organizationId: 'sports_center',
-  level: 'director',
-}, { actorUid: 'demo-admin' });
-await setOrganizationMembership(store, {
-  subjectUid: 'multi-org-user',
-  organizationId: 'tms',
-  level: 'member',
-}, { actorUid: 'demo-admin' });
+await setOrganizationMembership(
+  store,
+  {
+    subjectUid: 'multi-org-user',
+    organizationId: 'sports_center',
+    level: 'director',
+  },
+  { actorUid: 'demo-admin' },
+);
+await setOrganizationMembership(
+  store,
+  {
+    subjectUid: 'multi-org-user',
+    organizationId: 'tms',
+    level: 'member',
+  },
+  { actorUid: 'demo-admin' },
+);
 
 expect(activeRoles('multi-org-user')).toEqual(
   expect.arrayContaining(['department.sports_director', 'affiliation.tms_member']),
@@ -120,7 +130,12 @@ export async function setOrganizationMembership(
   return store.transaction(async (tx) => {
     const definition = organizationById(input.organizationId);
     await archiveOtherOrganizationLevels(tx, input.subjectUid, definition, input.level, context);
-    const role = await ensureRoleAssignment(tx, input.subjectUid, definition.roles[input.level], context);
+    const role = await ensureRoleAssignment(
+      tx,
+      input.subjectUid,
+      definition.roles[input.level],
+      context,
+    );
     const tag = await ensureTagAssignment(tx, input.subjectUid, definition.tagKey, context);
     await recordMembershipAudit(tx, input, context, role);
     return { organizationId: input.organizationId, level: input.level, role, tag };
@@ -150,6 +165,7 @@ git commit -m "feat: add social organization membership authority"
 ### Task 2: Additive Business Schema and Store Contract
 
 **Files:**
+
 - Create: `database/migrations/007_platform_content_update.sql`
 - Create: `apps/api/src/core/database/platform-content-schema.test.ts`
 - Modify: `apps/api/src/core/database/types.ts`
@@ -159,6 +175,7 @@ git commit -m "feat: add social organization membership authority"
 - Modify: `apps/api/src/core/database/mysql.integration.test.ts`
 
 **Interfaces:**
+
 - Produces: `ProposalRecord`, `ActivityMilestoneRecord`, `CompetitionFixtureRecord`.
 - Extends: `KnowledgeEntryRecord`, `ClubRecord`, `ActivityRecord`, `FinanceRecord`.
 - Produces repositories: `proposals`, `activityMilestones`, `competitionFixtures`.
@@ -268,6 +285,7 @@ git commit -m "feat: extend platform business data schema"
 ### Task 3: Permission-Aware Shell and Main-Site Theme
 
 **Files:**
+
 - Create: `apps/web/src/core/theme/useMainSiteTheme.ts`
 - Create: `apps/web/src/core/theme/useMainSiteTheme.test.tsx`
 - Modify: `apps/web/src/app/AppShell.tsx`
@@ -280,6 +298,7 @@ git commit -m "feat: extend platform business data schema"
 - Add binary asset: `apps/web/src/assets/freebbs-emblem-v2.png` copied from `freebbs-web/public/assets/freebbs-emblem-v2.png`
 
 **Interfaces:**
+
 - Produces: `useMainSiteTheme()` returning `{ mode, toggle }`.
 - Produces: `visibleModuleManifests(user, moduleStates)`.
 - Consumes: `/me` policies already included in `AuthorizationContext`.
@@ -352,6 +371,7 @@ git commit -m "feat: align development shell with main site"
 ### Task 4: Split the Knowledge Base by Audience
 
 **Files:**
+
 - Modify: `apps/api/src/modules/knowledge/service.ts`
 - Modify: `apps/api/src/modules/knowledge/router.ts`
 - Modify: `apps/api/src/modules/knowledge/router.test.ts`
@@ -360,6 +380,7 @@ git commit -m "feat: align development shell with main site"
 - Modify: `apps/web/src/modules/knowledge/KnowledgePage.test.tsx`
 
 **Interfaces:**
+
 - Produces: `GET /knowledge/entries?audience=general|social_org`.
 - Consumes: `organizationForRole`, organization Tags, `KnowledgeEntryRecord.audience`.
 
@@ -370,8 +391,9 @@ const ordinary = await student.get('/api/development/v1/knowledge/entries?audien
 expect(ordinary.status).toBe(403);
 
 const member = await artsMember.get('/api/development/v1/knowledge/entries?audience=social_org');
-expect(member.body.data.map((entry: { organizationId: string }) => entry.organizationId))
-  .toContain('arts_center');
+expect(member.body.data.map((entry: { organizationId: string }) => entry.organizationId)).toContain(
+  'arts_center',
+);
 ```
 
 Add tests for own-organization draft editing, director publishing, and lead cross-organization management.
@@ -386,7 +408,11 @@ Expected: FAIL because audience fields and entry-point visibility are not implem
 
 ```ts
 if (input.audience === 'social_org' && input.organizationId === null) {
-  throw new HttpError(400, 'organization_required', 'Social organization entry requires an organization');
+  throw new HttpError(
+    400,
+    'organization_required',
+    'Social organization entry requires an organization',
+  );
 }
 if (input.audience === 'social_org' && !canCreateForOrganization(actor, input.organizationId)) {
   throw knowledgeNotFound();
@@ -415,6 +441,7 @@ git commit -m "feat: separate public and organization knowledge"
 ### Task 5: Add the Transparent Proposal Pool
 
 **Files:**
+
 - Modify: `apps/api/src/modules/information/service.ts`
 - Modify: `apps/api/src/modules/information/router.ts`
 - Create: `apps/api/src/modules/information/proposals.test.ts`
@@ -422,6 +449,7 @@ git commit -m "feat: separate public and organization knowledge"
 - Modify: `apps/web/src/modules/information/InformationPage.test.tsx`
 
 **Interfaces:**
+
 - Produces: `GET/POST /information/proposals`.
 - Produces: `GET/PATCH /information/proposals/:proposalId`.
 - Public response excludes `internalNote`.
@@ -439,9 +467,9 @@ const submitted = await student.post('/api/development/v1/information/proposals'
 expect(submitted.status).toBe(201);
 expect(submitted.body.data).not.toHaveProperty('internalNote');
 
-const maintained = await rightsMember.patch(
-  `/api/development/v1/information/proposals/${submitted.body.data.id}`,
-).send({ status: 'reviewing', publicProgress: '已进入调研', internalNote: '联系物业' });
+const maintained = await rightsMember
+  .patch(`/api/development/v1/information/proposals/${submitted.body.data.id}`)
+  .send({ status: 'reviewing', publicProgress: '已进入调研', internalNote: '联系物业' });
 expect(maintained.status).toBe(200);
 ```
 
@@ -475,6 +503,7 @@ git commit -m "feat: add transparent proposal pool"
 ### Task 6: Rename and Reassign Interest Groups
 
 **Files:**
+
 - Modify: `apps/api/src/modules/clubs/manifest.ts`
 - Modify: `apps/api/src/modules/clubs/service.ts`
 - Modify: `apps/api/src/modules/clubs/router.ts`
@@ -484,6 +513,7 @@ git commit -m "feat: add transparent proposal pool"
 - Modify: `apps/web/src/modules/clubs/ClubsPage.test.tsx`
 
 **Interfaces:**
+
 - Produces canonical `/interest-groups` API mounting.
 - Preserves `/clubs` as an API alias.
 - Consumes Liaison Center organization roles for create/update permission.
@@ -492,12 +522,15 @@ git commit -m "feat: add transparent proposal pool"
 
 ```ts
 expect((await student.get('/api/development/v1/interest-groups')).status).toBe(200);
-expect((await liaisonMember.post('/api/development/v1/interest-groups').send(group)).status)
-  .toBe(201);
-expect((await sportsMember.post('/api/development/v1/interest-groups').send(group)).status)
-  .toBe(403);
-expect((await student.get('/api/development/v1/clubs')).body.data)
-  .toEqual((await student.get('/api/development/v1/interest-groups')).body.data);
+expect((await liaisonMember.post('/api/development/v1/interest-groups').send(group)).status).toBe(
+  201,
+);
+expect((await sportsMember.post('/api/development/v1/interest-groups').send(group)).status).toBe(
+  403,
+);
+expect((await student.get('/api/development/v1/clubs')).body.data).toEqual(
+  (await student.get('/api/development/v1/interest-groups')).body.data,
+);
 ```
 
 - [ ] **Step 2: Confirm RED**
@@ -530,6 +563,7 @@ git commit -m "feat: turn clubs into interest groups"
 ### Task 7: Add Activity Detail, Timeline, and Competition Preview
 
 **Files:**
+
 - Modify: `apps/api/src/modules/events/service.ts`
 - Modify: `apps/api/src/modules/events/router.ts`
 - Modify: `apps/api/src/modules/events/router.test.ts`
@@ -541,6 +575,7 @@ git commit -m "feat: turn clubs into interest groups"
 - Modify: `apps/web/src/app/router.tsx`
 
 **Interfaces:**
+
 - Produces: `GET /events/activities/:activityId`.
 - Produces: milestone CRUD under `/events/activities/:activityId/milestones`.
 - Produces: fixture CRUD under `/events/activities/:activityId/fixtures`.
@@ -577,9 +612,14 @@ Calculate progress without storing a percentage:
 
 ```ts
 const completed = milestones.filter((item) => item.completed).length;
-const progress = milestones.length === 0
-  ? null
-  : { completed, total: milestones.length, percentage: Math.round(completed / milestones.length * 100) };
+const progress =
+  milestones.length === 0
+    ? null
+    : {
+        completed,
+        total: milestones.length,
+        percentage: Math.round((completed / milestones.length) * 100),
+      };
 ```
 
 Keep milestone and fixture writes in the parent activity’s organization scope and audit each mutation.
@@ -604,6 +644,7 @@ git commit -m "feat: add activity timelines and competition previews"
 ### Task 8: Add Sports Team CSV Roster Import
 
 **Files:**
+
 - Create: `apps/api/src/modules/sports/csv-roster.ts`
 - Create: `apps/api/src/modules/sports/csv-roster.test.ts`
 - Create: `apps/api/src/modules/sports/roster-import.test.ts`
@@ -614,6 +655,7 @@ git commit -m "feat: add activity timelines and competition previews"
 - Modify: `apps/web/src/modules/sports/SportsPage.test.tsx`
 
 **Interfaces:**
+
 - Produces: `parseRosterCsv(csv: string): RosterPreviewRow[]`.
 - Produces: `POST /sports/teams/:teamId/roster-import/preview` with `text/csv`.
 - Produces: `POST /sports/teams/:teamId/roster-import` with normalized preview rows.
@@ -625,8 +667,9 @@ expect(parseRosterCsv('\uFEFF姓名,学号\r\n张三,20260001')).toEqual([
   { row: 2, name: '张三', studentNumber: '20260001', outcome: 'ready' },
 ]);
 expect(() => parseRosterCsv('学号,姓名\n20260001,张三')).toThrow(RosterCsvError);
-expect(parseRosterCsv('姓名,学号\n张三,20260001\n张三,20260001')[1]?.outcome)
-  .toBe('duplicate_in_file');
+expect(parseRosterCsv('姓名,学号\n张三,20260001\n张三,20260001')[1]?.outcome).toBe(
+  'duplicate_in_file',
+);
 ```
 
 - [ ] **Step 2: Confirm parser RED**
@@ -680,6 +723,7 @@ git commit -m "feat: add sports roster csv import"
 ### Task 9: Enforce Organization-Scoped Finance Governance
 
 **Files:**
+
 - Modify: `apps/api/src/modules/finance/service.ts`
 - Modify: `apps/api/src/modules/finance/router.ts`
 - Modify: `apps/api/src/modules/finance/router.test.ts`
@@ -688,6 +732,7 @@ git commit -m "feat: add sports roster csv import"
 - Modify: `apps/web/src/modules/finance/FinancePage.test.tsx`
 
 **Interfaces:**
+
 - Produces organization-scoped finance list/create/update.
 - Produces: `POST /finance/records/:recordId/reviews` with `{ decision: 'approved' | 'rejected' }`.
 - Consumes: organization lead mapping and Tuanwei lead role.
@@ -695,11 +740,17 @@ git commit -m "feat: add sports roster csv import"
 - [ ] **Step 1: Write failing scope and module-visibility tests**
 
 ```ts
-expect((await artsLead.get('/api/development/v1/finance/records')).body.data)
-  .toEqual([expect.objectContaining({ organizationId: 'arts_center' })]);
+expect((await artsLead.get('/api/development/v1/finance/records')).body.data).toEqual([
+  expect.objectContaining({ organizationId: 'arts_center' }),
+]);
 expect((await artsDirector.get('/api/development/v1/finance/records')).status).toBe(403);
-expect((await tuanweiLead.post(`/api/development/v1/finance/records/${id}/reviews`)
-  .send({ decision: 'approved' })).status).toBe(200);
+expect(
+  (
+    await tuanweiLead
+      .post(`/api/development/v1/finance/records/${id}/reviews`)
+      .send({ decision: 'approved' })
+  ).status,
+).toBe(200);
 ```
 
 - [ ] **Step 2: Confirm RED**
@@ -736,6 +787,7 @@ git commit -m "feat: scope finance governance to organization leads"
 ### Task 10: Demo Data, Integrated Verification, and Preview Handoff
 
 **Files:**
+
 - Modify: `apps/api/src/core/database/memory-store.ts`
 - Modify: `scripts/seed.mjs`
 - Modify: `apps/api/src/core/auth/demo-auth-client.ts`
@@ -745,6 +797,7 @@ git commit -m "feat: scope finance governance to organization leads"
 - Modify: `docs/development_log.md`
 
 **Interfaces:**
+
 - Produces demo identities for ordinary student, platform admin, Rights member, Liaison member, organization lead, Sports director, and captain.
 - Produces representative General/social knowledge, proposals, Interest Groups, an activity timeline with a 马约翰杯 fixture, sports roster, and scoped finance records.
 

@@ -5,8 +5,12 @@ export const AUTH_TOKEN_STORAGE_KEY = 'free_bbs_auth_token';
 export const DEMO_USER_IDS = [
   'demo-student',
   'demo-admin',
-  'demo-captain',
+  'demo-rights-member',
+  'demo-liaison-member',
   'demo-sports-lead',
+  'demo-sports-director',
+  'demo-captain',
+  'demo-tuanwei-lead',
 ] as const;
 
 export type AuthMode = 'main' | 'demo';

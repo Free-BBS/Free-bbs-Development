@@ -40,12 +40,16 @@ npm run dev
 - `AUTH_MODE=demo`；
 - 前端开发代理把 `/api/development/v1` 转发到 `127.0.0.1:3100`。
 
-打开 `http://localhost:5173/development/`。演示模式可切换四个固定身份：
+打开 `http://localhost:5173/development/`。演示模式可切换八个固定身份：
 
 - `demo-student`：普通同学；
 - `demo-admin`：最高权限；
+- `demo-rights-member`：权益发展中心部员；
+- `demo-liaison-member`：联络中心部员；
 - `demo-sports-lead`：体育负责人；
-- `demo-captain`：代表队队长。
+- `demo-sports-director`：体育中心部长；
+- `demo-captain`：篮球队范围内的代表队队长；
+- `demo-tuanwei-lead`：团委负责人和财务审核人。
 
 可用下面的命令检查 API：
 
@@ -175,7 +179,7 @@ Invoke-RestMethod http://127.0.0.1:3100/api/development/v1/health
 
 ### 演示身份返回 401
 
-仅四个固定 UID 受支持。`DEMO_USER_IDS` 只能从固定集合中缩小允许列表，不能新增任意管理员。
+仅上述八个固定 UID 受支持。`DEMO_USER_IDS` 只能从固定集合中缩小允许列表，不能新增任意管理员。
 同时确认 API 与 Web 都处于 demo 模式。
 
 ### 主站认证返回 503
