@@ -3,11 +3,14 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 
 import type { ModuleManifest } from '@freebbs-development/contracts';
 
+import freeBbsEmblem from '../assets/freebbs-emblem-v2.png';
 import { DemoUserSwitcher } from '../core/auth/DemoUserSwitcher.js';
 import { useAuth } from '../core/auth/AuthProvider.js';
+import type { PresentationUser } from '../core/permissions/Can.js';
+import { useMainSiteTheme } from '../core/theme/useMainSiteTheme.js';
 import {
   MODULE_MANIFESTS,
-  resolveModuleStatus,
+  visibleModuleManifests,
   type ModuleStateOverrides,
 } from './module-manifests.js';
 
@@ -22,6 +25,7 @@ interface ModuleNavigationProps {
   ensureCurrentVisible?: boolean;
   label: string;
   moduleStates?: ModuleStateOverrides;
+  user: PresentationUser;
 }
 
 function ModuleNavigation({
@@ -30,6 +34,7 @@ function ModuleNavigation({
   ensureCurrentVisible = false,
   label,
   moduleStates,
+  user,
 }: ModuleNavigationProps) {
   const navigationRef = useRef<HTMLElement>(null);
 
@@ -45,7 +50,7 @@ function ModuleNavigation({
 
   return (
     <nav ref={navigationRef} className={className} aria-label={label}>
-      {MODULE_MANIFESTS.map((module) => {
+      {visibleModuleManifests(user, moduleStates).map((module) => {
         const content = (
           <>
             <span className="module-icon" aria-hidden="true">
@@ -62,19 +67,13 @@ function ModuleNavigation({
 
         return (
           <div data-testid="module-navigation-item" key={module.id}>
-            {resolveModuleStatus(module, moduleStates) === 'enabled' ? (
-              <NavLink
-                className={({ isActive }) => `module-link${isActive ? ' active' : ''}`}
-                end
-                to={module.route}
-              >
-                {content}
-              </NavLink>
-            ) : (
-              <span className="module-link" aria-disabled="true">
-                {content}
-              </span>
-            )}
+            <NavLink
+              className={({ isActive }) => `module-link${isActive ? ' active' : ''}`}
+              end
+              to={module.route}
+            >
+              {content}
+            </NavLink>
           </div>
         );
       })}
@@ -102,6 +101,7 @@ export function AppShell({ children, moduleStates }: AppShellProps) {
   const auth = useAuth();
   const location = useLocation();
 
+  const theme = useMainSiteTheme();
   if (auth.status === 'loading') {
     return (
       <AuthState>
@@ -159,17 +159,20 @@ export function AppShell({ children, moduleStates }: AppShellProps) {
       </a>
       <div className="app-shell">
         <aside className="sidebar" aria-label="发展平台侧栏">
-          <NavLink className="brand" to="/dashboard" aria-label="FREE BBS 工作台">
-            <span className="brand-mark" aria-hidden="true">
-              F
-            </span>
+          <NavLink className="brand" to="/dashboard" aria-label="FREE BBS">
+            <img className="brand-mark" src={freeBbsEmblem} alt="FREE BBS" />
             <span className="brand-copy">
               <span className="brand-name">FREE</span>
               <span className="brand-subtitle">BBS</span>
             </span>
           </NavLink>
 
-          <ModuleNavigation className="module-nav" label="主要导航" moduleStates={moduleStates} />
+          <ModuleNavigation
+            className="module-nav"
+            label="主要导航"
+            moduleStates={moduleStates}
+            user={auth.user as PresentationUser}
+          />
 
           <div className="sidebar-footer">
             <div className="user-card">
@@ -196,7 +199,18 @@ export function AppShell({ children, moduleStates }: AppShellProps) {
               <h1>{module.name}</h1>
               <p>{module.description}</p>
             </div>
-            {auth.authMode === 'demo' ? <DemoUserSwitcher /> : null}
+            <div className="titlebar-actions">
+              <button
+                aria-label={theme.mode === 'light' ? '切换到暗色模式' : '切换到明亮模式'}
+                aria-pressed={theme.mode === 'light'}
+                className="theme-toggle"
+                onClick={theme.toggle}
+                type="button"
+              >
+                <span aria-hidden="true">{theme.mode === 'light' ? '◐' : '◑'}</span>
+              </button>
+              {auth.authMode === 'demo' ? <DemoUserSwitcher /> : null}
+            </div>
           </header>
 
           <main className="page-content" id="main-content">
@@ -211,6 +225,7 @@ export function AppShell({ children, moduleStates }: AppShellProps) {
         ensureCurrentVisible
         label="移动导航"
         moduleStates={moduleStates}
+        user={auth.user as PresentationUser}
       />
     </>
   );

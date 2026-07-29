@@ -27,7 +27,8 @@ function matches(pattern: string, permission: string): boolean {
   return pattern.endsWith('.*') && permission.startsWith(pattern.slice(0, -1));
 }
 
-function hasPolicyPermission(user: PresentationUser, permission: string): boolean {
+export function hasPresentationPermission(user: PresentationUser, permission: string): boolean {
+  if (user.roles.includes('platform.super_admin')) return true;
   const matching = (user.policies ?? []).filter((policy) => matches(policy.action, permission));
   if (matching.some((policy) => policy.effect === 'deny')) return false;
   return matching.some((policy) => policy.effect === undefined || policy.effect === 'allow');
@@ -53,7 +54,7 @@ export function Can({
   const allowed =
     (role === undefined || isSuperAdmin || user.roles.includes(role)) &&
     (tag === undefined || isSuperAdmin || user.tags.some((assignment) => assignment.key === tag)) &&
-    (permission === undefined || isSuperAdmin || hasPolicyPermission(user, permission)) &&
+    (permission === undefined || hasPresentationPermission(user, permission)) &&
     (predicate === undefined || predicate(user));
 
   return <>{allowed ? children : fallback}</>;

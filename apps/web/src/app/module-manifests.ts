@@ -9,6 +9,7 @@ import informationIcon from '../assets/icons/information.svg';
 import knowledgeIcon from '../assets/icons/knowledge.svg';
 import liaisonIcon from '../assets/icons/liaison.svg';
 import sportsIcon from '../assets/icons/sports.svg';
+import { hasPresentationPermission, type PresentationUser } from '../core/permissions/Can.js';
 
 export type ModuleStateOverrides = Partial<
   Record<ModuleId, ModuleStatus | boolean | { enabled: boolean }>
@@ -50,11 +51,11 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
   },
   {
     id: 'clubs',
-    name: '社群与俱乐部',
-    description: '浏览和维护社群、俱乐部及其协作信息。',
-    route: '/clubs',
+    name: '趣缘群体',
+    description: '发现、加入和维护兴趣社群及其公开活动。',
+    route: '/interest-groups',
     icon: clubsIcon,
-    ownerTeam: '社群与俱乐部团队',
+    ownerTeam: '联络中心',
     status: 'enabled',
     requiredPermissions: [],
     order: 4,
@@ -100,7 +101,7 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
     icon: financeIcon,
     ownerTeam: '财务治理团队',
     status: 'enabled',
-    requiredPermissions: [],
+    requiredPermissions: ['finance.record.read'],
     order: 8,
   },
   {
@@ -111,7 +112,7 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
     icon: adminIcon,
     ownerTeam: '平台核心组',
     status: 'enabled',
-    requiredPermissions: [],
+    requiredPermissions: ['admin.manage'],
     order: 9,
   },
 ] as const;
@@ -131,4 +132,18 @@ export function resolveModuleStatus(
   }
 
   return override ?? manifest.status;
+}
+
+export function visibleModuleManifests(
+  user: PresentationUser,
+  overrides?: ModuleStateOverrides,
+): readonly ModuleManifest[] {
+  return MODULE_MANIFESTS.filter(
+    (manifest) =>
+      manifest.id !== 'dashboard' &&
+      resolveModuleStatus(manifest, overrides) === 'enabled' &&
+      manifest.requiredPermissions.every((permission) =>
+        hasPresentationPermission(user, permission),
+      ),
+  );
 }

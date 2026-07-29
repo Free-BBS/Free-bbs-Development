@@ -65,7 +65,7 @@ describe('module state loader', () => {
 });
 
 describe('AppShell', () => {
-  it('renders all nine modules in stable order and marks the active route', () => {
+  it('hides the dashboard and protected modules while keeping the dashboard brand target', () => {
     mockUseAuth.mockReturnValue(authenticatedAuth());
 
     renderShell('/knowledge');
@@ -74,19 +74,24 @@ describe('AppShell', () => {
     const items = within(navigation).getAllByTestId('module-navigation-item');
 
     expect(items.map((item) => item.querySelector('.module-name')?.textContent)).toEqual([
-      '工作台',
       '经验库',
       '信息与咨询',
-      '社群与俱乐部',
+      '趣缘群体',
       '活动',
       '联络资源',
       '体育代表队',
-      '财务治理',
-      '权限与模块管理',
     ]);
+    expect(within(navigation).queryByText('工作台')).not.toBeInTheDocument();
+    expect(within(navigation).queryByText('财务治理')).not.toBeInTheDocument();
+    expect(within(navigation).queryByText('权限与模块管理')).not.toBeInTheDocument();
     expect(within(navigation).getByRole('link', { name: '经验库' })).toHaveAttribute(
       'aria-current',
       'page',
+    );
+    expect(screen.getByRole('link', { name: 'FREE BBS' })).toHaveAttribute('href', '/dashboard');
+    expect(screen.getByRole('img', { name: 'FREE BBS' })).toHaveAttribute(
+      'src',
+      expect.stringContaining('freebbs-emblem-v2.png'),
     );
   });
 
@@ -111,17 +116,14 @@ describe('AppShell', () => {
     }
   });
 
-  it('keeps a disabled module visible without rendering a dead link', () => {
+  it('omits a disabled module from navigation', () => {
     mockUseAuth.mockReturnValue(authenticatedAuth());
 
     renderShell('/dashboard', { moduleStates: { events: 'disabled' } });
 
     const navigation = screen.getByRole('navigation', { name: '主要导航' });
     expect(within(navigation).queryByRole('link', { name: '活动' })).not.toBeInTheDocument();
-    expect(within(navigation).getByText('活动').closest('[aria-disabled]')).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
+    expect(within(navigation).queryByText('活动')).not.toBeInTheDocument();
   });
 
   it('renders the authenticated user name and avatar', () => {
@@ -193,4 +195,18 @@ describe('AppShell', () => {
     screen.getByRole('button', { name: '重试' }).click();
     expect(reload).toHaveBeenCalledOnce();
   });
+});
+
+it('shows protected modules only when the corresponding policy is present', () => {
+  mockUseAuth.mockReturnValue(
+    authenticatedAuth({
+      user: { ...user, policies: [{ action: 'finance.*', effect: 'allow' }] },
+    }),
+  );
+
+  renderShell('/finance');
+
+  const navigation = screen.getByRole('navigation', { name: '主要导航' });
+  expect(navigation).toHaveTextContent('财务治理');
+  expect(within(navigation).queryByText('权限与模块管理')).not.toBeInTheDocument();
 });

@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { AppRouter } from './app/router.js';
 import { AuthProvider } from './core/auth/AuthProvider.js';
 import './styles/tokens.css';
+import './styles/theme.css';
 import './styles/shell.css';
 import './styles/components.css';
 
