@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 
 import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
 import { ApiError, createApiClient, type ApiClient } from '../../core/api/client.js';
+import { ProposalPool } from './ProposalPool.js';
 
 type AnnouncementStatus = 'draft' | 'published' | 'archived';
 type ConsultationStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
@@ -510,6 +511,8 @@ export function InformationPage({ client, user }: InformationPageProps) {
               </form>
             </section>
           ) : null}
+
+          <ProposalPool client={api} user={user} />
 
           <section aria-labelledby="consultation-form-heading">
             <h2 id="consultation-form-heading">提交咨询</h2>

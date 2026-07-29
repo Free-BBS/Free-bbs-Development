@@ -9,6 +9,8 @@ export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = [
     ['knowledge.read', 'knowledge_entry'],
     ['information.announcement.read', 'announcement'],
     ['information.consultation.create', 'consultation'],
+    ['information.proposal.read', 'proposal'],
+    ['information.proposal.create', 'proposal'],
     ['clubs.read', 'club'],
     ['clubs.join', 'club_membership'],
     ['clubs.leave', 'club_membership'],
@@ -36,6 +38,7 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
   'domain.rights_development_lead': rules(
     ['finance.*', '*'],
     ['information.consultation.*', 'consultation'],
+    ['information.proposal.manage', 'proposal'],
     ['knowledge.*', '*'],
   ),
   'department.arts_director': rules(
@@ -70,6 +73,7 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['finance.record.create', 'finance_record'],
     ['finance.record.update', 'finance_record'],
     ['information.consultation.triage', 'consultation'],
+    ['information.proposal.manage', 'proposal'],
     ['knowledge.create', 'knowledge_entry'],
     ['knowledge.publish', 'knowledge_entry'],
   ),
@@ -93,6 +97,7 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
   'department.rights_development_member': rules(
     ['information.consultation.read', 'consultation'],
     ['information.consultation.triage', 'consultation'],
+    ['information.proposal.manage', 'proposal'],
     ['knowledge.create', 'knowledge_entry'],
   ),
   'affiliation.tuanwei_member': rules(

@@ -654,6 +654,67 @@ code,
   color: var(--color-sidebar-text);
 }
 
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-md);
+  background: var(--color-paper-muted);
+}
+
+.table-scroll table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.table-scroll th,
+.table-scroll td {
+  padding: 13px 15px;
+  border-bottom: 1px solid var(--color-line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.table-scroll th {
+  color: var(--color-muted);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.table-scroll tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.proposal-detail {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: clamp(20px, 3vw, 32px);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  background: var(--color-paper);
+  box-shadow: var(--shadow-card);
+}
+
+.proposal-detail > header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.proposal-detail h3,
+.proposal-detail h4,
+.proposal-detail p {
+  margin: 0;
+}
+
+.proposal-detail h4 {
+  margin-top: 8px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+
 .status-badge[data-status='error'] {
   border-color: rgba(162, 61, 56, 0.25);
   background: rgba(162, 61, 56, 0.08);

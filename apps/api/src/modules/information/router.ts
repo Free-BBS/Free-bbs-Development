@@ -7,6 +7,7 @@ import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { PROPOSAL_STATUSES, ProposalService } from './proposal-service.js';
 import { InformationService } from './service.js';
 
 import type { Request, Response } from 'express';
@@ -33,6 +34,7 @@ const scope = z
   .strict();
 const announcementStatus = z.enum(['draft', 'published', 'archived']);
 const consultationStatus = z.enum(['open', 'in_progress', 'resolved', 'closed']);
+const proposalStatus = z.enum(PROPOSAL_STATUSES);
 const listQueryFields = {
   scopeType: identifier.regex(/^[a-z][a-z0-9_]*$/).optional(),
   scopeId: identifier.optional(),
@@ -44,6 +46,10 @@ const announcementQuerySchema = z
   .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
 const consultationQuerySchema = z
   .object({ status: consultationStatus.optional(), ...listQueryFields })
+  .strict()
+  .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
+const proposalQuerySchema = z
+  .object({ status: proposalStatus.optional(), ...listQueryFields })
   .strict()
   .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
 const announcementCreateSchema = z
@@ -83,6 +89,31 @@ const consultationPatchSchema = z
   })
   .strict()
   .refine((value) => value.title !== undefined || value.body !== undefined);
+const proposalCreateSchema = z
+  .object({
+    title,
+    problemDescription: body,
+    proposedSolution: body,
+    category: z.string().trim().min(1).max(80),
+  })
+  .strict();
+const proposalMaintenanceSchema = z
+  .object({
+    category: z.string().trim().min(1).max(80).optional(),
+    status: proposalStatus.optional(),
+    assigneeUid: identifier.nullable().optional(),
+    publicProgress: z.string().trim().max(20_000).optional(),
+    internalNote: z.string().trim().max(20_000).optional(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.category !== undefined ||
+      value.status !== undefined ||
+      value.assigneeUid !== undefined ||
+      value.publicProgress !== undefined ||
+      value.internalNote !== undefined,
+  );
 
 function send<T>(response: Response, statusCode: number, data: T): void {
   const envelope: ApiEnvelope<T> = {
@@ -145,6 +176,7 @@ function forbid(response: Response, message = 'Information permission is require
 export function createInformationRouter(options: InformationRouterOptions): Router {
   const router = Router();
   const service = new InformationService(options.store);
+  const proposals = new ProposalService(options.store);
 
   router.use(async (_request, response, next) => {
     try {
@@ -260,5 +292,38 @@ export function createInformationRouter(options: InformationRouterOptions): Rout
       throw new HttpError(404, 'consultation_not_found', 'Consultation not found');
     send(response, 200, updated);
   });
+  router.get('/proposals', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const filters = parse(proposalQuerySchema, request.query);
+    send(response, 200, await proposals.list(filters, actor));
+  });
+
+  router.get('/proposals/:proposalId', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const proposalId = parse(identifier, request.params.proposalId);
+    const proposal = await proposals.get(proposalId, actor);
+    if (proposal === null) throw new HttpError(404, 'proposal_not_found', 'Proposal not found');
+    send(response, 200, proposal);
+  });
+
+  router.post('/proposals', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const input = parse(proposalCreateSchema, request.body);
+    send(response, 201, await proposals.create(actor, input));
+  });
+
+  router.patch('/proposals/:proposalId', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const proposalId = parse(identifier, request.params.proposalId);
+    const input = parse(proposalMaintenanceSchema, request.body);
+    const proposal = await proposals.maintain(actor, proposalId, input);
+    if (proposal === null) throw new HttpError(404, 'proposal_not_found', 'Proposal not found');
+    send(response, 200, proposal);
+  });
+
   return router;
 }
