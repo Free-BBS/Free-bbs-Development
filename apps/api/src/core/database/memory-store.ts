@@ -14,6 +14,9 @@ import { RecordConflictError } from './record-conflict-error.js';
 import type {
   ActivityRecord,
   ActivityRegistrationRecord,
+  ActivityMilestoneRecord,
+  CompetitionFixtureRecord,
+  ProposalRecord,
   AnnouncementRecord,
   AuditLogRecord,
   ClubMembershipRecord,
@@ -60,9 +63,12 @@ interface MemoryState {
   knowledge: KnowledgeEntryRecord[];
   announcements: AnnouncementRecord[];
   consultations: ConsultationRecord[];
+  proposals: ProposalRecord[];
   clubs: ClubRecord[];
   clubMemberships: ClubMembershipRecord[];
   activities: ActivityRecord[];
+  activityMilestones: ActivityMilestoneRecord[];
+  competitionFixtures: CompetitionFixtureRecord[];
   activityRegistrations: ActivityRegistrationRecord[];
   sportsTeams: SportsTeamRecord[];
   sportsTeamMembers: SportsTeamMemberRecord[];
@@ -105,9 +111,12 @@ const searchFields: Record<CollectionName, string[]> = {
   knowledge: ['title', 'body'],
   announcements: ['title', 'body'],
   consultations: ['title', 'body', 'requesterUid', 'assigneeUid', 'reply'],
+  proposals: ['title', 'problemDescription', 'proposedSolution', 'category', 'submitterUid'],
   clubs: ['name', 'description', 'technicalSupportNote'],
   clubMemberships: ['clubId', 'memberUid'],
   activities: ['title', 'description', 'technicalSupportNote'],
+  activityMilestones: ['activityId', 'title', 'type', 'description'],
+  competitionFixtures: ['activityId', 'round', 'participantA', 'participantB', 'location'],
   activityRegistrations: ['activityId', 'participantUid'],
   sportsTeams: ['name', 'description'],
   sportsTeamMembers: ['teamId', 'memberUid'],
@@ -116,9 +125,34 @@ const searchFields: Record<CollectionName, string[]> = {
   financeRecords: ['title', 'kind'],
 };
 
+function collectionDefaults(collection: CollectionName): Record<string, unknown> {
+  switch (collection) {
+    case 'knowledge':
+      return { audience: 'general', organizationId: null };
+    case 'clubs':
+      return { organizationId: null };
+    case 'activities':
+      return {
+        endsAt: null,
+        location: '',
+        organizationId: null,
+        standingActivity: false,
+      };
+    case 'financeRecords':
+      return {
+        organizationId: null,
+        reviewerUid: null,
+        reviewedAt: null,
+        reviewDecision: null,
+      };
+    default:
+      return {};
+  }
+}
+
 function normalizedValues<T extends object>(value: T): T {
   const result = structuredClone(value) as Record<string, unknown>;
-  for (const key of ['expiresAt', 'startsAt']) {
+  for (const key of ['expiresAt', 'startsAt', 'endsAt', 'occursAt', 'scheduledAt', 'reviewedAt']) {
     if (!Object.hasOwn(result, key) || result[key] === null || result[key] === undefined) continue;
     const encoded = encodeUtcDateTime(result[key] as string);
     result[key] = encoded?.toISOString() ?? null;
@@ -159,9 +193,12 @@ function createEmptyState(): MemoryState {
     knowledge: [],
     announcements: [],
     consultations: [],
+    proposals: [],
     clubs: [],
     clubMemberships: [],
     activities: [],
+    activityMilestones: [],
+    competitionFixtures: [],
     activityRegistrations: [],
     sportsTeams: [],
     sportsTeamMembers: [],
@@ -558,11 +595,12 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       if (conflictMessage !== undefined) throw new RecordConflictError(conflictMessage);
       const now = new Date().toISOString();
       const record = {
+        ...collectionDefaults(this.collection),
         ...normalizedValues(input),
         id: randomUUID(),
         createdAt: now,
         updatedAt: now,
-      } as T;
+      } as unknown as T;
       this.records().push(record);
       return structuredClone(record);
     });
@@ -799,9 +837,12 @@ function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStor
     knowledge: repository('knowledge'),
     announcements: repository('announcements'),
     consultations: repository('consultations'),
+    proposals: repository('proposals'),
     clubs: repository('clubs'),
     clubMemberships: repository('clubMemberships'),
     activities: repository('activities'),
+    activityMilestones: repository('activityMilestones'),
+    competitionFixtures: repository('competitionFixtures'),
     activityRegistrations: repository('activityRegistrations'),
     sportsTeams: repository('sportsTeams'),
     sportsTeamMembers: repository('sportsTeamMembers'),

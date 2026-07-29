@@ -124,6 +124,7 @@ describe.each(storeCases())('%s business workflow store', (_adapter, createStore
       ownerUid: 'staff-a',
       scope: publicScope,
     });
+
     expect(
       await store.activities.update(activity.id, {
         technicalSupportStatus: 'confirmed',
@@ -131,6 +132,48 @@ describe.each(storeCases())('%s business workflow store', (_adapter, createStore
     ).toMatchObject({
       technicalSupportStatus: 'confirmed',
       technicalSupportNote: 'Livestream support',
+    });
+  });
+
+  it('applies compatible defaults for audience and organization fields', async () => {
+    const store = createStore();
+    const knowledge = await store.knowledge.create({
+      type: 'faq',
+      title: 'General answer',
+      body: 'Visible to everyone.',
+      status: 'published',
+      ownerUid: 'staff-a',
+      scope: publicScope,
+    });
+    expect(knowledge).toMatchObject({ audience: 'general', organizationId: null });
+
+    const club = await store.clubs.create({
+      name: 'Open group',
+      description: 'Public interest group.',
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null,
+      status: 'active',
+      ownerUid: 'staff-a',
+      scope: publicScope,
+    });
+    expect(club.organizationId).toBeNull();
+
+    const activity = await store.activities.create({
+      title: 'Open day',
+      description: 'Public event.',
+      clubId: club.id,
+      startsAt: null,
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null,
+      status: 'published',
+      ownerUid: 'staff-a',
+      scope: publicScope,
+    });
+    expect(activity).toMatchObject({
+      endsAt: null,
+      location: '',
+      organizationId: null,
+      standingActivity: false,
     });
   });
 

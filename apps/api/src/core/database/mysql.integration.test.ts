@@ -16,6 +16,9 @@ async function cleanCreatedRecords(): Promise<void> {
     'audit_logs',
     'finance_records',
     'liaison_resources',
+    'competition_fixtures',
+    'activity_milestones',
+    'proposals',
     'sports_checkins',
     'sports_team_members',
     'activity_registrations',
@@ -101,13 +104,70 @@ integration('real MySQL 8 store integration', () => {
       description: runId,
       clubId: club.id,
       startsAt,
+      endsAt: '2026-07-22T05:04:05.006Z',
+      location: 'Integration venue',
+      organizationId: 'sports_center',
+      standingActivity: true,
       technicalSupportStatus: 'not_requested',
       technicalSupportNote: null,
       status: 'published',
       ownerUid: runId,
       scope: { type: 'club', id: club.id },
     });
-    expect((await handle.store.activities.get(activity.id))?.startsAt).toBe(startsAt);
+    expect(await handle.store.activities.get(activity.id)).toMatchObject({
+      startsAt,
+      endsAt: '2026-07-22T05:04:05.006Z',
+      location: 'Integration venue',
+      organizationId: 'sports_center',
+      standingActivity: true,
+    });
+
+    const milestone = await handle.store.activityMilestones.create({
+      activityId: activity.id,
+      occursAt: '2026-07-22T04:04:05.006Z',
+      title: 'Integration milestone',
+      type: 'checkpoint',
+      description: runId,
+      completed: false,
+      displayOrder: 1,
+      status: 'scheduled',
+      ownerUid: runId,
+      scope: { type: 'activity', id: activity.id },
+    });
+    expect((await handle.store.activityMilestones.get(milestone.id))?.occursAt).toBe(
+      '2026-07-22T04:04:05.006Z',
+    );
+
+    const fixture = await handle.store.competitionFixtures.create({
+      activityId: activity.id,
+      round: 'Group stage',
+      participantA: 'Team A',
+      participantB: 'Team B',
+      scheduledAt: '2026-07-22T04:34:05.006Z',
+      location: 'Integration court',
+      score: null,
+      status: 'scheduled',
+      ownerUid: runId,
+      scope: { type: 'activity', id: activity.id },
+    });
+    expect((await handle.store.competitionFixtures.get(fixture.id))?.participantB).toBe('Team B');
+
+    const proposal = await handle.store.proposals.create({
+      title: 'Integration proposal',
+      problemDescription: runId,
+      proposedSolution: 'Verify the MySQL mapping.',
+      category: 'integration',
+      submitterUid: `${runId}-member`,
+      assigneeUid: null,
+      publicProgress: 'Submitted',
+      internalNote: 'Integration-only note',
+      status: 'submitted',
+      ownerUid: runId,
+      scope: publicScope,
+    });
+    expect((await handle.store.proposals.get(proposal.id))?.internalNote).toBe(
+      'Integration-only note',
+    );
 
     const registrationInput = {
       activityId: activity.id,

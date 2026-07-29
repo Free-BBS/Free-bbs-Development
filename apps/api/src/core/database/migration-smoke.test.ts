@@ -17,6 +17,7 @@ describe('database migrations', () => {
       '004_production_governance.sql',
       '005_business_workflows.sql',
       '006_domain_reference_integrity.sql',
+      '007_platform_content_update.sql',
     ]);
 
     const sql = (await Promise.all(migrations.map(({ path }) => readFile(path, 'utf8')))).join(
@@ -34,9 +35,12 @@ describe('database migrations', () => {
       'tag_permissions',
       'modules',
       'module_owners',
+      'proposals',
       'audit_logs',
       'knowledge_entries',
       'announcements',
+      'activity_milestones',
+      'competition_fixtures',
       'consultations',
       'clubs',
       'club_memberships',

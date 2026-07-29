@@ -1,4 +1,10 @@
-import type { ModuleId, PermissionAction, RoleKey, ScopeRef } from '@freebbs-development/contracts';
+import type {
+  ModuleId,
+  PermissionAction,
+  RoleKey,
+  ScopeRef,
+  SocialOrganizationId,
+} from '@freebbs-development/contracts';
 
 export interface StoredRecord {
   id: string;
@@ -126,6 +132,8 @@ export interface KnowledgeEntryRecord extends StoredRecord {
   type: 'workflow' | 'faq' | 'contact' | 'retrospective' | 'notice';
   title: string;
   body: string;
+  audience?: 'general' | 'social_org';
+  organizationId?: SocialOrganizationId | null;
 }
 
 export interface AnnouncementRecord extends StoredRecord {
@@ -141,11 +149,23 @@ export interface ConsultationRecord extends StoredRecord {
   reply: string | null;
 }
 
+export interface ProposalRecord extends StoredRecord {
+  title: string;
+  problemDescription: string;
+  proposedSolution: string;
+  category: string;
+  submitterUid: string;
+  assigneeUid: string | null;
+  publicProgress: string;
+  internalNote: string;
+}
+
 export type TechnicalSupportStatus = 'not_requested' | 'requested' | 'confirmed';
 
 export interface ClubRecord extends StoredRecord {
   name: string;
   description: string;
+  organizationId?: SocialOrganizationId | null;
   technicalSupportStatus: TechnicalSupportStatus;
   technicalSupportNote: string | null;
 }
@@ -160,8 +180,32 @@ export interface ActivityRecord extends StoredRecord {
   description: string;
   clubId?: string | null;
   startsAt?: string | null;
+  endsAt?: string | null;
+  location?: string;
+  organizationId?: SocialOrganizationId | null;
+  standingActivity?: boolean;
   technicalSupportStatus: TechnicalSupportStatus;
   technicalSupportNote: string | null;
+}
+
+export interface ActivityMilestoneRecord extends StoredRecord {
+  activityId: string;
+  occursAt: string;
+  title: string;
+  type: string;
+  description: string;
+  completed: boolean;
+  displayOrder: number;
+}
+
+export interface CompetitionFixtureRecord extends StoredRecord {
+  activityId: string;
+  round: string;
+  participantA: string;
+  participantB: string;
+  scheduledAt: string;
+  location: string;
+  score: string | null;
 }
 
 export interface ActivityRegistrationRecord extends StoredRecord {
@@ -197,6 +241,10 @@ export interface FinanceRecord extends StoredRecord {
   kind: 'budget' | 'settlement';
   amountCents: number;
   activityId?: string | null;
+  organizationId?: SocialOrganizationId | null;
+  reviewerUid?: string | null;
+  reviewedAt?: string | null;
+  reviewDecision?: 'approved' | 'rejected' | null;
 }
 
 export interface DevelopmentStore {
@@ -216,9 +264,12 @@ export interface DevelopmentStore {
   knowledge: RecordRepository<KnowledgeEntryRecord>;
   announcements: RecordRepository<AnnouncementRecord>;
   consultations: RecordRepository<ConsultationRecord>;
+  proposals: RecordRepository<ProposalRecord>;
   clubs: RecordRepository<ClubRecord>;
   clubMemberships: RecordRepository<ClubMembershipRecord>;
   activities: RecordRepository<ActivityRecord>;
+  activityMilestones: RecordRepository<ActivityMilestoneRecord>;
+  competitionFixtures: RecordRepository<CompetitionFixtureRecord>;
   activityRegistrations: RecordRepository<ActivityRegistrationRecord>;
   sportsTeams: RecordRepository<SportsTeamRecord>;
   sportsTeamMembers: RecordRepository<SportsTeamMemberRecord>;
