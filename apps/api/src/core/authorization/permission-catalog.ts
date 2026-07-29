@@ -26,11 +26,12 @@ export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = [
 export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
   'platform.super_admin': rules(['*', '*']),
   'domain.arts_lead': rules(['clubs.*', '*'], ['events.*', '*'], ['knowledge.*', '*']),
-  'domain.sports_lead': rules(['sports.*', '*'], ['events.*', '*']),
+  'domain.sports_lead': rules(['sports.*', '*'], ['events.*', '*'], ['knowledge.*', '*']),
   'domain.liaison_lead': rules(
     ['liaison.*', '*'],
     ['information.*', '*'],
     ['events.read', 'activity'],
+    ['knowledge.*', '*'],
   ),
   'domain.rights_development_lead': rules(
     ['finance.*', '*'],
@@ -52,6 +53,8 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['sports.checkin.create', 'sports_checkin'],
     ['events.create', 'activity'],
     ['events.update', 'activity'],
+    ['knowledge.create', 'knowledge_entry'],
+    ['knowledge.publish', 'knowledge_entry'],
   ),
   'department.liaison_director': rules(
     ['liaison.resource.create', 'liaison_resource'],
@@ -59,12 +62,16 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['information.announcement.create', 'announcement'],
     ['information.announcement.publish', 'announcement'],
     ['information.consultation.triage', 'consultation'],
+    ['knowledge.create', 'knowledge_entry'],
+    ['knowledge.publish', 'knowledge_entry'],
   ),
   'department.rights_development_director': rules(
     ['finance.record.read', 'finance_record'],
     ['finance.record.create', 'finance_record'],
     ['finance.record.update', 'finance_record'],
     ['information.consultation.triage', 'consultation'],
+    ['knowledge.create', 'knowledge_entry'],
+    ['knowledge.publish', 'knowledge_entry'],
   ),
   'department.arts_member': rules(
     ['clubs.create', 'club'],
@@ -75,11 +82,13 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['sports.team.read', 'sports_team'],
     ['sports.checkin.read', 'sports_checkin'],
     ['events.create', 'activity'],
+    ['knowledge.create', 'knowledge_entry'],
   ),
   'department.liaison_member': rules(
     ['liaison.resource.read', 'liaison_resource'],
     ['liaison.resource.create', 'liaison_resource'],
     ['information.announcement.create', 'announcement'],
+    ['knowledge.create', 'knowledge_entry'],
   ),
   'department.rights_development_member': rules(
     ['information.consultation.read', 'consultation'],

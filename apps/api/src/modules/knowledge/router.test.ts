@@ -81,7 +81,7 @@ describe('knowledge API', () => {
         type: 'workflow',
         title: '交接流程草稿',
         body: '由维护者整理的交接流程。',
-        scope: { type: 'organization', id: 'freebbs' },
+        scope: { type: 'public', id: '*' },
       })
       .expect(201);
 
@@ -91,7 +91,9 @@ describe('knowledge API', () => {
         title: '交接流程草稿',
         status: 'draft',
         ownerUid: 'demo-admin',
-        scope: { type: 'organization', id: 'freebbs' },
+        audience: 'general',
+        organizationId: null,
+        scope: { type: 'public', id: '*' },
       },
       requestId: expect.any(String),
     });

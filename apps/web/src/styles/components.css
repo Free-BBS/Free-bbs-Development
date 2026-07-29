@@ -632,6 +632,28 @@ code,
   line-height: 1.65;
 }
 
+.audience-switcher {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: var(--color-paper-muted);
+}
+
+.module-page .audience-switcher button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-muted);
+}
+
+.module-page .audience-switcher button[aria-pressed='true'] {
+  border-color: var(--color-line);
+  background: var(--color-active);
+  color: var(--color-sidebar-text);
+}
+
 .status-badge[data-status='error'] {
   border-color: rgba(162, 61, 56, 0.25);
   background: rgba(162, 61, 56, 0.08);

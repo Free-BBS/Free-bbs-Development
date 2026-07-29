@@ -1,0 +1,76 @@
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+
+import type { UserContext } from '@freebbs-development/contracts';
+import type { ApiClient } from '../../core/api/client.js';
+import { KnowledgePage } from './KnowledgePage.js';
+
+const ordinary: UserContext = {
+  uid: 'ordinary',
+  displayName: '普通同学',
+  avatarUrl: null,
+  baseRole: 'student',
+  roles: [],
+  tags: [],
+};
+
+const artsMember: UserContext = {
+  ...ordinary,
+  uid: 'arts-member',
+  displayName: '文艺中心部员',
+  roles: ['department.arts_member'],
+  tags: [
+    { key: 'social_org.arts_center', scope: { type: 'social_organization', id: 'arts_center' } },
+  ],
+};
+
+const generalEntry = {
+  id: 'general-1',
+  type: 'faq' as const,
+  title: 'General 常见问题',
+  body: '所有同学都可以查看。',
+  audience: 'general' as const,
+  organizationId: null,
+  status: 'published' as const,
+  ownerUid: 'demo-admin',
+  scope: { type: 'public', id: '*' },
+  createdAt: '2026-07-29T00:00:00.000Z',
+  updatedAt: '2026-07-29T00:00:00.000Z',
+};
+
+const organizationEntry = {
+  ...generalEntry,
+  id: 'organization-1',
+  title: '文艺中心交接清单',
+  audience: 'social_org' as const,
+  organizationId: 'arts_center',
+  scope: { type: 'social_organization', id: 'arts_center' },
+};
+
+describe('KnowledgePage audience entry points', () => {
+  it('keeps the social-organization entry point unmounted for ordinary students', async () => {
+    const request = vi.fn().mockResolvedValue([generalEntry]);
+
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={ordinary} />);
+
+    expect(await screen.findByText('General 常见问题')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '社工组织' })).not.toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith('/knowledge/entries?audience=general');
+  });
+
+  it('lets organization members enter their protected knowledge area', async () => {
+    const request = vi.fn(async (path: string) =>
+      path.endsWith('audience=social_org') ? [organizationEntry] : [generalEntry],
+    );
+    const user = userEvent.setup();
+
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={artsMember} />);
+
+    await screen.findByText('General 常见问题');
+    await user.click(screen.getByRole('button', { name: '社工组织' }));
+
+    expect(await screen.findByText('文艺中心交接清单')).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith('/knowledge/entries?audience=social_org');
+  });
+});

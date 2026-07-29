@@ -131,6 +131,7 @@ export async function loadAuthorizationContext(
       activeRoles.has(assignment.roleKey) &&
       isCurrent(assignment.expiresAt, now),
   );
+  context.roles = [...new Set(currentRoleAssignments.map(({ roleKey }) => roleKey))];
   const activeRoleBindings = roleBindings.filter(
     (binding) => binding.status === 'active' && catalogDefinition(binding),
   );
@@ -177,6 +178,11 @@ export async function loadAuthorizationContext(
     ) {
       continue;
     }
+    context.tags.push({
+      key: assignment.tagKey,
+      scope: assignment.scope,
+      expiresAt: assignment.expiresAt,
+    });
     for (const binding of activeTagBindings) {
       if (binding.tagKey !== assignment.tagKey) continue;
       const scope = combineScopes(assignment.scope, binding.scope);

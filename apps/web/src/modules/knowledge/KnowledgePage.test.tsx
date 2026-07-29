@@ -59,7 +59,7 @@ describe('KnowledgePage', () => {
     const entries = [draft];
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
-      if (path === '/knowledge/entries' && method === 'GET') return [...entries];
+      if (path === '/knowledge/entries?audience=general' && method === 'GET') return [...entries];
       if (path === '/knowledge/entries' && method === 'POST') {
         const input = JSON.parse(String(init?.body)) as Record<string, unknown>;
         const created = { ...draft, id: 'knowledge-2', ...input };
@@ -94,6 +94,8 @@ describe('KnowledgePage', () => {
           title: '部门交接清单',
           body: '列出账号、联系人和周期任务。',
           status: 'draft',
+          audience: 'general',
+          organizationId: null,
           scope: { type: 'public', id: '*' },
         }),
       }),
@@ -111,7 +113,9 @@ describe('KnowledgePage', () => {
     );
     expect(screen.queryByRole('button', { name: '发布 活动复盘模板' })).not.toBeInTheDocument();
     expect(
-      request.mock.calls.filter(([path, init]) => path === '/knowledge/entries' && !init),
+      request.mock.calls.filter(
+        ([path, init]) => path === '/knowledge/entries?audience=general' && !init,
+      ),
     ).toHaveLength(3);
   });
 
@@ -120,7 +124,8 @@ describe('KnowledgePage', () => {
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       const method = init?.method ?? 'GET';
-      if (path === '/knowledge/entries' && method === 'GET') return structuredClone(entries);
+      if (path === '/knowledge/entries?audience=general' && method === 'GET')
+        return structuredClone(entries);
       if (path === '/knowledge/entries' && method === 'PATCH') {
         const input = JSON.parse(String(init?.body)) as {
           id: string;
@@ -175,7 +180,8 @@ describe('KnowledgePage', () => {
   it('shows the server error and preserves the visible published state when archiving fails', async () => {
     const published = { ...draft, status: 'published' as const };
     const request = vi.fn(async (path: string, init?: RequestInit) => {
-      if (path === '/knowledge/entries' && (init?.method ?? 'GET') === 'GET') return [published];
+      if (path === '/knowledge/entries?audience=general' && (init?.method ?? 'GET') === 'GET')
+        return [published];
       throw new ApiError(409, 'invalid_state_transition', '状态已经发生变化', 'request-1');
     });
     vi.spyOn(window, 'confirm').mockReturnValue(true);

@@ -1,4 +1,8 @@
-import type { ApiEnvelope, ScopeRef } from '@freebbs-development/contracts';
+import {
+  SOCIAL_ORGANIZATION_IDS,
+  type ApiEnvelope,
+  type ScopeRef,
+} from '@freebbs-development/contracts';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -27,6 +31,8 @@ const title = z.string().trim().min(1).max(200);
 const body = z.string().trim().min(1).max(20_000);
 const status = z.enum(['draft', 'published', 'archived']);
 const type = z.enum(['workflow', 'faq', 'contact', 'retrospective', 'notice']);
+const audience = z.enum(['general', 'social_org']);
+const organizationId = z.enum(SOCIAL_ORGANIZATION_IDS);
 const scope = z
   .object({
     type: identifier.regex(/^[a-z][a-z0-9_]*$/),
@@ -37,6 +43,7 @@ const querySchema = z
   .object({
     status: status.optional(),
     type: type.optional(),
+    audience: audience.default('general'),
     scopeType: identifier.regex(/^[a-z][a-z0-9_]*$/).optional(),
     scopeId: identifier.optional(),
     query: z.string().trim().min(1).max(200).optional(),
@@ -49,7 +56,9 @@ const createSchema = z
     title,
     body,
     status: z.literal('draft').default('draft'),
-    scope: scope.default({ type: 'public', id: '*' }),
+    audience: audience.default('general'),
+    organizationId: organizationId.nullable().default(null),
+    scope: scope.optional(),
   })
   .strict();
 const patchSchema = z
@@ -156,23 +165,26 @@ export function createKnowledgeRouter(options: KnowledgeRouterOptions): Router {
     const filters = parse(querySchema, request.query);
     const authentication = await optionalActor(options, request, response);
     if (authentication === null) return;
+    if (
+      filters.audience === 'social_org' &&
+      (authentication.actor === null || !service.canReadSocialAudience(authentication.actor))
+    ) {
+      forbid(response);
+      return;
+    }
     const scopeRef = requestedScope(filters);
     const canMaintain =
       authentication.actor !== null &&
       (allowed(authentication.actor, 'knowledge.create', scopeRef) ||
         allowed(authentication.actor, 'knowledge.publish', scopeRef));
-    send(response, 200, await service.list(filters, !canMaintain));
+    send(response, 200, await service.list(filters, !canMaintain, authentication.actor));
   });
 
   router.post('/entries', async (request, response) => {
     const actor = await requireActor(options, request, response);
     if (actor === null) return;
     const input = parse(createSchema, request.body);
-    if (!allowed(actor, 'knowledge.create', input.scope)) {
-      forbid(response);
-      return;
-    }
-    send(response, 201, await service.create(actor.uid, input));
+    send(response, 201, await service.create(actor, input));
   });
 
   router.patch('/entries', async (request, response) => {

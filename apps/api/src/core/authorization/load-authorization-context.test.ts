@@ -68,7 +68,7 @@ describe('database-backed authorization context', () => {
 
     const context = await loadAuthorizationContext(store, identity, now);
     expect(authorize(context, publishRequest(), now).allowed).toBe(true);
-    expect(context.roles).toEqual([]);
+    expect(context.roles).toEqual(['department.arts_director']);
     expect(context.tags).toEqual([]);
 
     await store.rolePermissions.update(binding.id, { status: 'inactive' });

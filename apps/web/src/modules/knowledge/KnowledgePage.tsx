@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 
-import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
+import {
+  SOCIAL_ORGANIZATIONS,
+  organizationForRole,
+  type ScopeRef,
+  type UserContext,
+} from '@freebbs-development/contracts';
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
 import { Can } from '../../core/permissions/Can.js';
@@ -13,6 +18,8 @@ interface KnowledgeEntry {
   type: KnowledgeType;
   title: string;
   body: string;
+  audience?: 'general' | 'social_org';
+  organizationId?: string | null;
   status: KnowledgeStatus;
   ownerUid: string;
   scope: ScopeRef;
@@ -47,6 +54,23 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const auth = useOptionalAuth();
   const user = suppliedUser === undefined ? (auth?.user ?? null) : suppliedUser;
+  const managesAcrossOrganizations =
+    user?.roles.includes('platform.super_admin') === true ||
+    user?.roles.some((role) => organizationForRole(role)?.level === 'lead') === true;
+  const organizations = useMemo(
+    () =>
+      managesAcrossOrganizations
+        ? SOCIAL_ORGANIZATIONS
+        : SOCIAL_ORGANIZATIONS.filter((organization) =>
+            user?.tags.some((tag) => tag.key === organization.tagKey),
+          ),
+    [managesAcrossOrganizations, user],
+  );
+  const canViewSocialOrganizations = organizations.length > 0;
+  const [audience, setAudience] = useState<'general' | 'social_org'>('general');
+  const [organizationId, setOrganizationId] = useState(
+    () => organizations[0]?.id ?? SOCIAL_ORGANIZATIONS[0].id,
+  );
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -67,7 +91,9 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
       if (announceLoading) setLoading(true);
       setLoadError(false);
       try {
-        const loaded = await api.request<KnowledgeEntry[]>('/knowledge/entries');
+        const loaded = await api.request<KnowledgeEntry[]>(
+          `/knowledge/entries?audience=${audience}`,
+        );
         setEntries(loaded);
       } catch {
         setLoadError(true);
@@ -75,8 +101,18 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
         if (announceLoading) setLoading(false);
       }
     },
-    [api],
+    [api, audience],
   );
+
+  useEffect(() => {
+    if (!canViewSocialOrganizations && audience === 'social_org') setAudience('general');
+    if (
+      organizations.length > 0 &&
+      !organizations.some((organization) => organization.id === organizationId)
+    ) {
+      setOrganizationId(organizations[0].id);
+    }
+  }, [audience, canViewSocialOrganizations, organizationId, organizations]);
 
   useEffect(() => {
     void loadEntries();
@@ -107,7 +143,15 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
           title: cleanTitle,
           body: cleanBody,
           status: 'draft',
-          scope: { type: 'public', id: '*' },
+          audience,
+          organizationId: audience === 'social_org' ? organizationId : null,
+          scope:
+            audience === 'social_org'
+              ? {
+                  type: 'social_organization',
+                  id: organizationId,
+                }
+              : { type: 'public', id: '*' },
         }),
       });
       setTitle('');
@@ -194,8 +238,30 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
       <section aria-labelledby="knowledge-list-heading">
         <header className="page-section-header">
           <div>
-            <h2 id="knowledge-list-heading">经验条目</h2>
-            <p>把基础流程、常见问题和活动复盘沉淀为可持续维护的组织经验。</p>
+            <h2 id="knowledge-list-heading">{audience === 'general' ? 'General' : '社工组织'}</h2>
+            <p>
+              {audience === 'general'
+                ? '所有同学都可以访问的基础流程、常见问题、联系人和活动复盘。'
+                : '仅向社工组织成员开放的内部经验与传承资料。'}
+            </p>
+          </div>
+          <div className="audience-switcher" role="group" aria-label="经验库分区">
+            <button
+              aria-pressed={audience === 'general'}
+              type="button"
+              onClick={() => setAudience('general')}
+            >
+              General
+            </button>
+            {canViewSocialOrganizations ? (
+              <button
+                aria-pressed={audience === 'social_org'}
+                type="button"
+                onClick={() => setAudience('social_org')}
+              >
+                社工组织
+              </button>
+            ) : null}
           </div>
         </header>
 
@@ -225,6 +291,11 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
                     <div>
                       <span>{typeLabels[entry.type]}</span>
                       <h3>{entry.title}</h3>
+                      {entry.organizationId ? (
+                        <small>
+                          {SOCIAL_ORGANIZATIONS.find(({ id }) => id === entry.organizationId)?.name}
+                        </small>
+                      ) : null}
                     </div>
                     <span
                       className="status-badge"
@@ -345,6 +416,23 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
         <section aria-labelledby="knowledge-create-heading">
           <h2 id="knowledge-create-heading">创建经验草稿</h2>
           <form onSubmit={createDraft} noValidate>
+            {audience === 'social_org' && organizations.length > 1 ? (
+              <label>
+                所属社工组织
+                <select
+                  value={organizationId}
+                  onChange={(event) =>
+                    setOrganizationId(event.target.value as typeof organizationId)
+                  }
+                >
+                  {organizations.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label>
               经验类型
               <select
