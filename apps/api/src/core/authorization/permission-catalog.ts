@@ -1,7 +1,13 @@
 import type { PermissionRule, RolePermissionCatalog } from './policy.js';
 
-const rules = (...entries: Array<readonly [string, string]>): PermissionRule[] =>
-  entries.map(([action, resource]) => ({ action, resource }));
+const rules = (
+  ...entries: Array<readonly [string, string, PermissionRule['scope']?]>
+): PermissionRule[] =>
+  entries.map(([action, resource, scope]) => ({
+    action,
+    resource,
+    ...(scope === undefined ? {} : { scope }),
+  }));
 
 export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = [
   ...rules(
@@ -27,18 +33,68 @@ export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = [
 ];
 export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
   'platform.super_admin': rules(['*', '*']),
-  'domain.arts_lead': rules(['events.*', '*'], ['knowledge.*', '*']),
-  'domain.sports_lead': rules(['sports.*', '*'], ['events.*', '*'], ['knowledge.*', '*']),
+  'domain.arts_lead': rules(
+    ['events.*', '*'],
+    ['knowledge.*', '*'],
+    ['finance.record.read', 'finance_record', { type: 'social_organization', id: 'arts_center' }],
+    ['finance.record.create', 'finance_record', { type: 'social_organization', id: 'arts_center' }],
+    ['finance.record.update', 'finance_record', { type: 'social_organization', id: 'arts_center' }],
+  ),
+  'domain.sports_lead': rules(
+    ['sports.*', '*'],
+    ['events.*', '*'],
+    ['knowledge.*', '*'],
+    ['finance.record.read', 'finance_record', { type: 'social_organization', id: 'sports_center' }],
+    [
+      'finance.record.create',
+      'finance_record',
+      { type: 'social_organization', id: 'sports_center' },
+    ],
+    [
+      'finance.record.update',
+      'finance_record',
+      { type: 'social_organization', id: 'sports_center' },
+    ],
+  ),
   'domain.liaison_lead': rules(
     ['clubs.*', '*'],
     ['liaison.*', '*'],
     ['information.*', '*'],
     ['events.*', '*'],
     ['knowledge.*', '*'],
+    [
+      'finance.record.read',
+      'finance_record',
+      { type: 'social_organization', id: 'liaison_center' },
+    ],
+    [
+      'finance.record.create',
+      'finance_record',
+      { type: 'social_organization', id: 'liaison_center' },
+    ],
+    [
+      'finance.record.update',
+      'finance_record',
+      { type: 'social_organization', id: 'liaison_center' },
+    ],
   ),
   'domain.rights_development_lead': rules(
     ['events.*', '*'],
-    ['finance.*', '*'],
+    [
+      'finance.record.read',
+      'finance_record',
+      { type: 'social_organization', id: 'rights_development_center' },
+    ],
+    [
+      'finance.record.create',
+      'finance_record',
+      { type: 'social_organization', id: 'rights_development_center' },
+    ],
+    [
+      'finance.record.update',
+      'finance_record',
+      { type: 'social_organization', id: 'rights_development_center' },
+    ],
     ['information.consultation.*', 'consultation'],
     ['information.proposal.manage', 'proposal'],
     ['knowledge.*', '*'],
@@ -75,9 +131,6 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
   'department.rights_development_director': rules(
     ['events.create', 'activity'],
     ['events.update', 'activity'],
-    ['finance.record.read', 'finance_record'],
-    ['finance.record.create', 'finance_record'],
-    ['finance.record.update', 'finance_record'],
     ['information.consultation.triage', 'consultation'],
     ['information.proposal.manage', 'proposal'],
     ['knowledge.create', 'knowledge_entry'],
@@ -144,6 +197,9 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.*', '*'],
     ['events.*', '*'],
     ['clubs.technical_support', 'club'],
+    ['finance.record.read', 'finance_record', { type: 'social_organization', id: 'sast' }],
+    ['finance.record.create', 'finance_record', { type: 'social_organization', id: 'sast' }],
+    ['finance.record.update', 'finance_record', { type: 'social_organization', id: 'sast' }],
   ),
   'affiliation.tms_member': rules(
     ['knowledge.create', 'knowledge_entry'],
@@ -155,7 +211,13 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['events.create', 'activity'],
     ['events.update', 'activity'],
   ),
-  'affiliation.tms_lead': rules(['knowledge.*', '*'], ['events.*', '*']),
+  'affiliation.tms_lead': rules(
+    ['knowledge.*', '*'],
+    ['events.*', '*'],
+    ['finance.record.read', 'finance_record', { type: 'social_organization', id: 'tms' }],
+    ['finance.record.create', 'finance_record', { type: 'social_organization', id: 'tms' }],
+    ['finance.record.update', 'finance_record', { type: 'social_organization', id: 'tms' }],
+  ),
 };
 
 export const SPORTS_CAPTAIN_RULES: readonly PermissionRule[] = rules(

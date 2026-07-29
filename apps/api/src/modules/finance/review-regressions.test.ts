@@ -303,7 +303,8 @@ describe('finance security regressions', () => {
         title: 'String amount',
         kind: 'budget',
         amountCents: '100',
-        scope: { type: 'public', id: '*' },
+        organizationId: 'rights_development_center',
+        scope: { type: 'social_organization', id: 'rights_development_center' },
       })
       .expect(400);
 
@@ -314,7 +315,8 @@ describe('finance security regressions', () => {
         title: 'Sensitive vendor alpha',
         kind: 'settlement',
         amountCents: 712345,
-        scope: { type: 'public', id: '*' },
+        organizationId: 'rights_development_center',
+        scope: { type: 'social_organization', id: 'rights_development_center' },
       })
       .expect(201);
     const audits = await store.auditLogs.list({ query: created.body.data.id });

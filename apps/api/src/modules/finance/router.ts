@@ -1,9 +1,8 @@
-import type { ApiEnvelope, ScopeRef } from '@freebbs-development/contracts';
+import { SOCIAL_ORGANIZATION_IDS, type ApiEnvelope } from '@freebbs-development/contracts';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import type { AuthenticationResult, AuthHeaders } from '../../core/auth/auth-middleware.js';
-import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
@@ -25,6 +24,7 @@ const scope = z.object({ type: identifier.regex(/^[a-z][a-z0-9_]*$/), id: identi
 const status = z.enum(['draft', 'submitted', 'approved', 'rejected', 'archived']);
 const kind = z.enum(['budget', 'settlement']);
 const amountCents = z.number().int().safe().nonnegative();
+const organizationId = z.enum(SOCIAL_ORGANIZATION_IDS);
 const querySchema = z
   .object({
     status: status.optional(),
@@ -40,6 +40,7 @@ const createSchema = z
     kind,
     amountCents,
     activityId: identifier.nullable().default(null),
+    organizationId: organizationId.nullable().default(null),
     status: z.literal('draft').default('draft'),
     scope,
   })
@@ -51,6 +52,7 @@ const patchSchema = z
     kind: kind.optional(),
     amountCents: amountCents.optional(),
     activityId: identifier.nullable().optional(),
+    organizationId: organizationId.nullable().optional(),
     scope: scope.optional(),
   })
   .strict()
@@ -60,10 +62,12 @@ const patchSchema = z
       value.kind !== undefined ||
       value.amountCents !== undefined ||
       value.activityId !== undefined ||
-      value.scope !== undefined,
+      value.scope !== undefined ||
+      value.organizationId !== undefined,
   );
 const routeSchema = z.object({ recordId: identifier }).strict();
 const transitionSchema = z.object({ to: status }).strict();
+const reviewSchema = z.object({ decision: z.enum(['approved', 'rejected']) }).strict();
 
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
   const result = schema.safeParse(value);
@@ -90,9 +94,6 @@ async function requireActor(
     return null;
   }
   return result.user;
-}
-function allowed(actor: AuthorizationContext, action: string, scopeRef?: ScopeRef): boolean {
-  return authorize(actor, { action, resource: 'finance_record', scope: scopeRef }).allowed;
 }
 function forbid(response: Response): void {
   send<ErrorData>(response, 403, {
@@ -133,7 +134,6 @@ export function createFinanceRouter(options: FinanceRouterOptions): Router {
     const actor = await requireActor(options, request, response);
     if (actor === null) return;
     const input = parse(createSchema, request.body);
-    if (!allowed(actor, 'finance.record.create', input.scope)) return forbid(response);
     send(response, 201, await service.create(actor, input));
   });
 
@@ -143,6 +143,14 @@ export function createFinanceRouter(options: FinanceRouterOptions): Router {
     const input = parse(patchSchema, request.body);
     const { id, ...patch } = input;
     send(response, 200, await service.update(actor, id, patch));
+  });
+
+  router.post('/records/:recordId/reviews', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { recordId } = parse(routeSchema, request.params);
+    const { decision } = parse(reviewSchema, request.body);
+    send(response, 200, await service.review(actor, recordId, decision));
   });
 
   router.post('/records/:recordId/transitions', async (request, response) => {

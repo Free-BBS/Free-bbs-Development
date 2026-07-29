@@ -1,12 +1,17 @@
-import type { ScopeRef } from '@freebbs-development/contracts';
+import type { ScopeRef, SocialOrganizationId } from '@freebbs-development/contracts';
 
 import { recordAuditEvent } from '../../core/audit/audit-service.js';
-import { authorize } from '../../core/authorization/authorize.js';
 import { loadAuthorizationContext } from '../../core/authorization/load-authorization-context.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore, FinanceRecord, ListFilters } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
 import { canTransition } from '../../core/workflow/state-machine.js';
+import {
+  canAccessFinanceOrganization,
+  canAccessFinanceRecord,
+  canReviewFinance,
+  hasFinanceAccess,
+} from './organization-access.js';
 
 export type FinanceStatus = 'draft' | 'submitted' | 'approved' | 'rejected' | 'archived';
 export interface FinanceInput {
@@ -16,6 +21,7 @@ export interface FinanceInput {
   activityId: string | null;
   status: 'draft';
   scope: ScopeRef;
+  organizationId?: SocialOrganizationId | null;
 }
 export type FinancePatch = Partial<Omit<FinanceInput, 'status'>>;
 
@@ -32,29 +38,6 @@ type TransitionResult =
   | { kind: 'updated'; record: FinanceRecord }
   | { kind: 'rejected'; from: string; to: string; scope: ScopeRef };
 
-function can(actor: AuthorizationContext, action: string, scope?: ScopeRef): boolean {
-  return authorize(actor, { action, resource: 'finance_record', scope }).allowed;
-}
-
-function matchesPattern(pattern: string, value: string): boolean {
-  return (
-    pattern === '*' ||
-    pattern === value ||
-    (pattern.endsWith('.*') && value.startsWith(pattern.slice(0, -1)))
-  );
-}
-
-function hasScopedReadGrant(actor: AuthorizationContext): boolean {
-  return (actor.policies ?? []).some(
-    (policy) =>
-      policy.scope !== undefined &&
-      policy.effect === 'allow' &&
-      matchesPattern(policy.action, 'finance.record.read') &&
-      matchesPattern(policy.resource, 'finance_record') &&
-      can(actor, 'finance.record.read', policy.scope),
-  );
-}
-
 function financeNotFound(): HttpError {
   return new HttpError(404, 'finance_record_not_found', 'Finance record not found');
 }
@@ -66,16 +49,12 @@ function financeForbidden(): HttpError {
 function canMaintain(
   actor: AuthorizationContext,
   record: FinanceRecord,
-  targetScope: ScopeRef = record.scope,
+  targetOrganizationId: SocialOrganizationId | null | undefined = record.organizationId,
 ): boolean {
-  const manager =
-    can(actor, 'finance.record.update', record.scope) &&
-    can(actor, 'finance.record.update', targetScope);
-  const creator =
-    record.ownerUid === actor.uid &&
-    can(actor, 'finance.record.create', record.scope) &&
-    can(actor, 'finance.record.create', targetScope);
-  return manager || creator;
+  return (
+    canAccessFinanceRecord(actor, record) &&
+    canAccessFinanceOrganization(actor, targetOrganizationId)
+  );
 }
 
 function assertActivityScope(activityId: string | null, scope: ScopeRef): void {
@@ -87,6 +66,24 @@ function assertActivityScope(activityId: string | null, scope: ScopeRef): void {
     throw new HttpError(400, 'invalid_activity_scope', 'Linked activity and scope do not match');
   }
 }
+function assertOrganizationScope(
+  organizationId: SocialOrganizationId | null | undefined,
+  activityId: string | null,
+  scope: ScopeRef,
+): void {
+  if (activityId !== null) return;
+  const organizationScoped = scope.type === 'social_organization';
+  if (
+    (organizationId == null && organizationScoped) ||
+    (organizationId != null && (!organizationScoped || scope.id !== organizationId))
+  ) {
+    throw new HttpError(
+      400,
+      'invalid_organization_scope',
+      'Finance organization and scope do not match',
+    );
+  }
+}
 
 export class FinanceService {
   constructor(private readonly store: DevelopmentStore) {}
@@ -96,16 +93,9 @@ export class FinanceService {
     filters: ListFilters,
   ): Promise<{ authorized: boolean; records: FinanceRecord[] }> {
     const candidates = await this.store.financeRecords.list(filters);
-    const records = candidates.filter((record) => can(actor, 'finance.record.read', record.scope));
-    const requestedScope =
-      filters.scopeType === undefined || filters.scopeId === undefined
-        ? undefined
-        : { type: filters.scopeType, id: filters.scopeId };
+    const records = candidates.filter((record) => canAccessFinanceRecord(actor, record));
     return {
-      authorized:
-        requestedScope === undefined
-          ? can(actor, 'finance.record.read') || hasScopedReadGrant(actor)
-          : can(actor, 'finance.record.read', requestedScope),
+      authorized: hasFinanceAccess(actor),
       records,
     };
   }
@@ -118,9 +108,12 @@ export class FinanceService {
         if (activity === null) throw new HttpError(404, 'activity_not_found', 'Activity not found');
       }
       const freshActor = await loadAuthorizationContext(store, actor, new Date());
-      if (!can(freshActor, 'finance.record.create', input.scope)) throw financeForbidden();
+      const organizationId = input.organizationId ?? null;
+      if (!canAccessFinanceOrganization(freshActor, organizationId)) throw financeForbidden();
+      assertOrganizationScope(organizationId, input.activityId, input.scope);
       const created = await store.financeRecords.create({
         ...input,
+        organizationId,
         status: 'draft',
         ownerUid: actor.uid,
       });
@@ -134,6 +127,7 @@ export class FinanceService {
           status: created.status,
           scope: created.scope,
           activityLinked: created.activityId !== null,
+          organizationId: created.organizationId ?? null,
         },
       });
       return created;
@@ -149,18 +143,21 @@ export class FinanceService {
       const current = await store.financeRecords.getForUpdate(id);
       if (current === null) throw financeNotFound();
       const targetScope = patch.scope ?? current.scope;
+      const targetOrganizationId =
+        patch.organizationId === undefined ? current.organizationId : patch.organizationId;
       let freshActor = await loadAuthorizationContext(store, actor, new Date());
-      if (current.status !== 'draft' || !canMaintain(freshActor, current, targetScope)) {
+      if (current.status !== 'draft' || !canMaintain(freshActor, current, targetOrganizationId)) {
         throw financeNotFound();
       }
       const targetActivityId =
         patch.activityId === undefined ? (current.activityId ?? null) : patch.activityId;
       assertActivityScope(targetActivityId, targetScope);
+      assertOrganizationScope(targetOrganizationId, targetActivityId, targetScope);
       if (targetActivityId !== null) {
         const activity = await store.activities.getForUpdate(targetActivityId);
         if (activity === null) throw new HttpError(404, 'activity_not_found', 'Activity not found');
         freshActor = await loadAuthorizationContext(store, actor, new Date());
-        if (!canMaintain(freshActor, current, targetScope)) throw financeNotFound();
+        if (!canMaintain(freshActor, current, targetOrganizationId)) throw financeNotFound();
       }
       const updated = await store.financeRecords.update(id, patch);
       if (updated === null) throw financeNotFound();
@@ -173,6 +170,8 @@ export class FinanceService {
           changedFields: Object.keys(patch).sort(),
           fromScope: current.scope,
           toScope: updated.scope,
+          fromOrganizationId: current.organizationId ?? null,
+          toOrganizationId: updated.organizationId ?? null,
         },
       });
       return updated;
@@ -189,14 +188,10 @@ export class FinanceService {
       if (current === null) return { kind: 'missing' };
       const freshActor = await loadAuthorizationContext(store, actor, new Date());
       const from = current.status as FinanceStatus;
-      const approvalEdge = from === 'submitted' && (to === 'approved' || to === 'rejected');
-      const creatorEdge =
-        (from === 'draft' && to === 'submitted') || (from === 'rejected' && to === 'draft');
-      const permitted = approvalEdge
-        ? can(freshActor, 'finance.record.approve', current.scope)
-        : creatorEdge
-          ? canMaintain(freshActor, current)
-          : can(freshActor, 'finance.record.update', current.scope);
+      const reviewEdge = from === 'submitted' && (to === 'approved' || to === 'rejected');
+      const permitted = reviewEdge
+        ? canReviewFinance(freshActor)
+        : canMaintain(freshActor, current);
       if (!permitted) return { kind: 'missing' };
       if (
         !Object.hasOwn(FINANCE_TRANSITIONS, from) ||
@@ -227,5 +222,51 @@ export class FinanceService {
       throw new HttpError(409, 'invalid_state_transition', 'Invalid finance state transition');
     }
     return result.record;
+  }
+
+  async review(
+    actor: AuthorizationContext,
+    id: string,
+    decision: 'approved' | 'rejected',
+  ): Promise<FinanceRecord> {
+    return this.store.transaction(async (store) => {
+      const current = await store.financeRecords.getForUpdate(id);
+      if (current === null) throw financeNotFound();
+      const freshActor = await loadAuthorizationContext(store, actor, new Date());
+      if (!canReviewFinance(freshActor)) throw financeForbidden();
+      if (current.status !== 'submitted') {
+        throw new HttpError(
+          409,
+          'invalid_state_transition',
+          'Only submitted finance records can be reviewed',
+        );
+      }
+      const reviewedAt = new Date().toISOString();
+      const updated = await store.financeRecords.update(id, {
+        status: decision,
+        reviewerUid: actor.uid,
+        reviewedAt,
+        reviewDecision: decision,
+      });
+      if (updated === null) throw financeNotFound();
+      await recordAuditEvent(store, {
+        actorUid: actor.uid,
+        action: 'finance.record.reviewed',
+        resourceType: 'finance_record',
+        resourceId: id,
+        details: {
+          from: current.status,
+          to: decision,
+          previousReviewerUid: current.reviewerUid ?? null,
+          nextReviewerUid: actor.uid,
+          previousDecision: current.reviewDecision ?? null,
+          nextDecision: decision,
+          previousReviewedAt: current.reviewedAt ?? null,
+          nextReviewedAt: reviewedAt,
+          organizationId: current.organizationId ?? null,
+        },
+      });
+      return updated;
+    });
   }
 }

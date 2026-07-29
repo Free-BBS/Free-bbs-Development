@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
+import {
+  SOCIAL_ORGANIZATIONS,
+  organizationForRole,
+  type ScopeRef,
+  type UserContext,
+} from '@freebbs-development/contracts';
 
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
@@ -24,6 +29,10 @@ interface FinanceRecord {
   amountCents: number;
   activityId?: string | null;
   status: FinanceStatus;
+  organizationId?: string | null;
+  reviewerUid?: string | null;
+  reviewedAt?: string | null;
+  reviewDecision?: 'approved' | 'rejected' | null;
   ownerUid: string;
   scope: ScopeRef;
   createdAt: string;
@@ -36,6 +45,7 @@ interface FinanceDraft {
   amount: string;
   activityId: string;
   scopeType: string;
+  organizationId: string;
   scopeId: string;
 }
 
@@ -45,6 +55,7 @@ const emptyDraft: FinanceDraft = {
   amount: '0.00',
   activityId: '',
   scopeType: 'public',
+  organizationId: '',
   scopeId: '*',
 };
 const statusLabels: Record<FinanceStatus, string> = {
@@ -55,6 +66,32 @@ const statusLabels: Record<FinanceStatus, string> = {
   archived: '已归档',
 };
 
+function leadOrganizationIds(user: FinanceUser | null): string[] {
+  if (user === null) return [];
+  if (user.roles.includes('platform.super_admin')) {
+    return SOCIAL_ORGANIZATIONS.map(({ id }) => id);
+  }
+  const own = user.roles.flatMap((role) => {
+    const membership = organizationForRole(role);
+    return membership?.level === 'lead' ? [membership.organizationId] : [];
+  });
+  if (own.includes('tuanwei')) return SOCIAL_ORGANIZATIONS.map(({ id }) => id);
+  return [...new Set(own)];
+}
+
+function canReviewFinance(user: FinanceUser | null): boolean {
+  if (user === null) return false;
+  if (user.roles.includes('platform.super_admin')) return true;
+  return user.roles.some((role) => {
+    const membership = organizationForRole(role);
+    return membership?.organizationId === 'tuanwei' && membership.level === 'lead';
+  });
+}
+
+function organizationName(organizationId: string | null | undefined): string {
+  if (organizationId == null) return '\u672a\u5f52\u5c5e\uff08\u5386\u53f2\u8bb0\u5f55\uff09';
+  return SOCIAL_ORGANIZATIONS.find(({ id }) => id === organizationId)?.name ?? organizationId;
+}
 function statusOf(error: unknown): number | null {
   return typeof error === 'object' && error !== null && 'status' in error
     ? Number((error as { status: unknown }).status)
@@ -104,8 +141,10 @@ function hasAnyGrant(user: FinanceUser | null, action: string): boolean {
 
 function scopeFromDraft(draft: FinanceDraft): ScopeRef {
   const activityId = draft.activityId.trim();
-  return activityId
-    ? { type: 'activity', id: activityId }
+  if (activityId) return { type: 'activity', id: activityId };
+  const organizationId = draft.organizationId.trim();
+  return organizationId
+    ? { type: 'social_organization', id: organizationId }
     : { type: draft.scopeType.trim(), id: draft.scopeId.trim() };
 }
 
@@ -117,6 +156,7 @@ function draftFromRecord(record: FinanceRecord): FinanceDraft {
     activityId: record.activityId ?? '',
     scopeType: record.scope.type,
     scopeId: record.scope.id,
+    organizationId: record.organizationId ?? '',
   };
 }
 
@@ -153,6 +193,9 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
   const auth = useOptionalAuth();
   const user =
     suppliedUser === undefined ? ((auth?.user as FinanceUser | null) ?? null) : suppliedUser;
+  const organizationIds = useMemo(() => leadOrganizationIds(user), [user]);
+  const defaultOrganizationId = organizationIds[0] ?? '';
+
   const [records, setRecords] = useState<FinanceRecord[] | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [createDraft, setCreateDraft] = useState<FinanceDraft>(emptyDraft);
@@ -175,6 +218,13 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
     const timer = window.setTimeout(() => setPolicyRevision((current) => current + 1), delay);
     return () => window.clearTimeout(timer);
   }, [policyRevision, user]);
+
+  useEffect(() => {
+    if (!defaultOrganizationId) return;
+    setCreateDraft((current) =>
+      current.organizationId ? current : { ...current, organizationId: defaultOrganizationId },
+    );
+  }, [defaultOrganizationId]);
 
   function replaceConfirmed(record: FinanceRecord) {
     setRecords((current) => {
@@ -248,12 +298,15 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
           amountCents: validated.amountCents,
           activityId: createDraft.activityId.trim() || null,
           status: 'draft',
+          ...(createDraft.organizationId.trim()
+            ? { organizationId: createDraft.organizationId.trim() }
+            : {}),
           scope: validated.scope,
         }),
       });
       replaceConfirmed(confirmed);
       await loadRecords(true);
-      setCreateDraft(emptyDraft);
+      setCreateDraft({ ...emptyDraft, organizationId: defaultOrganizationId });
       setFeedback('财务草稿已创建');
     } catch (caught) {
       setFormError(errorMessage(caught));
@@ -298,6 +351,9 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
           kind: editDraft.kind,
           amountCents: validated.amountCents,
           activityId: editDraft.activityId.trim() || null,
+          ...(editDraft.organizationId.trim()
+            ? { organizationId: editDraft.organizationId.trim() }
+            : {}),
           scope: validated.scope,
         }),
       }),
@@ -317,7 +373,7 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
 
   function canRunTransition(record: FinanceRecord, to: FinanceStatus): boolean {
     if (to === 'approved' || to === 'rejected') {
-      return permitted(user, 'finance.record.approve', record.scope);
+      return canReviewFinance(user) || permitted(user, 'finance.record.approve', record.scope);
     }
     if (to === 'archived') return permitted(user, 'finance.record.update', record.scope);
     if (to === 'submitted' || to === 'draft') return canMaintainRecord(record);
@@ -330,13 +386,17 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
       setFormError('权限已失效或不适用于该记录');
       return;
     }
+    const reviewDecision = to === 'approved' || to === 'rejected' ? to : null;
+    const dedicatedReview = reviewDecision !== null && canReviewFinance(user);
     await runAction(record, success, () =>
       client.request<FinanceRecord>(
-        `/finance/records/${encodeURIComponent(record.id)}/transitions`,
+        dedicatedReview
+          ? `/finance/records/${encodeURIComponent(record.id)}/reviews`
+          : `/finance/records/${encodeURIComponent(record.id)}/transitions`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ to }),
+          body: JSON.stringify(dedicatedReview ? { decision: reviewDecision } : { to }),
         },
       ),
     );
@@ -344,6 +404,7 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
 
   function fields(draft: FinanceDraft, setDraft: (draft: FinanceDraft) => void, prefix: string) {
     const activityLinked = draft.activityId.trim().length > 0;
+    const organizationScoped = !activityLinked && draft.organizationId.trim().length > 0;
     return (
       <>
         <label>
@@ -374,6 +435,23 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
             onChange={(event) => setDraft({ ...draft, amount: event.target.value })}
           />
         </label>
+        {organizationIds.length > 0 ? (
+          <label>
+            {prefix}组织
+            <select
+              aria-label={`${prefix}组织`}
+              value={draft.organizationId}
+              onChange={(event) => setDraft({ ...draft, organizationId: event.target.value })}
+            >
+              <option value="">历史未归属</option>
+              {organizationIds.map((organizationId) => (
+                <option key={organizationId} value={organizationId}>
+                  {organizationName(organizationId)}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
           {prefix}关联活动 ID（可选）
           <input
@@ -386,8 +464,14 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
           {prefix}范围类型
           <input
             aria-label={`${prefix}范围类型`}
-            value={activityLinked ? 'activity' : draft.scopeType}
-            readOnly={activityLinked}
+            value={
+              activityLinked
+                ? 'activity'
+                : organizationScoped
+                  ? 'social_organization'
+                  : draft.scopeType
+            }
+            readOnly={activityLinked || organizationScoped}
             onChange={(event) => setDraft({ ...draft, scopeType: event.target.value })}
           />
         </label>
@@ -395,8 +479,14 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
           {prefix}范围标识
           <input
             aria-label={`${prefix}范围标识`}
-            value={activityLinked ? draft.activityId : draft.scopeId}
-            readOnly={activityLinked}
+            value={
+              activityLinked
+                ? draft.activityId
+                : organizationScoped
+                  ? draft.organizationId
+                  : draft.scopeId
+            }
+            readOnly={activityLinked || organizationScoped}
             onChange={(event) => setDraft({ ...draft, scopeId: event.target.value })}
           />
         </label>
@@ -451,7 +541,8 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
               {records.map((record) => {
                 const canUpdate = permitted(user, 'finance.record.update', record.scope);
                 const canMaintain = canMaintainRecord(record);
-                const canApprove = permitted(user, 'finance.record.approve', record.scope);
+                const canApprove =
+                  canReviewFinance(user) || permitted(user, 'finance.record.approve', record.scope);
                 const busy = busyId === record.id;
                 const editing = editingId === record.id && editDraft !== null;
                 return (
@@ -471,6 +562,15 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
                         范围：{record.scope.type}/{record.scope.id}
                       </p>
                       <p>关联活动：{record.activityId ?? '无'}</p>
+                      <p>组织：{organizationName(record.organizationId)}</p>
+                      <p>
+                        审核：
+                        {record.reviewDecision
+                          ? `${statusLabels[record.reviewDecision]} · ${
+                              record.reviewerUid ?? '未知审核人'
+                            }${record.reviewedAt ? ` · ${record.reviewedAt}` : ''}`
+                          : '待审核'}
+                      </p>
 
                       {editing ? (
                         <form onSubmit={(event) => void saveEdit(record, event)}>

@@ -1,4 +1,4 @@
-import type { ScopeRef } from '@freebbs-development/contracts';
+import type { SocialOrganizationId } from '@freebbs-development/contracts';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
@@ -7,6 +7,7 @@ import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { createMemoryStore } from '../../core/database/memory-store.js';
 
+import { setOrganizationMembership } from '../admin/organization-membership-service.js';
 function scopedActor(uid: string): AuthorizationContext {
   return {
     uid,
@@ -18,10 +19,10 @@ function scopedActor(uid: string): AuthorizationContext {
   };
 }
 
-async function assignScopedFinanceDirector(
+async function assignFinanceLead(
   store: DevelopmentStore,
   actor: AuthorizationContext,
-  scope: ScopeRef,
+  organizationId: SocialOrganizationId,
 ): Promise<void> {
   await store.subjects.create({
     uid: actor.uid,
@@ -31,22 +32,22 @@ async function assignScopedFinanceDirector(
     ownerUid: 'demo-admin',
     scope: { type: 'public', id: '*' },
   });
-  await store.roleAssignments.create({
-    subjectUid: actor.uid,
-    roleKey: 'department.rights_development_director',
-    expiresAt: null,
-    status: 'active',
-    ownerUid: 'demo-admin',
-    scope,
-  });
+  await setOrganizationMembership(
+    store,
+    {
+      subjectUid: actor.uid,
+      organizationId,
+      level: 'lead',
+    },
+    { actorUid: 'demo-admin' },
+  );
 }
 
 describe('finance scoped authorization regressions', () => {
   it('returns an authorized empty scoped result instead of confusing it with forbidden', async () => {
     const store = createMemoryStore();
     const actor = scopedActor('scoped-empty-reader');
-    const emptyScope = { type: 'organization', id: 'empty-org' } as const;
-    await assignScopedFinanceDirector(store, actor, emptyScope);
+    await assignFinanceLead(store, actor, 'arts_center');
     const app = createApp({
       store,
       authMode: 'demo',
@@ -54,7 +55,7 @@ describe('finance scoped authorization regressions', () => {
     });
 
     const scoped = await request(app)
-      .get('/api/development/v1/finance/records?scopeType=organization&scopeId=empty-org')
+      .get('/api/development/v1/finance/records?scopeType=social_organization&scopeId=arts_center')
       .set('X-Demo-User', actor.uid)
       .expect(200);
     expect(scoped.body.data).toEqual([]);
@@ -68,16 +69,17 @@ describe('finance scoped authorization regressions', () => {
 
   it('filters and mutates by each record exact scope without revealing denied identifiers', async () => {
     const store = createMemoryStore();
-    const allowedScope = { type: 'organization', id: 'allowed-org' } as const;
-    const deniedScope = { type: 'organization', id: 'denied-org' } as const;
+    const allowedScope = { type: 'social_organization', id: 'rights_development_center' } as const;
+    const deniedScope = { type: 'social_organization', id: 'sports_center' } as const;
     const actor = scopedActor('scoped-finance-manager');
-    await assignScopedFinanceDirector(store, actor, allowedScope);
+    await assignFinanceLead(store, actor, 'rights_development_center');
     const allowed = await store.financeRecords.create({
       title: 'Allowed budget',
       kind: 'budget',
       amountCents: 100,
       activityId: null,
       status: 'draft',
+      organizationId: 'rights_development_center',
       ownerUid: 'another-user',
       scope: allowedScope,
     });
@@ -87,6 +89,7 @@ describe('finance scoped authorization regressions', () => {
       amountCents: 200,
       activityId: null,
       status: 'draft',
+      organizationId: 'sports_center',
       ownerUid: 'another-user',
       scope: deniedScope,
     });
