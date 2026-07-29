@@ -110,16 +110,21 @@ describe('EventsPage', () => {
 
     renderPage({ request: request as DevelopmentApi['request'] });
     let card = await screen.findByRole('article', { name: '校园夜跑' });
-    expect(within(card).getByRole('link', { name: '查看所属俱乐部' })).toHaveAttribute(
+    expect(within(card).getByText('地点：待定')).toBeInTheDocument();
+    expect(within(card).getByRole('link', { name: '查看所属趣缘群体' })).toHaveAttribute(
       'href',
-      '/development/clubs',
+      '/development/interest-groups',
+    );
+    expect(within(card).getByRole('link', { name: '查看详情与时间线' })).toHaveAttribute(
+      'href',
+      '/development/events/activity-workflow',
     );
 
     await user.click(within(card).getByRole('button', { name: '编辑校园夜跑' }));
     await user.clear(within(card).getByLabelText('活动名称'));
     await user.type(within(card).getByLabelText('活动名称'), '校园荧光夜跑');
-    await user.clear(within(card).getByLabelText('所属俱乐部 ID（可选）'));
-    await user.type(within(card).getByLabelText('所属俱乐部 ID（可选）'), 'club-updated');
+    await user.clear(within(card).getByLabelText('所属趣缘群体 ID（可选）'));
+    await user.type(within(card).getByLabelText('所属趣缘群体 ID（可选）'), 'club-updated');
     const startsAt = within(card).getByLabelText('开始时间（可选）');
     await user.clear(startsAt);
     await user.type(startsAt, '2026-09-01T18:30');

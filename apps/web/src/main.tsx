@@ -7,6 +7,7 @@ import './styles/tokens.css';
 import './styles/theme.css';
 import './styles/shell.css';
 import './styles/components.css';
+import './styles/activity.css';
 
 const rootElement = document.getElementById('root');
 

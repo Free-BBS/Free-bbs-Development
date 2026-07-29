@@ -208,7 +208,7 @@ describe('memory DevelopmentStore', () => {
     expect(await store.announcements.list()).toHaveLength(2);
     expect(await store.consultations.list()).toHaveLength(2);
     expect(await store.clubs.list()).toHaveLength(2);
-    expect(await store.activities.list()).toHaveLength(2);
+    expect(await store.activities.list()).toHaveLength(3);
     expect(await store.sportsTeams.list()).toHaveLength(2);
     expect(await store.liaisonResources.list()).toHaveLength(2);
     expect(await store.financeRecords.list()).toHaveLength(2);

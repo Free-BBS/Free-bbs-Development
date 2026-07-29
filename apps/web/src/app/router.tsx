@@ -1,11 +1,13 @@
 import type { ModuleManifest } from '@freebbs-development/contracts';
 import { Navigate, RouterProvider, createBrowserRouter, useLoaderData } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
 import { createApiClient } from '../core/api/client.js';
 import { useAuth } from '../core/auth/AuthProvider.js';
 import { AdminPage } from '../modules/admin/AdminPage.js';
 import { ClubsPage } from '../modules/clubs/ClubsPage.js';
 import { DashboardPage } from '../modules/dashboard/DashboardPage.js';
+import { ActivityDetailPage } from '../modules/events/ActivityDetailPage.js';
 import { EventsPage } from '../modules/events/EventsPage.js';
 import { FinancePage } from '../modules/finance/FinancePage.js';
 import { InformationPage } from '../modules/information/InformationPage.js';
@@ -63,6 +65,18 @@ function EventsRoute() {
   return <EventsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
 }
 
+function ActivityDetailRoute() {
+  const auth = useAuth();
+  const { activityId = '' } = useParams();
+  return (
+    <ActivityDetailPage
+      key={`${auth.demoUser ?? auth.user?.uid}:${activityId}`}
+      activityId={activityId}
+      client={auth.client}
+    />
+  );
+}
+
 function LiaisonRoute() {
   const auth = useAuth();
   return <LiaisonPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
@@ -98,6 +112,7 @@ export const appRouter = createBrowserRouter(
         { path: 'clubs', element: <Navigate to="/interest-groups" replace /> },
         { path: 'events', element: <EventsRoute /> },
         { path: 'liaison', element: <LiaisonRoute /> },
+        { path: 'events/:activityId', element: <ActivityDetailRoute /> },
         { path: 'sports', element: <SportsRoute /> },
         { path: 'finance', element: <FinanceRoute /> },
         { path: 'admin', element: <AdminRoute /> },

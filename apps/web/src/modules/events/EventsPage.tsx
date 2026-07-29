@@ -20,6 +20,10 @@ interface ActivityRecord {
   status: ActivityStatus;
   clubId: string | null;
   startsAt: string | null;
+  endsAt?: string | null;
+  location?: string;
+  organizationId?: string | null;
+  standingActivity?: boolean;
   technicalSupportStatus: TechnicalSupportStatus;
   technicalSupportNote: string | null;
   ownerUid: string;
@@ -53,6 +57,15 @@ const statusLabels: Record<ActivityStatus, string> = {
   published: '已发布',
   finished: '已结束',
   archived: '已归档',
+};
+const organizationLabels: Record<string, string> = {
+  arts_center: '文艺中心',
+  liaison_center: '联络中心',
+  sports_center: '体育中心',
+  rights_development_center: '权益发展中心',
+  tuanwei: '团委',
+  sast: '科协',
+  tms: 'TMS',
 };
 
 function errorMessage(error: unknown): string {
@@ -116,11 +129,20 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
   const [editDescription, setEditDescription] = useState('');
   const [editClubId, setEditClubId] = useState('');
   const [editStartsAt, setEditStartsAt] = useState('');
+  const [editEndsAt, setEditEndsAt] = useState('');
+  const [editLocation, setEditLocation] = useState('');
   const [createTitle, setCreateTitle] = useState('');
   const [createDescription, setCreateDescription] = useState('');
   const [createClubId, setCreateClubId] = useState('');
   const [createStartsAt, setCreateStartsAt] = useState('');
+  const [createEndsAt, setCreateEndsAt] = useState('');
+  const [createLocation, setCreateLocation] = useState('');
+  const [createOrganizationId, setCreateOrganizationId] = useState('');
+  const [createStanding, setCreateStanding] = useState(false);
   const [supportNotes, setSupportNotes] = useState<Record<string, string>>({});
+  const organizationOptions = (user?.tags ?? [])
+    .map(({ key }) => (key.startsWith('social_org.') ? key.slice('social_org.'.length) : null))
+    .filter((value): value is string => value !== null);
 
   const loadActivities = useCallback(async () => {
     setLoadError(null);
@@ -177,6 +199,8 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
     setEditDescription(activity.description);
     setEditClubId(activity.clubId ?? '');
     setEditStartsAt(localDateTimeValue(activity.startsAt));
+    setEditEndsAt(localDateTimeValue(activity.endsAt ?? null));
+    setEditLocation(activity.location ?? '');
   }
 
   async function saveEdit(activity: ActivityRecord, event: FormEvent<HTMLFormElement>) {
@@ -197,6 +221,8 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
           description,
           clubId: editClubId.trim() || null,
           startsAt: isoDateTimeValue(editStartsAt),
+          endsAt: isoDateTimeValue(editEndsAt),
+          location: editLocation.trim(),
         }),
       });
       setEditingId(null);
@@ -222,6 +248,10 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
           description,
           clubId: createClubId.trim() || null,
           startsAt: isoDateTimeValue(createStartsAt),
+          endsAt: isoDateTimeValue(createEndsAt),
+          location: createLocation.trim(),
+          organizationId: createOrganizationId || organizationOptions[0] || null,
+          standingActivity: createStanding,
           status: 'draft',
           scope: publicScope,
         }),
@@ -230,6 +260,10 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
       setCreateDescription('');
       setCreateClubId('');
       setCreateStartsAt('');
+      setCreateEndsAt('');
+      setCreateLocation('');
+      setCreateOrganizationId('');
+      setCreateStanding(false);
       setFeedback('活动草稿已创建');
       await loadActivities();
     } catch (error) {
@@ -343,7 +377,18 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
                 <h3 id={headingId}>{activity.title}</h3>
                 <p>{activity.description}</p>
                 <p>开始时间：{formatStart(activity.startsAt)}</p>
-                {activity.clubId !== null ? <Link to="/clubs">查看所属俱乐部</Link> : null}
+                {activity.endsAt ? <p>结束时间：{formatStart(activity.endsAt)}</p> : null}
+                <p>地点：{activity.location || '待定'}</p>
+                <p>
+                  主办：
+                  {activity.organizationId
+                    ? (organizationLabels[activity.organizationId] ?? activity.organizationId)
+                    : '平台'}
+                </p>
+                <Link to={`/events/${encodeURIComponent(activity.id)}`}>查看详情与时间线</Link>
+                {activity.clubId !== null ? (
+                  <Link to="/interest-groups">查看所属趣缘群体</Link>
+                ) : null}
 
                 {editingId === activity.id ? (
                   <form onSubmit={(event) => void saveEdit(activity, event)}>
@@ -362,7 +407,7 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
                       />
                     </label>
                     <label>
-                      所属俱乐部 ID（可选）
+                      所属趣缘群体 ID（可选）
                       <input
                         value={editClubId}
                         onChange={(event) => setEditClubId(event.target.value)}
@@ -374,6 +419,21 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
                         type="datetime-local"
                         value={editStartsAt}
                         onChange={(event) => setEditStartsAt(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      结束时间（可选）
+                      <input
+                        type="datetime-local"
+                        value={editEndsAt}
+                        onChange={(event) => setEditEndsAt(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      地点
+                      <input
+                        value={editLocation}
+                        onChange={(event) => setEditLocation(event.target.value)}
                       />
                     </label>
                     <button type="submit" disabled={busy}>
@@ -538,7 +598,7 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
               />
             </label>
             <label>
-              所属俱乐部 ID（可选）
+              所属趣缘群体 ID（可选）
               <input
                 value={createClubId}
                 onChange={(event) => setCreateClubId(event.target.value)}
@@ -551,6 +611,45 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
                 value={createStartsAt}
                 onChange={(event) => setCreateStartsAt(event.target.value)}
               />
+            </label>
+            <label>
+              结束时间（可选）
+              <input
+                type="datetime-local"
+                value={createEndsAt}
+                onChange={(event) => setCreateEndsAt(event.target.value)}
+              />
+            </label>
+            <label>
+              地点
+              <input
+                value={createLocation}
+                onChange={(event) => setCreateLocation(event.target.value)}
+              />
+            </label>
+            {organizationOptions.length > 1 ? (
+              <label>
+                主办组织
+                <select
+                  value={createOrganizationId}
+                  onChange={(event) => setCreateOrganizationId(event.target.value)}
+                >
+                  <option value="">选择主办组织</option>
+                  {organizationOptions.map((organizationId) => (
+                    <option value={organizationId} key={organizationId}>
+                      {organizationLabels[organizationId] ?? organizationId}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <label>
+              <input
+                type="checkbox"
+                checked={createStanding}
+                onChange={(event) => setCreateStanding(event.target.checked)}
+              />
+              常设活动
             </label>
             <button type="submit" disabled={busyActivityId === 'new'}>
               保存草稿

@@ -1,4 +1,5 @@
 import type { ScopeRef } from '@freebbs-development/contracts';
+import type { SocialOrganizationId } from '@freebbs-development/contracts';
 
 import { recordAuditEvent } from '../../core/audit/audit-service.js';
 import { authorize } from '../../core/authorization/authorize.js';
@@ -12,6 +13,12 @@ import type {
 } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
 import { canTransition } from '../../core/workflow/state-machine.js';
+import {
+  canCreateForOrganization,
+  canUpdateOrganization,
+  isSuperAdmin,
+  organizationsForActor,
+} from './organization-access.js';
 
 export type ActivityStatus =
   'draft' | 'pending' | 'approved' | 'rejected' | 'published' | 'finished' | 'archived';
@@ -20,6 +27,10 @@ export interface ActivityInput {
   description: string;
   clubId: string | null;
   startsAt: string | null;
+  endsAt: string | null;
+  location: string;
+  organizationId: SocialOrganizationId | null;
+  standingActivity: boolean;
   status: 'draft';
   scope: ScopeRef;
 }
@@ -53,7 +64,7 @@ function canRegistration(actor: AuthorizationContext, action: string, scope: Sco
 }
 function canManage(actor: AuthorizationContext, record: ActivityRecord): boolean {
   return (
-    can(actor, 'events.update', record.scope) ||
+    (can(actor, 'events.update', record.scope) && canUpdateOrganization(actor, record)) ||
     (record.ownerUid === actor.uid && can(actor, 'events.create', record.scope))
   );
 }
@@ -80,9 +91,24 @@ export class EventsService {
   }
 
   async create(actor: AuthorizationContext, input: ActivityInput): Promise<ActivityRecord> {
+    const actorOrganizations = organizationsForActor(actor);
+    const organizationId =
+      input.organizationId ??
+      (actorOrganizations.length === 1 ? (actorOrganizations[0] ?? null) : null);
+    if (input.organizationId === null && actorOrganizations.length > 1 && !isSuperAdmin(actor)) {
+      throw new HttpError(
+        400,
+        'organization_required',
+        'Organization is required for multi-organization users',
+      );
+    }
+    if (!canCreateForOrganization(actor, organizationId)) {
+      throw new HttpError(403, 'forbidden', 'Organization membership is required');
+    }
     return this.store.transaction(async (store) => {
       const created = await store.activities.create({
         ...input,
+        organizationId,
         status: 'draft',
         technicalSupportStatus: 'not_requested',
         technicalSupportNote: null,
@@ -108,13 +134,19 @@ export class EventsService {
       const current = await store.activities.getForUpdate(id);
       if (current === null) throw activityNotFound();
       const targetScope = patch.scope ?? current.scope;
+      const target = { ...current, ...patch };
       const managerMove =
-        can(actor, 'events.update', current.scope) && can(actor, 'events.update', targetScope);
+        can(actor, 'events.update', current.scope) &&
+        can(actor, 'events.update', targetScope) &&
+        canUpdateOrganization(actor, current) &&
+        canUpdateOrganization(actor, target);
       const creatorMove =
         (current.status === 'draft' || current.status === 'rejected') &&
         current.ownerUid === actor.uid &&
         can(actor, 'events.create', current.scope) &&
-        can(actor, 'events.create', targetScope);
+        can(actor, 'events.create', targetScope) &&
+        canCreateForOrganization(actor, current.organizationId) &&
+        canCreateForOrganization(actor, target.organizationId);
       if (!managerMove && !creatorMove) throw activityNotFound();
       const updated = await store.activities.update(id, patch);
       if (updated === null) throw activityNotFound();
@@ -146,10 +178,10 @@ export class EventsService {
       const creatorEdge =
         (from === 'draft' && to === 'pending') || (from === 'rejected' && to === 'draft');
       const permitted = approvalEdge
-        ? can(actor, 'events.approve', current.scope)
+        ? can(actor, 'events.approve', current.scope) && canUpdateOrganization(actor, current)
         : creatorEdge
           ? canManage(actor, current)
-          : can(actor, 'events.update', current.scope);
+          : can(actor, 'events.update', current.scope) && canUpdateOrganization(actor, current);
       if (!permitted) return { kind: 'missing' };
       if (
         !Object.hasOwn(ACTIVITY_TRANSITIONS, from) ||
@@ -193,7 +225,7 @@ export class EventsService {
       if (current === null) return { kind: 'missing' };
       const permitted =
         to === 'requested'
-          ? can(actor, 'events.update', current.scope)
+          ? can(actor, 'events.update', current.scope) && canUpdateOrganization(actor, current)
           : can(actor, 'events.technical_support', current.scope);
       if (!permitted) return { kind: 'missing' };
       const from = current.technicalSupportStatus as TechnicalSupportStatus;

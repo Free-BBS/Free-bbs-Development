@@ -33,10 +33,11 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['clubs.*', '*'],
     ['liaison.*', '*'],
     ['information.*', '*'],
-    ['events.read', 'activity'],
+    ['events.*', '*'],
     ['knowledge.*', '*'],
   ),
   'domain.rights_development_lead': rules(
+    ['events.*', '*'],
     ['finance.*', '*'],
     ['information.consultation.*', 'consultation'],
     ['information.proposal.manage', 'proposal'],
@@ -59,6 +60,8 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.publish', 'knowledge_entry'],
   ),
   'department.liaison_director': rules(
+    ['events.create', 'activity'],
+    ['events.update', 'activity'],
     ['clubs.create', 'club'],
     ['clubs.update', 'club'],
     ['liaison.resource.create', 'liaison_resource'],
@@ -70,6 +73,8 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.publish', 'knowledge_entry'],
   ),
   'department.rights_development_director': rules(
+    ['events.create', 'activity'],
+    ['events.update', 'activity'],
     ['finance.record.read', 'finance_record'],
     ['finance.record.create', 'finance_record'],
     ['finance.record.update', 'finance_record'],
@@ -89,6 +94,7 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.create', 'knowledge_entry'],
   ),
   'department.liaison_member': rules(
+    ['events.create', 'activity'],
     ['clubs.create', 'club'],
     ['clubs.update', 'club'],
     ['liaison.resource.read', 'liaison_resource'],
@@ -97,6 +103,7 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.create', 'knowledge_entry'],
   ),
   'department.rights_development_member': rules(
+    ['events.create', 'activity'],
     ['information.consultation.read', 'consultation'],
     ['information.consultation.triage', 'consultation'],
     ['information.proposal.manage', 'proposal'],
