@@ -6,6 +6,7 @@ import {
   BUILT_IN_PERMISSIONS,
   BUILT_IN_ROLES,
   BUILT_IN_ROLE_PERMISSIONS,
+  BUILT_IN_TAG_DEFINITIONS,
   BUILT_IN_TAG_PERMISSIONS,
 } from '../bootstrap/built-in-definitions.js';
 import { RecordConflictError } from './record-conflict-error.js';
@@ -268,6 +269,15 @@ function createDemoState(): MemoryState {
       ownerUid: 'demo-admin',
       scope: publicScope,
     }),
+    ...BUILT_IN_TAG_DEFINITIONS.filter(({ key }) => key !== 'sports.team_captain').map(
+      (definition, index) =>
+        stored<TagDefinitionRecord>(`tag-organization-${index}`, {
+          ...definition,
+          status: 'active',
+          ownerUid: 'demo-admin',
+          scope: publicScope,
+        }),
+    ),
   ];
   state.tagAssignments = [
     stored('tag-captain-a', {

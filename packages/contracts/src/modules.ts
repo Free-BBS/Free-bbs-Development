@@ -30,6 +30,13 @@ export const ROLE_KEYS = [
   'department.rights_development_member',
   'affiliation.tuanwei_member',
   'affiliation.sast_member',
+  'affiliation.tuanwei_director',
+  'affiliation.tuanwei_lead',
+  'affiliation.sast_director',
+  'affiliation.sast_lead',
+  'affiliation.tms_member',
+  'affiliation.tms_director',
+  'affiliation.tms_lead',
 ] as const;
 
 export type RoleKey = (typeof ROLE_KEYS)[number];

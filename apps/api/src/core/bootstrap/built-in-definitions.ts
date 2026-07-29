@@ -1,6 +1,7 @@
 import {
   MODULE_IDS,
   ROLE_KEYS,
+  SOCIAL_ORGANIZATIONS,
   type ModuleId,
   type PermissionAction,
   type RoleKey,
@@ -31,6 +32,13 @@ const roleNames: Readonly<Record<RoleKey, string>> = {
   'department.rights_development_member': 'Rights and development department member',
   'affiliation.tuanwei_member': 'Youth League affiliation member',
   'affiliation.sast_member': 'SAST affiliation member',
+  'affiliation.tuanwei_director': 'Youth League affiliation director',
+  'affiliation.tuanwei_lead': 'Youth League affiliation lead',
+  'affiliation.sast_director': 'SAST affiliation director',
+  'affiliation.sast_lead': 'SAST affiliation lead',
+  'affiliation.tms_member': 'TMS member',
+  'affiliation.tms_director': 'TMS director',
+  'affiliation.tms_lead': 'TMS lead',
 };
 
 const moduleNames: Readonly<Record<ModuleId, string>> = {
@@ -66,6 +74,16 @@ export const BUILT_IN_ROLE_PERMISSIONS = ROLE_KEYS.flatMap((roleKey) =>
 );
 
 export const BUILT_IN_TAG_DEFINITIONS = [
+  ...SOCIAL_ORGANIZATIONS.map((organization) => ({
+    key: organization.tagKey,
+    name: organization.name,
+    description: `${organization.name} membership managed by organization level assignments.`,
+    requiredScopeType: 'social_organization',
+    metadata: {
+      managedBy: 'organization_membership',
+      organizationId: organization.id,
+    },
+  })),
   {
     key: 'sports.team_captain',
     name: 'Sports team captain',

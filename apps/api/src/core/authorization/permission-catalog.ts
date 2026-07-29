@@ -87,17 +87,52 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.create', 'knowledge_entry'],
   ),
   'affiliation.tuanwei_member': rules(
-    ['events.approve', 'activity'],
-    ['information.announcement.publish', 'announcement'],
-    ['finance.record.read', 'finance_record'],
-    ['finance.record.create', 'finance_record'],
-    ['finance.record.update', 'finance_record'],
-    ['finance.record.approve', 'finance_record'],
+    ['knowledge.create', 'knowledge_entry'],
+    ['events.create', 'activity'],
   ),
   'affiliation.sast_member': rules(
+    ['knowledge.create', 'knowledge_entry'],
+    ['events.create', 'activity'],
     ['events.technical_support', 'activity'],
     ['clubs.technical_support', 'club'],
   ),
+  'affiliation.tuanwei_director': rules(
+    ['knowledge.create', 'knowledge_entry'],
+    ['knowledge.publish', 'knowledge_entry'],
+    ['events.create', 'activity'],
+    ['events.update', 'activity'],
+    ['information.announcement.publish', 'announcement'],
+  ),
+  'affiliation.tuanwei_lead': rules(
+    ['knowledge.*', '*'],
+    ['events.*', '*'],
+    ['information.announcement.publish', 'announcement'],
+    ['finance.*', '*'],
+  ),
+  'affiliation.sast_director': rules(
+    ['knowledge.create', 'knowledge_entry'],
+    ['knowledge.publish', 'knowledge_entry'],
+    ['events.create', 'activity'],
+    ['events.update', 'activity'],
+    ['events.technical_support', 'activity'],
+    ['clubs.technical_support', 'club'],
+  ),
+  'affiliation.sast_lead': rules(
+    ['knowledge.*', '*'],
+    ['events.*', '*'],
+    ['clubs.technical_support', 'club'],
+  ),
+  'affiliation.tms_member': rules(
+    ['knowledge.create', 'knowledge_entry'],
+    ['events.create', 'activity'],
+  ),
+  'affiliation.tms_director': rules(
+    ['knowledge.create', 'knowledge_entry'],
+    ['knowledge.publish', 'knowledge_entry'],
+    ['events.create', 'activity'],
+    ['events.update', 'activity'],
+  ),
+  'affiliation.tms_lead': rules(['knowledge.*', '*'], ['events.*', '*']),
 };
 
 export const SPORTS_CAPTAIN_RULES: readonly PermissionRule[] = rules(

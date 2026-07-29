@@ -143,12 +143,22 @@ describe('production governance bootstrap', () => {
   it('defines the exact built-in governance catalog', () => {
     expect(BUILT_IN_ROLES.map(({ key }) => key)).toEqual(ROLE_KEYS);
     expect(BUILT_IN_MODULES.map(({ moduleId }) => moduleId)).toEqual(MODULE_IDS);
-    expect(BUILT_IN_TAG_DEFINITIONS).toEqual([
+    expect(BUILT_IN_TAG_DEFINITIONS.map(({ key }) => key)).toEqual([
+      'social_org.arts_center',
+      'social_org.liaison_center',
+      'social_org.sports_center',
+      'social_org.rights_development_center',
+      'social_org.tuanwei',
+      'social_org.sast',
+      'social_org.tms',
+      'sports.team_captain',
+    ]);
+    expect(BUILT_IN_TAG_DEFINITIONS.find(({ key }) => key === 'sports.team_captain')).toEqual(
       expect.objectContaining({
         key: 'sports.team_captain',
         requiredScopeType: 'sports_team',
       }),
-    ]);
+    );
     expect(BUILT_IN_TAG_DEFINITIONS.map(({ key }) => key)).not.toContain('extension.custom');
 
     const catalogRules = [

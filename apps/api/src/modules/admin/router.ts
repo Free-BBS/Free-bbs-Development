@@ -7,6 +7,7 @@ import type { DevelopmentStore } from '../../core/database/types.js';
 import { createAssignmentsRouter } from './assignments-router.js';
 import { createAuditRouter } from './audit-router.js';
 import { createModulesRouter } from './modules-router.js';
+import { createOrganizationMembershipsRouter } from './organization-memberships-router.js';
 import { createPermissionsRouter } from './permissions-router.js';
 import { createSubjectsRouter } from './subjects-router.js';
 import { createSystemRouter } from './system-router.js';
@@ -53,6 +54,7 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
   });
 
   router.use('/subjects', createSubjectsRouter(options.store));
+  router.use('/organization-memberships', createOrganizationMembershipsRouter(options.store));
   router.use(createAssignmentsRouter(options.store));
   router.use(createPermissionsRouter(options.store));
   router.use(createTagsRouter(options.store));
