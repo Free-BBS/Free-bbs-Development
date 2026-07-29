@@ -201,7 +201,9 @@ export function createApp(options: CreateAppOptions = {}) {
       getAppliedMigrationCount,
     }),
   );
-  app.use(`${API_BASE_PATH}/clubs`, createClubsRouter({ store, authenticate }));
+  const interestGroupsRouter = createClubsRouter({ store, authenticate });
+  app.use(`${API_BASE_PATH}/interest-groups`, interestGroupsRouter);
+  app.use(`${API_BASE_PATH}/clubs`, interestGroupsRouter);
   app.use(`${API_BASE_PATH}/events`, createEventsRouter({ store, authenticate }));
   app.use(`${API_BASE_PATH}/finance`, createFinanceRouter({ store, authenticate }));
   app.use(`${API_BASE_PATH}/knowledge`, createKnowledgeRouter({ store, authenticate }));

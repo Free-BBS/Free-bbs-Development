@@ -103,7 +103,7 @@ describe('review regressions: role assignment scopes', () => {
     const authenticated = await authenticate({ 'x-demo-user': 'demo-sports-lead' });
     if (authenticated.status !== 200) throw new Error('expected authenticated user');
 
-    expect(authenticated.user.roles).toEqual([]);
+    expect(authenticated.user.roles).toEqual(['domain.sports_lead']);
     expect(
       authorize(authenticated.user as AuthorizationContext, {
         action: 'sports.team.manage',
@@ -113,7 +113,7 @@ describe('review regressions: role assignment scopes', () => {
     ).toBe(true);
   });
 
-  it('expands a scoped role assignment without leaking a bare cross-scope role', async () => {
+  it('exposes scoped role metadata while keeping its compiled policies scoped', async () => {
     const store = await governedDemoStore('demo-student');
     await store.roleAssignments.create({
       subjectUid: 'demo-student',
@@ -133,7 +133,7 @@ describe('review regressions: role assignment scopes', () => {
     if (authenticated.status !== 200) throw new Error('expected authenticated user');
 
     const context = authenticated.user as AuthorizationContext;
-    expect(context.roles).not.toContain('department.sports_director');
+    expect(context.roles).toContain('department.sports_director');
     expect(
       authorize(context, {
         action: 'sports.checkin.create',

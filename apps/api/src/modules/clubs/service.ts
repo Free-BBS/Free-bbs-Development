@@ -67,6 +67,7 @@ export class ClubsService {
     return this.store.transaction(async (store) => {
       const created = await store.clubs.create({
         ...input,
+        organizationId: 'liaison_center',
         technicalSupportStatus: 'not_requested',
         technicalSupportNote: null,
         ownerUid: actor.uid,

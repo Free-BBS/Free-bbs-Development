@@ -26,14 +26,14 @@ function actorWithPolicies(scopeIds: string[]): AuthorizationContext {
 }
 
 describe('clubs security regressions', () => {
-  it('lets an authoritative arts domain assignment update a club', async () => {
+  it('lets an authoritative liaison domain assignment update an interest group', async () => {
     const store = createMemoryStore();
     const actor: AuthorizationContext = {
-      uid: 'arts-lead',
-      displayName: 'Arts lead',
+      uid: 'liaison-lead',
+      displayName: 'Liaison lead',
       avatarUrl: null,
       baseRole: 'student',
-      roles: ['domain.arts_lead'],
+      roles: ['domain.liaison_lead'],
       tags: [],
     };
     await store.subjects.create({
@@ -46,7 +46,7 @@ describe('clubs security regressions', () => {
     });
     await store.roleAssignments.create({
       subjectUid: actor.uid,
-      roleKey: 'domain.arts_lead',
+      roleKey: 'domain.liaison_lead',
       expiresAt: null,
       status: 'active',
       ownerUid: 'demo-admin',
@@ -61,7 +61,7 @@ describe('clubs security regressions', () => {
     await request(app)
       .patch('/api/development/v1/clubs')
       .set('X-Demo-User', actor.uid)
-      .send({ id: 'club-running', description: 'Maintained by the arts domain.' })
+      .send({ id: 'club-running', description: 'Maintained by the liaison domain.' })
       .expect(200);
   });
 

@@ -364,7 +364,7 @@ describe('production governance bootstrap', () => {
       ({ roleKey, action }) => roleKey === 'platform.super_admin' && action === '*',
     );
     const inactiveBinding = rolePermissions.find(
-      ({ roleKey, action }) => roleKey === 'domain.arts_lead' && action === 'clubs.*',
+      ({ roleKey, action }) => roleKey === 'domain.liaison_lead' && action === 'clubs.*',
     );
     const captainDefinition = tagDefinitions.find(({ key }) => key === 'sports.team_captain');
     const inactiveTagBinding = tagPermissions.find(
@@ -468,7 +468,7 @@ describe('production governance bootstrap', () => {
         permissions: ['*:*'],
         rolePermissions: expect.arrayContaining([
           'platform.super_admin:*:*:public:*',
-          'domain.arts_lead:clubs.*:*:public:*',
+          'domain.liaison_lead:clubs.*:*:public:*',
         ]),
         tagDefinitions: ['sports.team_captain'],
         tagPermissions: expect.arrayContaining([

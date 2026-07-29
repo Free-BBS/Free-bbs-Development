@@ -22,6 +22,14 @@ interface ClubRecord {
   technicalSupportNote: string | null;
   scope: ScopeRef;
 }
+interface ActivityRecord {
+  id: string;
+  title: string;
+  description: string;
+  clubId: string | null;
+  startsAt: string | null;
+  status: string;
+}
 interface MembershipRecord {
   id: string;
   clubId: string;
@@ -91,6 +99,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
   const user =
     suppliedUser === undefined ? ((auth?.user as PageUser | null) ?? null) : suppliedUser;
   const [clubs, setClubs] = useState<ClubRecord[] | null>(null);
+  const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [memberships, setMemberships] = useState<Record<string, MembershipRecord[]>>({});
   const [loadError, setLoadError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -106,7 +115,10 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
   const loadClubs = useCallback(async () => {
     setLoadError(null);
     try {
-      const loaded = await activeClient.request<ClubRecord[]>('/clubs');
+      const [loaded, loadedActivities] = await Promise.all([
+        activeClient.request<ClubRecord[]>('/interest-groups'),
+        activeClient.request<ActivityRecord[]>('/events/activities'),
+      ]);
       const loadedMemberships = await Promise.all(
         loaded.map(async (club) => {
           const canReadMemberships =
@@ -114,12 +126,13 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
             permitted(user, 'clubs.join', 'club_membership', { type: 'club', id: club.id });
           if (!canReadMemberships) return [club.id, []] as const;
           const rows = await activeClient.request<MembershipRecord[]>(
-            `/clubs/${encodeURIComponent(club.id)}/memberships`,
+            `/interest-groups/${encodeURIComponent(club.id)}/memberships`,
           );
           return [club.id, rows] as const;
         }),
       );
       setClubs(loaded);
+      setActivities(loadedActivities.filter((activity) => activity.status === 'published'));
       setMemberships(Object.fromEntries(loadedMemberships));
     } catch (error) {
       setLoadError(errorMessage(error));
@@ -156,14 +169,14 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     setBusyClubId('new');
     setActionError(null);
     try {
-      await activeClient.request('/clubs', {
+      await activeClient.request('/interest-groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description, status: 'draft', scope: publicScope }),
       });
       setCreateName('');
       setCreateDescription('');
-      setFeedback('俱乐部草稿已创建');
+      setFeedback('趣缘群体草稿已创建');
       await loadClubs();
     } catch (error) {
       setActionError(errorMessage(error));
@@ -184,8 +197,8 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
       setActionError('名称和介绍不能为空');
       return;
     }
-    await runAction(club, '俱乐部信息已保存', async () => {
-      await activeClient.request('/clubs', {
+    await runAction(club, '趣缘群体信息已保存', async () => {
+      await activeClient.request('/interest-groups', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -203,7 +216,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     const label = to === 'archived' ? '归档' : club.status === 'archived' ? '恢复' : '启用';
     if (!globalThis.confirm(`确认${label}“${club.name}”吗？`)) return;
     await runAction(club, `已${label}${club.name}`, () =>
-      activeClient.request(`/clubs/${encodeURIComponent(club.id)}/transitions`, {
+      activeClient.request(`/interest-groups/${encodeURIComponent(club.id)}/transitions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to }),
@@ -213,7 +226,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
 
   async function join(club: ClubRecord) {
     await runAction(club, `已提交${club.name}加入申请`, () =>
-      activeClient.request(`/clubs/${encodeURIComponent(club.id)}/memberships`, {
+      activeClient.request(`/interest-groups/${encodeURIComponent(club.id)}/memberships`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: '{}',
@@ -222,10 +235,10 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
   }
 
   async function leave(club: ClubRecord, pending: boolean) {
-    const action = pending ? '撤回申请' : '退出俱乐部';
+    const action = pending ? '撤回申请' : '退出趣缘群体';
     if (!globalThis.confirm(`确认${action}“${club.name}”吗？`)) return;
     await runAction(club, pending ? '申请已撤回' : `已退出${club.name}`, () =>
-      activeClient.request<void>(`/clubs/${encodeURIComponent(club.id)}/memberships`, {
+      activeClient.request<void>(`/interest-groups/${encodeURIComponent(club.id)}/memberships`, {
         method: 'DELETE',
       }),
     );
@@ -240,7 +253,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
       return;
     await runAction(club, status === 'active' ? '会员申请已批准' : '会员申请已拒绝', () =>
       activeClient.request(
-        `/clubs/${encodeURIComponent(club.id)}/memberships/${encodeURIComponent(membership.id)}`,
+        `/interest-groups/${encodeURIComponent(club.id)}/memberships/${encodeURIComponent(membership.id)}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -252,7 +265,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
 
   async function updateSupport(club: ClubRecord, status: 'requested' | 'confirmed') {
     await runAction(club, status === 'requested' ? '技术支持申请已提交' : '技术支持已确认', () =>
-      activeClient.request(`/clubs/${encodeURIComponent(club.id)}/technical-support`, {
+      activeClient.request(`/interest-groups/${encodeURIComponent(club.id)}/technical-support`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status, note: supportNotes[club.id] ?? club.technicalSupportNote }),
@@ -266,16 +279,16 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     <section className="module-page" aria-labelledby="clubs-title">
       <header className="page-section-header">
         <div>
-          <h2 id="clubs-title">社群与俱乐部</h2>
-          <p>创建和维护社群，审批加入申请，并与活动模块协同。</p>
+          <h2 id="clubs-title">趣缘群体</h2>
+          <p>发现兴趣相投的伙伴、查看公开活动；联络中心负责群体信息维护。</p>
         </div>
       </header>
 
       {feedback ? <p role="status">{feedback}</p> : null}
       {actionError ? <p role="alert">{actionError}</p> : null}
-      {clubs === null && loadError === null ? <p role="status">正在加载俱乐部…</p> : null}
-      {loadError ? <p role="alert">俱乐部加载失败：{loadError}</p> : null}
-      {clubs?.length === 0 ? <p>暂无可查看的俱乐部</p> : null}
+      {clubs === null && loadError === null ? <p role="status">正在加载趣缘群体…</p> : null}
+      {loadError ? <p role="alert">趣缘群体加载失败：{loadError}</p> : null}
+      {clubs?.length === 0 ? <p>暂无可查看的趣缘群体</p> : null}
 
       {clubs && clubs.length > 0 ? (
         <div className="workbench-grid">
@@ -288,6 +301,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
               type: 'club',
               id: club.id,
             });
+            const relatedActivities = activities.filter((activity) => activity.clubId === club.id);
             const headingId = `club-${club.id}-title`;
             return (
               <article className="workbench-card" aria-labelledby={headingId} key={club.id}>
@@ -326,9 +340,23 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                   <p>{club.description}</p>
                 )}
 
-                <Link to="/events" aria-label={`查看${club.name}的活动`}>
-                  查看相关活动
-                </Link>
+                <section aria-label={`${club.name}公开活动`}>
+                  <h4>公开活动</h4>
+                  {relatedActivities.length === 0 ? (
+                    <p>暂无公开活动</p>
+                  ) : (
+                    <ul>
+                      {relatedActivities.map((activity) => (
+                        <li key={activity.id}>
+                          <Link to="/events">{activity.title}</Link>
+                          {activity.startsAt
+                            ? ` · ${new Date(activity.startsAt).toLocaleString()}`
+                            : null}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
 
                 {canMaintain && editingId !== club.id ? (
                   <div>
@@ -390,7 +418,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                         aria-label={`退出${club.name}`}
                         onClick={() => void leave(club, false)}
                       >
-                        退出俱乐部
+                        退出趣缘群体
                       </button>
                     ) : null}
                   </section>
@@ -483,7 +511,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
 
       {canCreate ? (
         <section aria-labelledby="club-create-title">
-          <h2 id="club-create-title">创建俱乐部草稿</h2>
+          <h2 id="club-create-title">创建趣缘群体草稿</h2>
           <form onSubmit={createClub}>
             <label>
               名称

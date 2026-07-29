@@ -45,7 +45,7 @@ describe('authentication middleware', () => {
     });
   });
 
-  it('loads demo authorization from pre-existing governance data without role or tag grants', async () => {
+  it('loads demo authorization and exposes server-backed role and tag grants', async () => {
     const client = new DemoAuthClient(['demo-admin', 'demo-captain']);
     const store = createMemoryStore({ seed: false });
     const now = new Date('2026-07-27T10:00:00.000Z');
@@ -83,11 +83,26 @@ describe('authentication middleware', () => {
 
     expect(admin).toMatchObject({
       status: 200,
-      user: { uid: 'demo-admin', roles: [], tags: [], policies: expect.any(Array) },
+      user: {
+        uid: 'demo-admin',
+        roles: ['platform.super_admin'],
+        tags: [],
+        policies: expect.any(Array),
+      },
     });
     expect(captain).toMatchObject({
       status: 200,
-      user: { uid: 'demo-captain', roles: [], tags: [], policies: expect.any(Array) },
+      user: {
+        uid: 'demo-captain',
+        roles: [],
+        tags: [
+          {
+            key: 'sports.team_captain',
+            scope: { type: 'sports_team', id: 'team-basketball' },
+          },
+        ],
+        policies: expect.any(Array),
+      },
     });
     if (admin.status !== 200 || captain.status !== 200) throw new Error('expected authentication');
     expect(

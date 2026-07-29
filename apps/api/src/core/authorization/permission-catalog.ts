@@ -27,9 +27,10 @@ export const BASE_STUDENT_PERMISSIONS: readonly PermissionRule[] = [
 ];
 export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
   'platform.super_admin': rules(['*', '*']),
-  'domain.arts_lead': rules(['clubs.*', '*'], ['events.*', '*'], ['knowledge.*', '*']),
+  'domain.arts_lead': rules(['events.*', '*'], ['knowledge.*', '*']),
   'domain.sports_lead': rules(['sports.*', '*'], ['events.*', '*'], ['knowledge.*', '*']),
   'domain.liaison_lead': rules(
+    ['clubs.*', '*'],
     ['liaison.*', '*'],
     ['information.*', '*'],
     ['events.read', 'activity'],
@@ -42,8 +43,6 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.*', '*'],
   ),
   'department.arts_director': rules(
-    ['clubs.create', 'club'],
-    ['clubs.update', 'club'],
     ['events.create', 'activity'],
     ['events.update', 'activity'],
     ['knowledge.create', 'knowledge_entry'],
@@ -60,6 +59,8 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.publish', 'knowledge_entry'],
   ),
   'department.liaison_director': rules(
+    ['clubs.create', 'club'],
+    ['clubs.update', 'club'],
     ['liaison.resource.create', 'liaison_resource'],
     ['liaison.resource.update', 'liaison_resource'],
     ['information.announcement.create', 'announcement'],
@@ -78,7 +79,6 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.publish', 'knowledge_entry'],
   ),
   'department.arts_member': rules(
-    ['clubs.create', 'club'],
     ['events.create', 'activity'],
     ['knowledge.create', 'knowledge_entry'],
   ),
@@ -89,6 +89,8 @@ export const ROLE_PERMISSION_CATALOG: RolePermissionCatalog = {
     ['knowledge.create', 'knowledge_entry'],
   ),
   'department.liaison_member': rules(
+    ['clubs.create', 'club'],
+    ['clubs.update', 'club'],
     ['liaison.resource.read', 'liaison_resource'],
     ['liaison.resource.create', 'liaison_resource'],
     ['information.announcement.create', 'announcement'],
