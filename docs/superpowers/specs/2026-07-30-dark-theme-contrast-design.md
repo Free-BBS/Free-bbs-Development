@@ -28,4 +28,3 @@ No component restructuring, new artwork, layout change, permission change, API c
 - Update the existing administration-page test to require the canonical “趣缘群体” entry.
 - Run only the affected web tests, type checking, formatting/lint checks for changed files, and one real-browser screenshot audit in dark mode.
 - Confirm the local preview remains available and the project worktree contains only the intended changes.
-
