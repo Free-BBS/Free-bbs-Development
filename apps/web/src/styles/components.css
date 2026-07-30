@@ -729,6 +729,12 @@ code,
   --admin-gold: #c9952e;
   --admin-gold-soft: rgba(201, 149, 46, 0.14);
   --admin-red: #9d3932;
+  --admin-surface-end: #fff;
+  --admin-tab-surface: rgba(255, 250, 240, 0.94);
+  --admin-tab-ink: rgba(33, 28, 23, 0.68);
+  --admin-hover-surface: rgba(255, 255, 255, 0.78);
+  --admin-action-ink: #704c12;
+  --admin-card-end: #fff;
   color: var(--admin-ink);
 }
 
@@ -738,7 +744,7 @@ code,
   border-radius: var(--radius-lg);
   background:
     radial-gradient(circle at 88% 10%, rgba(201, 149, 46, 0.18), transparent 34%),
-    linear-gradient(135deg, var(--admin-paper), #fff 68%);
+    linear-gradient(135deg, var(--admin-paper), var(--admin-surface-end) 68%);
   box-shadow: var(--shadow-card);
 }
 
@@ -755,7 +761,7 @@ code,
   padding: 6px;
   border: 1px solid rgba(201, 149, 46, 0.26);
   border-radius: 999px;
-  background: rgba(255, 250, 240, 0.94);
+  background: var(--admin-tab-surface);
   box-shadow: 0 12px 32px rgba(80, 52, 16, 0.09);
   backdrop-filter: blur(14px);
   scrollbar-width: thin;
@@ -775,7 +781,7 @@ code,
   border-color: transparent;
   border-radius: 999px;
   background: transparent;
-  color: rgba(33, 28, 23, 0.68);
+  color: var(--admin-tab-ink);
 }
 
 .admin-tab-nav button:hover,
@@ -897,13 +903,13 @@ code,
 .admin-definition-list button[aria-pressed='true'],
 .admin-definition-list button:hover {
   border-color: rgba(201, 149, 46, 0.36);
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--admin-hover-surface);
 }
 
 .admin-definition-list .create-definition-button {
   border-color: rgba(201, 149, 46, 0.4);
   background: var(--admin-gold-soft);
-  color: #704c12;
+  color: var(--admin-action-ink);
 }
 
 .admin-record-heading {
@@ -933,7 +939,7 @@ code,
 .admin-governance-page button.secondary-button {
   border-color: rgba(201, 149, 46, 0.52);
   background: var(--admin-gold-soft);
-  color: #704c12;
+  color: var(--admin-action-ink);
 }
 
 .admin-governance-page button.danger-button {
@@ -965,7 +971,7 @@ code,
   padding: 22px;
   border: 1px solid rgba(201, 149, 46, 0.28);
   border-radius: var(--radius-lg);
-  background: linear-gradient(145deg, var(--admin-paper), #fff);
+  background: linear-gradient(145deg, var(--admin-paper), var(--admin-card-end));
   box-shadow: var(--shadow-card);
 }
 

@@ -7,7 +7,11 @@ import { errorMessage, SectionState, type AdminClient } from '../admin-support.j
 const DOMAIN_LINKS = [
   { href: '/knowledge', label: '进入知识库', description: '流程、FAQ、联系人与公告' },
   { href: '/information', label: '进入信息中心', description: '通知与信息聚合' },
-  { href: '/clubs', label: '进入社团管理', description: '社团目录与负责人' },
+  {
+    href: '/interest-groups',
+    label: '进入趣缘群体',
+    description: '趣缘群体目录、公开活动与维护入口',
+  },
   { href: '/events', label: '进入活动管理', description: '活动计划与状态' },
   { href: '/liaison', label: '进入联络管理', description: '联络任务与跟进' },
   { href: '/sports', label: '进入体育管理', description: '代表队、赛程与队长' },

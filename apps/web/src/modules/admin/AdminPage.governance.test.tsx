@@ -272,6 +272,10 @@ describe('complete governance administration', () => {
       'href',
       '/development/knowledge',
     );
+    expect(screen.getByRole('link', { name: '进入趣缘群体' })).toHaveAttribute(
+      'href',
+      '/development/interest-groups',
+    );
     expect(screen.getByText('异常与待处理')).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /SQL|数据库/ })).not.toBeInTheDocument();
 
