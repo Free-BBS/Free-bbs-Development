@@ -1,7 +1,6 @@
 import { Router } from 'express';
 
 import type { AuthenticationResult, AuthHeaders } from '../../core/auth/auth-middleware.js';
-import { authorize } from '../../core/authorization/authorize.js';
 import type { DataMode } from '../../core/database/create-store.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { createAssignmentsRouter } from './assignments-router.js';
@@ -36,11 +35,10 @@ export function createAdminRouter(options: AdminRouterOptions): Router {
         });
         return;
       }
-      const decision = authorize(result.user, { action: 'admin.manage', resource: 'admin' });
-      if (!decision.allowed) {
+      if (!result.user.roles.includes('platform.super_admin')) {
         response.status(403).json({
           data: {
-            error: { code: 'forbidden', message: 'Administrative permission is required' },
+            error: { code: 'forbidden', message: 'Super administrator role is required' },
           },
           requestId: response.locals.requestId as string,
         });

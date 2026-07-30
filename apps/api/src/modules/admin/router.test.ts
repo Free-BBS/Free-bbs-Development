@@ -1,9 +1,12 @@
+import express from 'express';
+
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
 import { createApp } from '../../app.js';
 import { DemoAuthClient } from '../../core/auth/demo-auth-client.js';
 import { createMemoryStore } from '../../core/database/memory-store.js';
+import { createAdminRouter } from './router.js';
 
 const adminHeaders = { 'X-Demo-User': 'demo-admin' };
 
@@ -16,6 +19,40 @@ function adminApp() {
     authClient: new DemoAuthClient(['demo-admin', 'demo-student']),
   });
   return { app, store };
+}
+function policyOnlyAdminApp() {
+  const store = createMemoryStore();
+  const app = express();
+  app.use(express.json());
+  app.use(
+    '/api/development/v1/admin',
+    createAdminRouter({
+      store,
+      authenticate: async () => ({
+        status: 200,
+        user: {
+          uid: 'policy-admin',
+          displayName: 'Policy Admin',
+          avatarUrl: null,
+          baseRole: 'student',
+          roles: [],
+          tags: [],
+          policies: [
+            {
+              id: 'policy-admin-manage',
+              action: 'admin.manage',
+              resource: 'admin',
+              effect: 'allow',
+            },
+          ],
+        },
+      }),
+      version: 'test',
+      dataMode: 'memory',
+      getAppliedMigrationCount: async () => 0,
+    }),
+  );
+  return app;
 }
 
 async function createActiveSubject(
@@ -43,6 +80,16 @@ describe('administration API', () => {
     expect(response.body).toMatchObject({
       data: { error: { code: 'forbidden' } },
       requestId: expect.any(String),
+    });
+  });
+
+  it('rejects a policy-only admin.manage grant', async () => {
+    const response = await request(policyOnlyAdminApp())
+      .get('/api/development/v1/admin/modules')
+      .expect(403);
+
+    expect(response.body).toMatchObject({
+      data: { error: { code: 'forbidden' } },
     });
   });
 
