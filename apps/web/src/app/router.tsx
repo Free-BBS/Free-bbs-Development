@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom';
 import { createApiClient } from '../core/api/client.js';
 import { useAuth } from '../core/auth/AuthProvider.js';
 import type { PresentationUser } from '../core/permissions/Can.js';
+import { SuperAdminRouteGuard } from '../core/permissions/SuperAdminRouteGuard.js';
 import { AdminPage } from '../modules/admin/AdminPage.js';
 import { ClubsPage } from '../modules/clubs/ClubsPage.js';
 import { DashboardPage } from '../modules/dashboard/DashboardPage.js';
@@ -101,7 +102,11 @@ function FinanceRoute() {
 
 function AdminRoute() {
   const auth = useAuth();
-  return <AdminPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+  return (
+    <SuperAdminRouteGuard user={auth.user as PresentationUser | null}>
+      <AdminPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />
+    </SuperAdminRouteGuard>
+  );
 }
 
 export const appRouter = createBrowserRouter(
