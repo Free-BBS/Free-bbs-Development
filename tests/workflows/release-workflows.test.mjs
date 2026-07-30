@@ -9,6 +9,40 @@ async function workflow(name) {
   return readFile(new URL(`.github/workflows/${name}.yml`, root), 'utf8');
 }
 
+function workflowJob(source, name, nextName) {
+  const start = source.indexOf(`  ${name}:`);
+  const end = nextName === undefined ? source.length : source.indexOf(`  ${nextName}:`, start);
+  assert.notEqual(start, -1, `workflow job ${name} must exist`);
+  assert.notEqual(end, -1, `workflow job ${nextName} must exist after ${name}`);
+  return source.slice(start, end);
+}
+
+test('clean workspace commands build contracts before consumers', async () => {
+  const packageJson = JSON.parse(await readFile(new URL('package.json', root), 'utf8'));
+  const scripts = packageJson.scripts;
+
+  assert.equal(scripts['build:contracts'], 'npm run build -w @freebbs-development/contracts');
+  assert.match(scripts.build, /^npm run build:contracts && /);
+  assert.match(scripts.typecheck, /^npm run build:contracts && /);
+  assert.equal(scripts.prepare, undefined);
+  assert.equal(scripts.postinstall, undefined);
+
+  for (const name of ['ci', 'deploy']) {
+    const source = await workflow(name);
+    const memoryJob = workflowJob(source, 'e2e-memory', 'e2e-production');
+    const productionJob = workflowJob(
+      source,
+      'e2e-production',
+      name === 'deploy' ? 'release' : undefined,
+    );
+
+    for (const job of [memoryJob, productionJob]) {
+      assert.match(job, /npm run build:contracts/);
+      assert.ok(job.indexOf('npm run build:contracts') < job.indexOf('npx playwright test'));
+    }
+  }
+});
+
 test('CI validates pull requests without deploying and preserves Playwright evidence', async () => {
   const source = await workflow('ci');
 

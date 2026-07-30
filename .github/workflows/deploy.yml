@@ -72,6 +72,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build:contracts
       - run: npx playwright install --with-deps chromium
       - run: npx playwright test
       - name: Preserve memory browser report
@@ -121,6 +122,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build:contracts
       - run: npm run db:migrate
       - run: npm run db:seed
       - name: Bootstrap production-shape administrator
