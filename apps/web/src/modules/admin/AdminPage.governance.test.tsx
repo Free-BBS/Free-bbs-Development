@@ -118,6 +118,7 @@ describe('complete governance administration', () => {
   });
 
   it('searches paged subjects and confirms scoped expiring role and Tag grants', async () => {
+    const expiryLocal = '2027-07-27T12:00';
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
     const client = governanceClient({
       'POST /admin/role-assignments': {
@@ -152,7 +153,7 @@ describe('complete governance administration', () => {
     await userEvent.type(within(roleForm).getByLabelText('作用域类型'), 'department');
     await userEvent.clear(within(roleForm).getByLabelText('作用域 ID'));
     await userEvent.type(within(roleForm).getByLabelText('作用域 ID'), 'sports');
-    await userEvent.type(within(roleForm).getByLabelText('到期时间'), '2027-07-27T12:00');
+    await userEvent.type(within(roleForm).getByLabelText('到期时间'), expiryLocal);
     await userEvent.click(within(roleForm).getByRole('button', { name: '授予角色' }));
     await waitFor(() =>
       expect(client.request).toHaveBeenCalledWith(
@@ -163,7 +164,7 @@ describe('complete governance administration', () => {
             subjectUid: 'uid-2002',
             roleKey: 'department.sports_member',
             scope: { type: 'department', id: 'sports' },
-            expiresAt: '2027-07-27T04:00:00.000Z',
+            expiresAt: new Date(expiryLocal).toISOString(),
           }),
         }),
       ),
@@ -175,7 +176,7 @@ describe('complete governance administration', () => {
     const tagForm = screen.getByRole('form', { name: '授予 Tag' });
     await userEvent.type(within(tagForm).getByLabelText('Tag 用户 UID'), 'uid-2002');
     await userEvent.type(within(tagForm).getByLabelText('Tag 作用域 ID'), 'team-7');
-    await userEvent.type(within(tagForm).getByLabelText('Tag 到期时间'), '2027-07-27T12:00');
+    await userEvent.type(within(tagForm).getByLabelText('Tag 到期时间'), expiryLocal);
     await userEvent.click(within(tagForm).getByRole('button', { name: '授予 Tag' }));
     await waitFor(() =>
       expect(client.request).toHaveBeenCalledWith(

@@ -53,6 +53,7 @@ function renderPage(client: DevelopmentApi) {
 describe('EventsPage', () => {
   it('runs the approval, support, and registration workflow from server-confirmed state', async () => {
     const user = userEvent.setup();
+    const startsAtLocal = '2026-09-01T18:30';
     let current = {
       id: 'activity-workflow',
       title: '校园夜跑',
@@ -127,11 +128,11 @@ describe('EventsPage', () => {
     await user.type(within(card).getByLabelText('所属趣缘群体 ID（可选）'), 'club-updated');
     const startsAt = within(card).getByLabelText('开始时间（可选）');
     await user.clear(startsAt);
-    await user.type(startsAt, '2026-09-01T18:30');
+    await user.type(startsAt, startsAtLocal);
     await user.click(within(card).getByRole('button', { name: '保存活动' }));
     card = await screen.findByRole('article', { name: '校园荧光夜跑' });
     expect(current.clubId).toBe('club-updated');
-    expect(current.startsAt).toBe('2026-09-01T10:30:00.000Z');
+    expect(current.startsAt).toBe(new Date(startsAtLocal).toISOString());
 
     await user.click(within(card).getByRole('button', { name: '提交审核' }));
     await user.click(await within(card).findByRole('button', { name: '批准活动' }));
