@@ -44,4 +44,3 @@ Make the governance administration entry and API strictly available only to user
 - Frontend tests cover sidebar visibility, dashboard visibility, and route redirection for a user that has `admin.manage` but lacks `platform.super_admin`.
 - API tests prove the same policy-only user receives 403 and a super administrator retains access.
 - Run focused Web/API tests, affected type checks, lint/format checks, and one real-browser identity-switch audit.
-
