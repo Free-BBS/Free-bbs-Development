@@ -197,10 +197,16 @@ describe('AppShell', () => {
   });
 });
 
-it('shows protected modules only when the corresponding policy is present', () => {
+it('does not expose governance to a policy-only administrator', () => {
   mockUseAuth.mockReturnValue(
     authenticatedAuth({
-      user: { ...user, policies: [{ action: 'finance.*', effect: 'allow' }] },
+      user: {
+        ...user,
+        policies: [
+          { action: 'finance.*', effect: 'allow' },
+          { action: 'admin.manage', effect: 'allow' },
+        ],
+      },
     }),
   );
 
@@ -209,4 +215,18 @@ it('shows protected modules only when the corresponding policy is present', () =
   const navigation = screen.getByRole('navigation', { name: '主要导航' });
   expect(navigation).toHaveTextContent('财务治理');
   expect(within(navigation).queryByText('权限与模块管理')).not.toBeInTheDocument();
+});
+
+it('exposes governance to a platform super administrator', () => {
+  mockUseAuth.mockReturnValue(
+    authenticatedAuth({ user: { ...user, roles: ['platform.super_admin'] } }),
+  );
+
+  renderShell('/admin');
+
+  expect(
+    within(screen.getByRole('navigation', { name: '主要导航' })).getByRole('link', {
+      name: '权限与模块管理',
+    }),
+  ).toBeInTheDocument();
 });

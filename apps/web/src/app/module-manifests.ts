@@ -9,7 +9,11 @@ import informationIcon from '../assets/icons/information.svg';
 import knowledgeIcon from '../assets/icons/knowledge.svg';
 import liaisonIcon from '../assets/icons/liaison.svg';
 import sportsIcon from '../assets/icons/sports.svg';
-import { hasPresentationPermission, type PresentationUser } from '../core/permissions/Can.js';
+import {
+  hasPresentationPermission,
+  isSuperAdmin,
+  type PresentationUser,
+} from '../core/permissions/Can.js';
 
 export type ModuleStateOverrides = Partial<
   Record<ModuleId, ModuleStatus | boolean | { enabled: boolean }>
@@ -142,6 +146,7 @@ export function visibleModuleManifests(
     (manifest) =>
       manifest.id !== 'dashboard' &&
       resolveModuleStatus(manifest, overrides) === 'enabled' &&
+      (manifest.id !== 'admin' || isSuperAdmin(user)) &&
       manifest.requiredPermissions.every((permission) =>
         hasPresentationPermission(user, permission),
       ),

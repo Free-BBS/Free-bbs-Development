@@ -4,6 +4,7 @@ import { useParams } from 'react-router-dom';
 
 import { createApiClient } from '../core/api/client.js';
 import { useAuth } from '../core/auth/AuthProvider.js';
+import type { PresentationUser } from '../core/permissions/Can.js';
 import { AdminPage } from '../modules/admin/AdminPage.js';
 import { ClubsPage } from '../modules/clubs/ClubsPage.js';
 import { DashboardPage } from '../modules/dashboard/DashboardPage.js';
@@ -40,7 +41,13 @@ function AppShellRoute() {
 
 function DashboardRoute() {
   const auth = useAuth();
-  return <DashboardPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+  return (
+    <DashboardPage
+      key={auth.demoUser ?? auth.user?.uid}
+      client={auth.client}
+      user={auth.user as PresentationUser}
+    />
+  );
 }
 
 function KnowledgeRoute() {

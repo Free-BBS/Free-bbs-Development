@@ -2,16 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { ModuleManifest } from '@freebbs-development/contracts';
-import { MODULE_MANIFESTS } from '../../app/module-manifests.js';
+import {
+  MODULE_MANIFESTS,
+  visibleModuleManifests,
+  type ModuleStateOverrides,
+} from '../../app/module-manifests.js';
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
 
+import type { PresentationUser } from '../../core/permissions/Can.js';
 export interface DashboardPageProps {
   client?: Pick<ApiClient, 'request'>;
+  user: PresentationUser;
 }
 
 type LoadState = 'loading' | 'success' | 'error';
 
-export function DashboardPage({ client }: DashboardPageProps) {
+export function DashboardPage({ client, user }: DashboardPageProps) {
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const [state, setState] = useState<LoadState>('loading');
   const [modules, setModules] = useState<ModuleManifest[]>([]);
@@ -38,11 +44,11 @@ export function DashboardPage({ client }: DashboardPageProps) {
 
   const cards = useMemo(() => {
     const statusById = new Map(modules.map((module) => [module.id, module.status]));
-    return MODULE_MANIFESTS.map((module) => ({
-      ...module,
-      status: statusById.get(module.id) ?? 'disabled',
-    }));
-  }, [modules]);
+    const states = Object.fromEntries(
+      MODULE_MANIFESTS.map((module) => [module.id, statusById.get(module.id) ?? 'disabled']),
+    ) as ModuleStateOverrides;
+    return visibleModuleManifests(user, states);
+  }, [modules, user]);
 
   if (state === 'loading') {
     return <p role="status">正在加载模块状态…</p>;
