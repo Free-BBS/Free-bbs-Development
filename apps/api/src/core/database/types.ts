@@ -1,0 +1,279 @@
+import type {
+  ModuleId,
+  PermissionAction,
+  RoleKey,
+  ScopeRef,
+  SocialOrganizationId,
+} from '@freebbs-development/contracts';
+
+export interface StoredRecord {
+  id: string;
+  status: string;
+  ownerUid: string;
+  scope: ScopeRef;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type NewRecord<T extends StoredRecord> = Omit<T, 'id' | 'createdAt' | 'updatedAt'>;
+export type RecordPatch<T extends StoredRecord> = Partial<NewRecord<T>>;
+
+export interface ListFilters {
+  status?: string;
+  scopeType?: string;
+  scopeId?: string;
+  query?: string;
+}
+
+export interface PageRequest {
+  page: number;
+  pageSize: number;
+}
+
+export interface Page<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+export interface AuditLogQuery extends PageRequest {
+  actorUid?: string;
+  action?: string;
+  resourceType?: string;
+  resourceId?: string;
+  from?: string;
+  to?: string;
+}
+
+export interface RecordRepository<T extends StoredRecord> {
+  create(input: NewRecord<T>): Promise<T>;
+  get(id: string): Promise<T | null>;
+  getForUpdate(id: string): Promise<T | null>;
+  listForUpdate(filters?: ListFilters): Promise<T[]>;
+  list(filters?: ListFilters): Promise<T[]>;
+  page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>>;
+  update(id: string, patch: RecordPatch<T>): Promise<T | null>;
+  delete(id: string): Promise<boolean>;
+}
+
+export interface SubjectRecord extends StoredRecord {
+  uid: string;
+  displayName: string;
+  avatarUrl: string | null;
+}
+
+export interface RoleRecord extends StoredRecord {
+  key: RoleKey;
+  name: string;
+}
+
+export interface PermissionRecord extends StoredRecord {
+  action: PermissionAction;
+  resource: string;
+}
+
+export interface RolePermissionRecord extends StoredRecord {
+  roleKey: RoleKey;
+  action: PermissionAction;
+  resource: string;
+  effect: 'allow' | 'deny';
+}
+
+export interface RoleAssignmentRecord extends StoredRecord {
+  subjectUid: string;
+  roleKey: RoleKey;
+  expiresAt: string | null;
+}
+
+export interface TagDefinitionRecord extends StoredRecord {
+  key: string;
+  name: string;
+  description: string;
+  requiredScopeType: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface TagAssignmentRecord extends StoredRecord {
+  subjectUid: string;
+  tagKey: string;
+  expiresAt: string | null;
+}
+
+export interface TagPermissionRecord extends StoredRecord {
+  tagKey: string;
+  action: PermissionAction;
+  resource: string;
+  effect: 'allow' | 'deny';
+}
+
+export interface ModuleRecord extends StoredRecord {
+  moduleId: ModuleId;
+  name: string;
+  description: string;
+  enabled: boolean;
+}
+
+export interface ModuleOwnerRecord extends StoredRecord {
+  moduleId: ModuleId;
+  ownerType: 'role' | 'subject' | 'team';
+  ownerId: string;
+}
+
+export interface AuditLogRecord extends StoredRecord {
+  actorUid: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  details: Record<string, unknown>;
+}
+
+export interface KnowledgeEntryRecord extends StoredRecord {
+  type: 'workflow' | 'faq' | 'contact' | 'retrospective' | 'notice';
+  title: string;
+  body: string;
+  audience?: 'general' | 'social_org';
+  organizationId?: SocialOrganizationId | null;
+}
+
+export interface AnnouncementRecord extends StoredRecord {
+  title: string;
+  body: string;
+}
+
+export interface ConsultationRecord extends StoredRecord {
+  title: string;
+  body: string;
+  requesterUid: string;
+  assigneeUid: string | null;
+  reply: string | null;
+}
+
+export interface ProposalRecord extends StoredRecord {
+  title: string;
+  problemDescription: string;
+  proposedSolution: string;
+  category: string;
+  submitterUid: string;
+  assigneeUid: string | null;
+  publicProgress: string;
+  internalNote: string;
+}
+
+export type TechnicalSupportStatus = 'not_requested' | 'requested' | 'confirmed';
+
+export interface ClubRecord extends StoredRecord {
+  name: string;
+  description: string;
+  organizationId?: SocialOrganizationId | null;
+  technicalSupportStatus: TechnicalSupportStatus;
+  technicalSupportNote: string | null;
+}
+
+export interface ClubMembershipRecord extends StoredRecord {
+  clubId: string;
+  memberUid: string;
+}
+
+export interface ActivityRecord extends StoredRecord {
+  title: string;
+  description: string;
+  clubId?: string | null;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  location?: string;
+  organizationId?: SocialOrganizationId | null;
+  standingActivity?: boolean;
+  technicalSupportStatus: TechnicalSupportStatus;
+  technicalSupportNote: string | null;
+}
+
+export interface ActivityMilestoneRecord extends StoredRecord {
+  activityId: string;
+  occursAt: string;
+  title: string;
+  type: string;
+  description: string;
+  completed: boolean;
+  displayOrder: number;
+}
+
+export interface CompetitionFixtureRecord extends StoredRecord {
+  activityId: string;
+  round: string;
+  participantA: string;
+  participantB: string;
+  scheduledAt: string;
+  location: string;
+  score: string | null;
+}
+
+export interface ActivityRegistrationRecord extends StoredRecord {
+  activityId: string;
+  participantUid: string;
+}
+
+export interface SportsTeamRecord extends StoredRecord {
+  name: string;
+  description: string;
+}
+
+export interface SportsTeamMemberRecord extends StoredRecord {
+  teamId: string;
+  memberUid: string;
+}
+
+export interface SportsCheckinRecord extends StoredRecord {
+  teamId: string;
+  memberUid: string;
+  checkinDate: string;
+}
+
+export interface LiaisonResourceRecord extends StoredRecord {
+  name: string;
+  description: string;
+  category: string;
+  visibility: 'public' | 'organization' | 'restricted';
+}
+
+export interface FinanceRecord extends StoredRecord {
+  title: string;
+  kind: 'budget' | 'settlement';
+  amountCents: number;
+  activityId?: string | null;
+  organizationId?: SocialOrganizationId | null;
+  reviewerUid?: string | null;
+  reviewedAt?: string | null;
+  reviewDecision?: 'approved' | 'rejected' | null;
+}
+
+export interface DevelopmentStore {
+  transaction<T>(operation: (store: DevelopmentStore) => Promise<T>): Promise<T>;
+  queryAuditLogs(query: AuditLogQuery): Promise<Page<AuditLogRecord>>;
+  subjects: RecordRepository<SubjectRecord>;
+  roles: RecordRepository<RoleRecord>;
+  permissions: RecordRepository<PermissionRecord>;
+  rolePermissions: RecordRepository<RolePermissionRecord>;
+  roleAssignments: RecordRepository<RoleAssignmentRecord>;
+  tagDefinitions: RecordRepository<TagDefinitionRecord>;
+  tagAssignments: RecordRepository<TagAssignmentRecord>;
+  tagPermissions: RecordRepository<TagPermissionRecord>;
+  modules: RecordRepository<ModuleRecord>;
+  moduleOwners: RecordRepository<ModuleOwnerRecord>;
+  auditLogs: RecordRepository<AuditLogRecord>;
+  knowledge: RecordRepository<KnowledgeEntryRecord>;
+  announcements: RecordRepository<AnnouncementRecord>;
+  consultations: RecordRepository<ConsultationRecord>;
+  proposals: RecordRepository<ProposalRecord>;
+  clubs: RecordRepository<ClubRecord>;
+  clubMemberships: RecordRepository<ClubMembershipRecord>;
+  activities: RecordRepository<ActivityRecord>;
+  activityMilestones: RecordRepository<ActivityMilestoneRecord>;
+  competitionFixtures: RecordRepository<CompetitionFixtureRecord>;
+  activityRegistrations: RecordRepository<ActivityRegistrationRecord>;
+  sportsTeams: RecordRepository<SportsTeamRecord>;
+  sportsTeamMembers: RecordRepository<SportsTeamMemberRecord>;
+  sportsCheckins: RecordRepository<SportsCheckinRecord>;
+  liaisonResources: RecordRepository<LiaisonResourceRecord>;
+  financeRecords: RecordRepository<FinanceRecord>;
+}
