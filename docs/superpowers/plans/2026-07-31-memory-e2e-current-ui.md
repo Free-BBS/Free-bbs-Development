@@ -63,14 +63,17 @@ Make these exact test-contract changes:
 
 ```ts
 async function transition(request: APIRequestContext, id: string, to: string) {
-  const response = await request.post(`${apiRoot}/interest-groups/${id}/transitions`, {
-    headers: headers('demo-admin'),
-    data: { to },
-  });
+  const response = await request.post(
+    `${apiRoot}/interest-groups/${id}/transitions`,
+    {
+      headers: headers("demo-admin"),
+      data: { to },
+    },
+  );
   expect(response.status(), await response.text()).toBe(200);
 }
 
-test('interest groups cover membership, support, archive and restore flows', async ({
+test("interest groups cover membership, support, archive and restore flows", async ({
   page,
   request,
 }, testInfo) => {
@@ -82,14 +85,18 @@ In the workflow body, use the current UI contract:
 
 ```ts
 const name = `E2E 趣缘群体 ${suffix}`;
-await page.goto('./interest-groups');
-await expect(page.getByRole('heading', { name: '趣缘群体', level: 2 })).toBeVisible();
-await switchUser(page, 'demo-admin');
-const create = page.getByRole('heading', { name: '创建趣缘群体草稿' }).locator('..');
+await page.goto("./interest-groups");
+await expect(
+  page.getByRole("heading", { name: "趣缘群体", level: 2 }),
+).toBeVisible();
+await switchUser(page, "demo-admin");
+const create = page
+  .getByRole("heading", { name: "创建趣缘群体草稿" })
+  .locator("..");
 // Keep the existing form interactions.
-await expect(page.getByRole('status')).toHaveText('趣缘群体草稿已创建');
+await expect(page.getByRole("status")).toHaveText("趣缘群体草稿已创建");
 // Keep the existing edit interactions.
-await expect(page.getByRole('status')).toHaveText('趣缘群体信息已保存');
+await expect(page.getByRole("status")).toHaveText("趣缘群体信息已保存");
 ```
 
 Replace every API endpoint rooted at `${apiRoot}/clubs` in this file with the same suffix rooted at `${apiRoot}/interest-groups`, including list, memberships, technical support, and transitions. Keep response codes and payload assertions unchanged.
@@ -138,11 +145,15 @@ Expected: FAIL because `经验条目` is no longer the public section heading.
 Replace only the initial heading assertion:
 
 ```ts
-await page.goto('./knowledge');
-await expect(page.getByRole('heading', { name: 'General', exact: true })).toBeVisible();
-await expect(page.getByRole('heading', { name: '创建经验草稿' })).toHaveCount(0);
+await page.goto("./knowledge");
+await expect(
+  page.getByRole("heading", { name: "General", exact: true }),
+).toBeVisible();
+await expect(page.getByRole("heading", { name: "创建经验草稿" })).toHaveCount(
+  0,
+);
 
-await switchUser(page, 'demo-admin');
+await switchUser(page, "demo-admin");
 ```
 
 Keep all draft, edit, reload, publish, student visibility, authorization denial, archive, invalid transition, and final persistence assertions unchanged.
@@ -191,24 +202,26 @@ Expected: FAIL because dashboard is absent from navigation and the old knowledge
 Import `Page` and replace the matrix:
 
 ```ts
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Page } from "@playwright/test";
 
 const modules = [
-  ['/knowledge', 'General'],
-  ['/information', '公开信息'],
-  ['/interest-groups', '趣缘群体'],
-  ['/events', '活动'],
-  ['/liaison', '联络资源'],
-  ['/sports', '体育代表队'],
-  ['/finance', '财务治理'],
-  ['/admin', '治理管理台'],
+  ["/knowledge", "General"],
+  ["/information", "公开信息"],
+  ["/interest-groups", "趣缘群体"],
+  ["/events", "活动"],
+  ["/liaison", "联络资源"],
+  ["/sports", "体育代表队"],
+  ["/finance", "财务治理"],
+  ["/admin", "治理管理台"],
 ] as const;
 ```
 
 Keep the existing navigation loop. Its sidebar selector must remain:
 
 ```ts
-const link = page.locator(`.sidebar .module-nav a[href="/development${route}"]`);
+const link = page.locator(
+  `.sidebar .module-nav a[href="/development${route}"]`,
+);
 ```
 
 This makes absence of a dashboard navigation item part of the test because the expected list begins with knowledge.
@@ -219,12 +232,14 @@ Add this helper after the module matrix:
 
 ```ts
 async function openAdmin(page: Page) {
-  await page.goto('./dashboard');
-  await expect(page.locator('.user-card')).toContainText('demo-student');
-  await page.getByLabel('Demo user').selectOption('demo-admin');
-  await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
-  await expect(page.locator('.user-card')).toContainText('demo-admin');
-  await page.locator('.sidebar .module-nav a[href="/development/admin"]').click();
+  await page.goto("./dashboard");
+  await expect(page.locator(".user-card")).toContainText("demo-student");
+  await page.getByLabel("Demo user").selectOption("demo-admin");
+  await expect(page.getByLabel("Demo user")).toHaveValue("demo-admin");
+  await expect(page.locator(".user-card")).toContainText("demo-admin");
+  await page
+    .locator('.sidebar .module-nav a[href="/development/admin"]')
+    .click();
   await expect(page).toHaveURL(/\/development\/admin$/);
 }
 ```
@@ -233,7 +248,7 @@ In the owner test, replace each block that opens `/admin` as a student and then 
 
 ```ts
 await openAdmin(page);
-await page.getByRole('tab', { name: '模块与负责人' }).click();
+await page.getByRole("tab", { name: "模块与负责人" }).click();
 ```
 
 Call `openAdmin(page)` again after the second owner replacement instead of reloading the guarded route. Preserve the `try`/`finally` owner restoration.
@@ -282,15 +297,22 @@ Expected: three failures: guarded admin workflows redirect before the identity s
 Extend the import and add:
 
 ```ts
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type Page,
+} from "@playwright/test";
 
 async function openAdmin(page: Page) {
-  await page.goto('./dashboard');
-  await expect(page.locator('.user-card')).toContainText('demo-student');
-  await page.getByLabel('Demo user').selectOption('demo-admin');
-  await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
-  await expect(page.locator('.user-card')).toContainText('demo-admin');
-  await page.locator('.sidebar .module-nav a[href="/development/admin"]').click();
+  await page.goto("./dashboard");
+  await expect(page.locator(".user-card")).toContainText("demo-student");
+  await page.getByLabel("Demo user").selectOption("demo-admin");
+  await expect(page.getByLabel("Demo user")).toHaveValue("demo-admin");
+  await expect(page.locator(".user-card")).toContainText("demo-admin");
+  await page
+    .locator('.sidebar .module-nav a[href="/development/admin"]')
+    .click();
   await expect(page).toHaveURL(/\/development\/admin$/);
 }
 ```
@@ -308,11 +330,13 @@ test('governs subjects, expiring grants, binding replacement and audit filters',
 After navigating to the dashboard in the module-disabling test, use:
 
 ```ts
-await page.goto('./dashboard');
-await expect(page.locator('.sidebar a[href="/development/liaison"]')).toHaveCount(0);
-await expect(page.getByTestId('dashboard-module-card').filter({ hasText: '联络资源' })).toHaveCount(
-  0,
-);
+await page.goto("./dashboard");
+await expect(
+  page.locator('.sidebar a[href="/development/liaison"]'),
+).toHaveCount(0);
+await expect(
+  page.getByTestId("dashboard-module-card").filter({ hasText: "联络资源" }),
+).toHaveCount(0);
 ```
 
 Delete the stale expectations for `.sidebar [aria-disabled="true"]` and a dashboard card with `aria-disabled="true"`. Keep the 503 response and `{ code: 'module_disabled' }` assertion, and keep `finally` re-enabling liaison.
@@ -381,3 +405,185 @@ const routes: readonly {
     heading: '趣缘群体',
     primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
 ```
+
+},
+{
+path: 'events',
+heading: '活动',
+primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
+},
+{
+path: 'liaison',
+heading: '联络资源',
+primaryAction: (page) => page.getByRole('button', { name: '创建资源' }),
+},
+{
+path: 'sports',
+heading: '体育代表队',
+primaryAction: (page) => page.getByRole('button', { name: '创建队伍草稿' }),
+},
+{
+path: 'finance',
+heading: '财务治理',
+primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
+},
+{
+path: 'admin',
+heading: '治理管理台',
+primaryAction: (page) => page.getByRole('button', { name: '筛选用户' }),
+},
+] as const;
+
+````
+
+- [ ] **Step 3: Verify dashboard separately and navigate as super admin**
+
+Replace each viewport matrix body with:
+
+```ts
+test(`${viewport.name} keeps the dashboard and all eight visible modules reachable`, async ({
+  page,
+}) => {
+  test.setTimeout(responsiveMatrixTimeout);
+  await page.setViewportSize({ width: viewport.width, height: viewport.height });
+  await page.goto('./dashboard');
+  await expectMainSiteFontRequest(page);
+  await expect(page.getByRole('heading', { name: '发展端工作台', exact: true })).toBeVisible();
+  await expect(page.locator(`${viewport.navigation} a[href="/development/dashboard"]`)).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole('link', { name: 'FREE BBS' })).toHaveAttribute(
+    'href',
+    '/development/dashboard',
+  );
+  await expect(page.getByTestId('dashboard-module-card').first()).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+
+  await page.getByLabel('Demo user').selectOption('demo-admin');
+  await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
+  await expect(page.locator('.user-card')).toContainText('demo-admin');
+
+  for (const route of routes) {
+    const routeLink = page.locator(
+      `${viewport.navigation} a[href="/development/${route.path}"]`,
+    );
+    await routeLink.click();
+    await expect(page).toHaveURL(new RegExp(`/development/${route.path}$`));
+    await page.waitForLoadState('networkidle');
+    await expect(
+      page.getByRole('heading', { name: route.heading, exact: true }).first(),
+    ).toBeVisible();
+
+    const currentNavigation = page.locator(
+      `${viewport.navigation} a[aria-current="page"][href="/development/${route.path}"]`,
+    );
+    await expect(currentNavigation).toBeVisible();
+    await expect(currentNavigation).toBeInViewport();
+
+    const primaryAction = route.primaryAction(page);
+    await expect(primaryAction).toBeVisible();
+    await primaryAction.scrollIntoViewIfNeeded();
+    await expect(
+      primaryAction,
+      `${viewport.name}/${route.path} primary action should be reachable`,
+    ).toBeInViewport();
+    await expectNoHorizontalOverflow(page);
+
+    if (route.path === 'sports') {
+      await expectLongTextWraps(
+        page.locator('.workbench-card code').first(),
+        `SCOPE${'A'.repeat(512)}`,
+      );
+    }
+    if (route.path === 'admin') {
+      await expectLongTextWraps(
+        page.locator('.record-card strong').first(),
+        `UID${'9'.repeat(512)}`,
+      );
+    }
+  }
+});
+````
+
+Keep the separate mobile dialog test unchanged.
+
+- [ ] **Step 4: Run responsive coverage**
+
+Run the Step 1 command again.
+
+Expected: `4 passed` (three viewport matrix cases and one mobile dialog case).
+
+- [ ] **Step 5: Commit responsive alignment**
+
+```powershell
+git add tests/e2e/responsive.spec.ts
+git commit -m "test: align responsive module matrix"
+```
+
+Expected: one commit containing only `tests/e2e/responsive.spec.ts`.
+
+### Task 6: Verify, push, and confirm the pull request
+
+**Files:**
+
+- Verify: all five modified E2E files
+- Verify: complete repository
+- Remote: `origin/feature/development-platform-mvp`
+
+**Interfaces:**
+
+- Consumes: all five corrected E2E contracts and the existing pull-request branch.
+- Produces: local passing evidence and four successful GitHub checks.
+
+- [ ] **Step 1: Run the complete affected Playwright set**
+
+```powershell
+$env:PLAYWRIGHT_USE_SYSTEM_CHROME = 'true'
+$env:TZ = 'UTC'
+$env:Path = 'C:\Users\22793\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:Path
+& 'C:\Users\22793\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' 'node_modules\@playwright\test\cli.js' test tests/e2e/clubs.spec.ts tests/e2e/knowledge.spec.ts tests/e2e/modules.spec.ts tests/e2e/permissions.spec.ts tests/e2e/responsive.spec.ts
+```
+
+Expected: `13 passed`.
+
+- [ ] **Step 2: Run the complete repository quality gate**
+
+```powershell
+$env:TZ = 'UTC'
+$env:Path = 'C:\Users\22793\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin;' + $env:Path
+& 'C:\Users\22793\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe' 'D:\Node.js\node_modules\npm\bin\npm-cli.js' run check
+```
+
+Expected: lint, Prettier, workspace type checks, Vitest, operational tests, workflow tests, and builds all exit with code 0.
+
+- [ ] **Step 3: Confirm scope and cleanliness**
+
+```powershell
+git diff origin/feature/development-platform-mvp...HEAD --name-only
+git status --short --branch
+```
+
+Expected: this correction adds one design spec, one implementation plan, and changes only the five approved E2E files; the worktree is clean.
+
+- [ ] **Step 4: Push the pull-request branch**
+
+```powershell
+git push origin feature/development-platform-mvp
+```
+
+Expected: remote branch advances to the final local commit.
+
+- [ ] **Step 5: Require all GitHub checks**
+
+Inspect the newest workflow run for the pushed commit.
+
+Expected:
+
+```text
+verify             success
+mysql-integration  success
+e2e-production     success
+e2e-memory         success
+```
+
+Do not merge or deploy after these checks.
