@@ -2,16 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the memory-mode Playwright suite describe and verify the current approved Development portal without changing production behavior.
+**Goal:** Make the memory-mode Playwright suite describe and verify the current approved Development portal, with only the separately user-authorized mobile section-containment CSS exception in production.
 
-**Architecture:** Treat each stale E2E file as an independent executable-contract correction. Reuse small test-local identity helpers where the super-administrator route guard requires ordering, preserve all workflow and cleanup assertions, then validate the five-file suite and the complete repository gate before pushing the existing pull-request branch.
+**Architecture:** Treat each stale E2E file as an independent executable-contract correction. Reuse small test-local identity helpers where the super-administrator route guard requires ordering, preserve all workflow and cleanup assertions, and add only `.module-page > section { min-width: 0; }` to contain the `/information` table at mobile widths. Then validate the five-file suite and the complete repository gate before pushing the existing pull-request branch.
 
 **Tech Stack:** TypeScript, Playwright Test 1.61, React Router UI, PowerShell, Node.js 24 bundled runtime.
 
 ## Global Constraints
 
-- Modify only `tests/e2e/clubs.spec.ts`, `tests/e2e/knowledge.spec.ts`, `tests/e2e/modules.spec.ts`, `tests/e2e/permissions.spec.ts`, and `tests/e2e/responsive.spec.ts`.
-- Do not change production application code, APIs, schema, migrations, seeds, deployment, or dependencies.
+- Modify only `tests/e2e/clubs.spec.ts`, `tests/e2e/knowledge.spec.ts`, `tests/e2e/modules.spec.ts`, `tests/e2e/permissions.spec.ts`, `tests/e2e/responsive.spec.ts`, and the user-authorized `apps/web/src/styles/components.css` rule `.module-page > section { min-width: 0; }`.
+- Do not change any other production code, APIs, schema, migrations, seeds, deployment, or dependencies.
 - Preserve substantive membership, lifecycle, permission, audit, responsive-layout, error, and cleanup coverage.
 - Dashboard remains the landing page and brand destination but is absent from module navigation.
 - Knowledge public audience is `General`; interest groups use `趣缘群体` and `/interest-groups`.
@@ -29,7 +29,8 @@
 - Modify `tests/e2e/modules.spec.ts`: eight visible navigation destinations and safe super-admin entry.
 - Modify `tests/e2e/permissions.spec.ts`: guarded admin setup and omission contract for disabled modules.
 - Modify `tests/e2e/responsive.spec.ts`: dashboard-specific checks plus eight-module responsive navigation matrix.
-- No new runtime helper or production file is needed; helpers remain local to the test file that consumes them.
+- Modify `apps/web/src/styles/components.css`: only `.module-page > section { min-width: 0; }`, containing the 760px intrinsic `/information` table so it cannot widen its section to 776px in a 390px viewport.
+- No new runtime helper or other production file is needed; helpers remain local to the test file that consumes them.
 
 ---
 
@@ -337,12 +338,13 @@ Expected: one commit containing only `tests/e2e/permissions.spec.ts`.
 **Files:**
 
 - Modify: `tests/e2e/responsive.spec.ts`
+- Modify: `apps/web/src/styles/components.css` (only the authorized `.module-page > section { min-width: 0; }` rule)
 - Test: `tests/e2e/responsive.spec.ts`
 
 **Interfaces:**
 
 - Consumes: one dashboard load, desktop/sidebar or tablet/mobile navigation, and the current eight visible modules.
-- Produces: responsive reachability, no-overflow, long-text wrapping, font-link, dashboard-brand, and mobile-dialog coverage.
+- Produces: responsive reachability, per-route no-overflow, long-text wrapping, font-link, dashboard-brand, and mobile-dialog coverage; the CSS rule contains the 760px `/information` table that otherwise expands its section to 776px at a 390px viewport.
 
 - [ ] **Step 1: Reproduce the stale responsive matrix**
 
@@ -484,6 +486,16 @@ Run the Step 1 command again.
 
 Expected: `4 passed` (three viewport matrix cases and one mobile dialog case).
 
+The retained per-route overflow assertion exposes the `/information` document overflow
+(776px versus a 390px viewport). Add only this user-authorized rule to contain
+the section without relaxing the assertion:
+
+```css
+.module-page > section {
+  min-width: 0;
+}
+```
+
 - [ ] **Step 5: Commit responsive alignment**
 
 ```powershell
@@ -491,19 +503,30 @@ git add tests/e2e/responsive.spec.ts
 git commit -m "test: align responsive module matrix"
 ```
 
-Expected: one commit containing only `tests/e2e/responsive.spec.ts`.
+Expected: the first of two commits contains only `tests/e2e/responsive.spec.ts`.
+
+- [ ] **Step 6: Commit the authorized responsive containment exception**
+
+```powershell
+git add apps/web/src/styles/components.css
+git commit -m "fix: contain module sections on mobile"
+```
+
+Expected: the second commit contains only the authorized
+`.module-page > section { min-width: 0; }` rule in `apps/web/src/styles/components.css`.
 
 ### Task 6: Verify, push, and confirm the pull request
 
 **Files:**
 
 - Verify: all five modified E2E files
+- Verify: the authorized `apps/web/src/styles/components.css` containment rule
 - Verify: complete repository
 - Remote: `origin/feature/development-platform-mvp`
 
 **Interfaces:**
 
-- Consumes: all five corrected E2E contracts and the existing pull-request branch.
+- Consumes: all five corrected E2E contracts, the single authorized containment rule, and the existing pull-request branch.
 - Produces: local passing evidence and four successful GitHub checks.
 
 - [ ] **Step 1: Run the complete affected Playwright set**
@@ -534,7 +557,7 @@ git diff origin/feature/development-platform-mvp...HEAD --name-only
 git status --short --branch
 ```
 
-Expected: this correction adds one design spec, one implementation plan, and changes only the five approved E2E files; the worktree is clean.
+Expected: this correction adds one design spec and one implementation plan, changes only the five approved E2E files plus the authorized `apps/web/src/styles/components.css` rule, and has two responsive commits (`test: align responsive module matrix` and `fix: contain module sections on mobile`); the worktree is clean.
 
 - [ ] **Step 4: Push the pull-request branch**
 

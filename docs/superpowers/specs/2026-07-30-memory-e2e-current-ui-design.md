@@ -5,8 +5,9 @@ Date: 2026-07-30
 ## Goal
 
 Restore the memory-mode end-to-end check by aligning its stale UI expectations with
-the current, approved Development portal behavior. This is a test-only correction:
-the product UI, routes, authorization, APIs, and data model remain unchanged.
+the current, approved Development portal behavior. The final scope is the five stale
+E2E specifications plus one user-authorized responsive CSS rule; all other product
+UI, routes, authorization, APIs, and data model remain unchanged.
 
 ## Current-state findings
 
@@ -23,11 +24,19 @@ encode earlier names, routes, navigation rules, and authorization flows:
   unauthorized direct visit redirects to the dashboard;
 - disabled modules are omitted from navigation and dashboard presentation rather
   than rendered as disabled controls.
+- the new responsive matrix exposed mobile `/information` document overflow: its
+  intrinsic 760px table width expanded `.module-page > section` to 776px in a
+  390px viewport. The user authorized the minimal containment exception
+  `.module-page > section { min-width: 0; }`; per-route overflow assertions
+  remain in place, and responsive coverage passes all four cases.
 
 ## Chosen approach
 
-Update only the five stale E2E specifications. Do not introduce compatibility
-markup or weaken route guards merely to satisfy obsolete selectors.
+Update the five stale E2E specifications and only the authorized
+`.module-page > section { min-width: 0; }` rule in `components.css`. Do not
+introduce compatibility markup or weaken route guards merely to satisfy obsolete
+selectors. No other production, API, schema, migration, seed, deployment, or
+dependency change is in scope.
 
 This approach keeps the tests as executable documentation for the approved
 product behavior and avoids adding dead UI states. The rejected alternatives are:
@@ -88,4 +97,18 @@ product behavior and avoids adding dead UI states. The rejected alternatives are
   administration route.
 - Preserve desktop, tablet, and mobile layout checks.
 
+### `apps/web/src/styles/components.css`
+
+- Add only `.module-page > section { min-width: 0; }` so a child table's intrinsic
+  760px width cannot force the mobile section beyond the 390px viewport.
+- Keep the responsive suite's per-route horizontal-overflow assertions as the
+  regression contract; all four responsive cases pass with this containment rule.
+
 ## Error handling and cleanup
+
+The responsive matrix continues to assert no horizontal document overflow after
+each route transition, so the `/information` regression is caught at the route
+level rather than hidden by a global relaxation. The authorized CSS rule is a
+single layout-containment declaration and has no runtime cleanup path. Existing E2E
+`try`/`finally` cleanup for created records, role changes, and temporarily disabled
+modules remains unchanged; no new state or deployment cleanup is required.
