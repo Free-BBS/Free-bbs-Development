@@ -12,40 +12,40 @@ async function switchUser(page: Page, user: string) {
 }
 
 async function transition(request: APIRequestContext, id: string, to: string) {
-  const response = await request.post(`${apiRoot}/clubs/${id}/transitions`, {
+  const response = await request.post(`${apiRoot}/interest-groups/${id}/transitions`, {
     headers: headers('demo-admin'),
     data: { to },
   });
   expect(response.status(), await response.text()).toBe(200);
 }
 
-test('clubs covers membership, support, archive and restore flows', async ({
+test('interest groups cover membership, support, archive and restore flows', async ({
   page,
   request,
 }, testInfo) => {
   test.setTimeout(90_000);
   const suffix = `${testInfo.workerIndex}-${testInfo.retry}`;
-  const name = `E2E 俱乐部 ${suffix}`;
+  const name = `E2E 趣缘群体 ${suffix}`;
   const editedName = `${name} 已编辑`;
   page.on('dialog', (dialog) => dialog.accept());
 
-  await page.goto('./clubs');
-  await expect(page.getByRole('heading', { name: '社群与俱乐部', level: 2 })).toBeVisible();
+  await page.goto('./interest-groups');
+  await expect(page.getByRole('heading', { name: '趣缘群体', level: 2 })).toBeVisible();
   await switchUser(page, 'demo-admin');
-  const create = page.getByRole('heading', { name: '创建俱乐部草稿' }).locator('..');
+  const create = page.getByRole('heading', { name: '创建趣缘群体草稿' }).locator('..');
   await create.getByLabel('名称').fill(name);
   await create.getByLabel('介绍').fill('端到端俱乐部草稿。');
   await create.getByRole('button', { name: '保存草稿' }).click();
-  await expect(page.getByRole('status')).toHaveText('俱乐部草稿已创建');
+  await expect(page.getByRole('status')).toHaveText('趣缘群体草稿已创建');
 
   const card = page.locator('.workbench-card').filter({ hasText: name });
   await card.getByRole('button', { name: `编辑${name}` }).click();
   await card.getByLabel('名称').fill(editedName);
   await card.getByLabel('介绍').fill('刷新后仍保留的俱乐部介绍。');
   await card.getByRole('button', { name: '保存' }).click();
-  await expect(page.getByRole('status')).toHaveText('俱乐部信息已保存');
+  await expect(page.getByRole('status')).toHaveText('趣缘群体信息已保存');
 
-  const list = await request.get(`${apiRoot}/clubs`, { headers: headers('demo-admin') });
+  const list = await request.get(`${apiRoot}/interest-groups`, { headers: headers('demo-admin') });
   const clubs = (await list.json()) as { data: Array<{ id: string; name: string }> };
   const club = clubs.data.find((item) => item.name === editedName);
   expect(club).toBeTruthy();
@@ -61,7 +61,7 @@ test('clubs covers membership, support, archive and restore flows', async ({
   await expect(page.getByRole('status')).toHaveText('申请已撤回');
   await studentCard.getByRole('button', { name: `重新申请${editedName}` }).click();
 
-  let membershipsResponse = await request.get(`${apiRoot}/clubs/${id}/memberships`, {
+  let membershipsResponse = await request.get(`${apiRoot}/interest-groups/${id}/memberships`, {
     headers: headers('demo-admin'),
   });
   let memberships = (await membershipsResponse.json()) as {
@@ -69,7 +69,7 @@ test('clubs covers membership, support, archive and restore flows', async ({
   };
   let membership = memberships.data.find((item) => item.memberUid === 'demo-student');
   expect(membership?.status).toBe('pending');
-  let decision = await request.patch(`${apiRoot}/clubs/${id}/memberships/${membership!.id}`, {
+  let decision = await request.patch(`${apiRoot}/interest-groups/${id}/memberships/${membership!.id}`, {
     headers: headers('demo-admin'),
     data: { status: 'rejected' },
   });
@@ -77,12 +77,12 @@ test('clubs covers membership, support, archive and restore flows', async ({
 
   await page.reload();
   await studentCard.getByRole('button', { name: `重新申请${editedName}` }).click();
-  membershipsResponse = await request.get(`${apiRoot}/clubs/${id}/memberships`, {
+  membershipsResponse = await request.get(`${apiRoot}/interest-groups/${id}/memberships`, {
     headers: headers('demo-admin'),
   });
   memberships = (await membershipsResponse.json()) as typeof memberships;
   membership = memberships.data.find((item) => item.memberUid === 'demo-student');
-  decision = await request.patch(`${apiRoot}/clubs/${id}/memberships/${membership!.id}`, {
+  decision = await request.patch(`${apiRoot}/interest-groups/${id}/memberships/${membership!.id}`, {
     headers: headers('demo-admin'),
     data: { status: 'active' },
   });
@@ -92,21 +92,21 @@ test('clubs covers membership, support, archive and restore flows', async ({
   await expect(page.getByRole('status')).toContainText('已退出');
 
   for (const status of ['requested', 'confirmed']) {
-    const support = await request.patch(`${apiRoot}/clubs/${id}/technical-support`, {
+    const support = await request.patch(`${apiRoot}/interest-groups/${id}/technical-support`, {
       headers: headers('demo-admin'),
       data: { status, note: 'E2E 技术支持' },
     });
     expect(support.status(), await support.text()).toBe(200);
   }
 
-  const denied = await request.patch(`${apiRoot}/clubs`, {
+  const denied = await request.patch(`${apiRoot}/interest-groups`, {
     headers: headers('demo-student'),
     data: { id, name: '越权俱乐部' },
   });
   expect([403, 404]).toContain(denied.status());
   await transition(request, id, 'archived');
   await transition(request, id, 'active');
-  const illegal = await request.post(`${apiRoot}/clubs/${id}/transitions`, {
+  const illegal = await request.post(`${apiRoot}/interest-groups/${id}/transitions`, {
     headers: headers('demo-admin'),
     data: { to: 'active' },
   });
