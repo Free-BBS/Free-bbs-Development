@@ -9,7 +9,7 @@ const viewports = [
 const fontStylesheetHref =
   'https://fonts.googleapis.com/css2?family=Syne:wght@500;700;800&family=Noto+Serif+SC:wght@400;500;600;700&display=swap';
 
-// Each matrix case performs nine complete authenticated route loads.
+// Each matrix case performs one dashboard load and eight authenticated module transitions.
 const responsiveMatrixTimeout = 90_000;
 
 const routes: readonly {
@@ -18,13 +18,8 @@ const routes: readonly {
   primaryAction: (page: Page) => Locator;
 }[] = [
   {
-    path: 'dashboard',
-    heading: '发展端工作台',
-    primaryAction: (page) => page.getByTestId('dashboard-module-card').first(),
-  },
-  {
     path: 'knowledge',
-    heading: '经验条目',
+    heading: 'General',
     primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
   },
   {
@@ -33,8 +28,8 @@ const routes: readonly {
     primaryAction: (page) => page.getByRole('button', { name: '提交咨询' }),
   },
   {
-    path: 'clubs',
-    heading: '社群与俱乐部',
+    path: 'interest-groups',
+    heading: '趣缘群体',
     primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
   },
   {
@@ -132,17 +127,34 @@ async function expectLongTextWraps(target: Locator, value: string) {
 }
 
 for (const viewport of viewports) {
-  test(`${viewport.name} keeps all nine routes and their actions reachable`, async ({ page }) => {
+  test(`${viewport.name} keeps the dashboard and all eight visible modules reachable`, async ({
+    page,
+  }) => {
     test.setTimeout(responsiveMatrixTimeout);
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await page.goto('./dashboard');
+    await expectMainSiteFontRequest(page);
+    await expect(page.getByRole('heading', { name: '发展端工作台', exact: true })).toBeVisible();
+    await expect(
+      page.locator(`${viewport.navigation} a[href="/development/dashboard"]`),
+    ).toHaveCount(0);
+    if (viewport.name === 'desktop') {
+      await expect(page.getByRole('link', { name: 'FREE BBS' })).toHaveAttribute(
+        'href',
+        '/development/dashboard',
+      );
+    }
+    await expect(page.getByTestId('dashboard-module-card').first()).toBeVisible();
+    await expectNoHorizontalOverflow(page);
+
+    await page.getByLabel('Demo user').selectOption('demo-admin');
+    await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
+    await expect(page.locator('.user-card')).toContainText('demo-admin');
+
     for (const route of routes) {
-      await page.goto(`./${route.path}`);
-      if (route.path === 'dashboard') {
-        await expectMainSiteFontRequest(page);
-      }
-      await page.getByLabel('Demo user').selectOption('demo-admin');
-      await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
-      await expect(page.locator('.user-card')).toContainText('demo-admin');
+      const routeLink = page.locator(`${viewport.navigation} a[href="/development/${route.path}"]`);
+      await routeLink.click();
+      await expect(page).toHaveURL(new RegExp(`/development/${route.path}$`));
       await page.waitForLoadState('networkidle');
       await expect(
         page.getByRole('heading', { name: route.heading, exact: true }).first(),
@@ -161,7 +173,6 @@ for (const viewport of viewports) {
         primaryAction,
         `${viewport.name}/${route.path} primary action should be reachable`,
       ).toBeInViewport();
-
       await expectNoHorizontalOverflow(page);
 
       if (route.path === 'sports') {
@@ -170,7 +181,6 @@ for (const viewport of viewports) {
           `SCOPE${'A'.repeat(512)}`,
         );
       }
-
       if (route.path === 'admin') {
         await expectLongTextWraps(
           page.locator('.record-card strong').first(),
