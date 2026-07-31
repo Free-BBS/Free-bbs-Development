@@ -30,7 +30,7 @@ test('knowledge covers reader visibility and the complete manager lifecycle', as
   page.on('dialog', (dialog) => dialog.accept());
 
   await page.goto('./knowledge');
-  await expect(page.getByRole('heading', { name: '经验条目' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'General', exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: '创建经验草稿' })).toHaveCount(0);
 
   await switchUser(page, 'demo-admin');
