@@ -63,17 +63,14 @@ Make these exact test-contract changes:
 
 ```ts
 async function transition(request: APIRequestContext, id: string, to: string) {
-  const response = await request.post(
-    `${apiRoot}/interest-groups/${id}/transitions`,
-    {
-      headers: headers("demo-admin"),
-      data: { to },
-    },
-  );
+  const response = await request.post(`${apiRoot}/interest-groups/${id}/transitions`, {
+    headers: headers('demo-admin'),
+    data: { to },
+  });
   expect(response.status(), await response.text()).toBe(200);
 }
 
-test("interest groups cover membership, support, archive and restore flows", async ({
+test('interest groups cover membership, support, archive and restore flows', async ({
   page,
   request,
 }, testInfo) => {
@@ -85,18 +82,14 @@ In the workflow body, use the current UI contract:
 
 ```ts
 const name = `E2E 趣缘群体 ${suffix}`;
-await page.goto("./interest-groups");
-await expect(
-  page.getByRole("heading", { name: "趣缘群体", level: 2 }),
-).toBeVisible();
-await switchUser(page, "demo-admin");
-const create = page
-  .getByRole("heading", { name: "创建趣缘群体草稿" })
-  .locator("..");
+await page.goto('./interest-groups');
+await expect(page.getByRole('heading', { name: '趣缘群体', level: 2 })).toBeVisible();
+await switchUser(page, 'demo-admin');
+const create = page.getByRole('heading', { name: '创建趣缘群体草稿' }).locator('..');
 // Keep the existing form interactions.
-await expect(page.getByRole("status")).toHaveText("趣缘群体草稿已创建");
+await expect(page.getByRole('status')).toHaveText('趣缘群体草稿已创建');
 // Keep the existing edit interactions.
-await expect(page.getByRole("status")).toHaveText("趣缘群体信息已保存");
+await expect(page.getByRole('status')).toHaveText('趣缘群体信息已保存');
 ```
 
 Replace every API endpoint rooted at `${apiRoot}/clubs` in this file with the same suffix rooted at `${apiRoot}/interest-groups`, including list, memberships, technical support, and transitions. Keep response codes and payload assertions unchanged.
@@ -145,15 +138,11 @@ Expected: FAIL because `经验条目` is no longer the public section heading.
 Replace only the initial heading assertion:
 
 ```ts
-await page.goto("./knowledge");
-await expect(
-  page.getByRole("heading", { name: "General", exact: true }),
-).toBeVisible();
-await expect(page.getByRole("heading", { name: "创建经验草稿" })).toHaveCount(
-  0,
-);
+await page.goto('./knowledge');
+await expect(page.getByRole('heading', { name: 'General', exact: true })).toBeVisible();
+await expect(page.getByRole('heading', { name: '创建经验草稿' })).toHaveCount(0);
 
-await switchUser(page, "demo-admin");
+await switchUser(page, 'demo-admin');
 ```
 
 Keep all draft, edit, reload, publish, student visibility, authorization denial, archive, invalid transition, and final persistence assertions unchanged.
@@ -202,26 +191,24 @@ Expected: FAIL because dashboard is absent from navigation and the old knowledge
 Import `Page` and replace the matrix:
 
 ```ts
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from '@playwright/test';
 
 const modules = [
-  ["/knowledge", "General"],
-  ["/information", "公开信息"],
-  ["/interest-groups", "趣缘群体"],
-  ["/events", "活动"],
-  ["/liaison", "联络资源"],
-  ["/sports", "体育代表队"],
-  ["/finance", "财务治理"],
-  ["/admin", "治理管理台"],
+  ['/knowledge', 'General'],
+  ['/information', '公开信息'],
+  ['/interest-groups', '趣缘群体'],
+  ['/events', '活动'],
+  ['/liaison', '联络资源'],
+  ['/sports', '体育代表队'],
+  ['/finance', '财务治理'],
+  ['/admin', '治理管理台'],
 ] as const;
 ```
 
 Keep the existing navigation loop. Its sidebar selector must remain:
 
 ```ts
-const link = page.locator(
-  `.sidebar .module-nav a[href="/development${route}"]`,
-);
+const link = page.locator(`.sidebar .module-nav a[href="/development${route}"]`);
 ```
 
 This makes absence of a dashboard navigation item part of the test because the expected list begins with knowledge.
@@ -232,14 +219,12 @@ Add this helper after the module matrix:
 
 ```ts
 async function openAdmin(page: Page) {
-  await page.goto("./dashboard");
-  await expect(page.locator(".user-card")).toContainText("demo-student");
-  await page.getByLabel("Demo user").selectOption("demo-admin");
-  await expect(page.getByLabel("Demo user")).toHaveValue("demo-admin");
-  await expect(page.locator(".user-card")).toContainText("demo-admin");
-  await page
-    .locator('.sidebar .module-nav a[href="/development/admin"]')
-    .click();
+  await page.goto('./dashboard');
+  await expect(page.locator('.user-card')).toContainText('demo-student');
+  await page.getByLabel('Demo user').selectOption('demo-admin');
+  await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
+  await expect(page.locator('.user-card')).toContainText('demo-admin');
+  await page.locator('.sidebar .module-nav a[href="/development/admin"]').click();
   await expect(page).toHaveURL(/\/development\/admin$/);
 }
 ```
@@ -248,7 +233,7 @@ In the owner test, replace each block that opens `/admin` as a student and then 
 
 ```ts
 await openAdmin(page);
-await page.getByRole("tab", { name: "模块与负责人" }).click();
+await page.getByRole('tab', { name: '模块与负责人' }).click();
 ```
 
 Call `openAdmin(page)` again after the second owner replacement instead of reloading the guarded route. Preserve the `try`/`finally` owner restoration.
@@ -297,22 +282,15 @@ Expected: three failures: guarded admin workflows redirect before the identity s
 Extend the import and add:
 
 ```ts
-import {
-  expect,
-  test,
-  type APIRequestContext,
-  type Page,
-} from "@playwright/test";
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 async function openAdmin(page: Page) {
-  await page.goto("./dashboard");
-  await expect(page.locator(".user-card")).toContainText("demo-student");
-  await page.getByLabel("Demo user").selectOption("demo-admin");
-  await expect(page.getByLabel("Demo user")).toHaveValue("demo-admin");
-  await expect(page.locator(".user-card")).toContainText("demo-admin");
-  await page
-    .locator('.sidebar .module-nav a[href="/development/admin"]')
-    .click();
+  await page.goto('./dashboard');
+  await expect(page.locator('.user-card')).toContainText('demo-student');
+  await page.getByLabel('Demo user').selectOption('demo-admin');
+  await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
+  await expect(page.locator('.user-card')).toContainText('demo-admin');
+  await page.locator('.sidebar .module-nav a[href="/development/admin"]').click();
   await expect(page).toHaveURL(/\/development\/admin$/);
 }
 ```
@@ -330,13 +308,11 @@ test('governs subjects, expiring grants, binding replacement and audit filters',
 After navigating to the dashboard in the module-disabling test, use:
 
 ```ts
-await page.goto("./dashboard");
-await expect(
-  page.locator('.sidebar a[href="/development/liaison"]'),
-).toHaveCount(0);
-await expect(
-  page.getByTestId("dashboard-module-card").filter({ hasText: "联络资源" }),
-).toHaveCount(0);
+await page.goto('./dashboard');
+await expect(page.locator('.sidebar a[href="/development/liaison"]')).toHaveCount(0);
+await expect(page.getByTestId('dashboard-module-card').filter({ hasText: '联络资源' })).toHaveCount(
+  0,
+);
 ```
 
 Delete the stale expectations for `.sidebar [aria-disabled="true"]` and a dashboard card with `aria-disabled="true"`. Keep the 503 response and `{ code: 'module_disabled' }` assertion, and keep `finally` re-enabling liaison.
@@ -404,37 +380,34 @@ const routes: readonly {
     path: 'interest-groups',
     heading: '趣缘群体',
     primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
-```
-
-},
-{
-path: 'events',
-heading: '活动',
-primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
-},
-{
-path: 'liaison',
-heading: '联络资源',
-primaryAction: (page) => page.getByRole('button', { name: '创建资源' }),
-},
-{
-path: 'sports',
-heading: '体育代表队',
-primaryAction: (page) => page.getByRole('button', { name: '创建队伍草稿' }),
-},
-{
-path: 'finance',
-heading: '财务治理',
-primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
-},
-{
-path: 'admin',
-heading: '治理管理台',
-primaryAction: (page) => page.getByRole('button', { name: '筛选用户' }),
-},
+  },
+  {
+    path: 'events',
+    heading: '活动',
+    primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
+  },
+  {
+    path: 'liaison',
+    heading: '联络资源',
+    primaryAction: (page) => page.getByRole('button', { name: '创建资源' }),
+  },
+  {
+    path: 'sports',
+    heading: '体育代表队',
+    primaryAction: (page) => page.getByRole('button', { name: '创建队伍草稿' }),
+  },
+  {
+    path: 'finance',
+    heading: '财务治理',
+    primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
+  },
+  {
+    path: 'admin',
+    heading: '治理管理台',
+    primaryAction: (page) => page.getByRole('button', { name: '筛选用户' }),
+  },
 ] as const;
-
-````
+```
 
 - [ ] **Step 3: Verify dashboard separately and navigate as super admin**
 
@@ -464,9 +437,7 @@ test(`${viewport.name} keeps the dashboard and all eight visible modules reachab
   await expect(page.locator('.user-card')).toContainText('demo-admin');
 
   for (const route of routes) {
-    const routeLink = page.locator(
-      `${viewport.navigation} a[href="/development/${route.path}"]`,
-    );
+    const routeLink = page.locator(`${viewport.navigation} a[href="/development/${route.path}"]`);
     await routeLink.click();
     await expect(page).toHaveURL(new RegExp(`/development/${route.path}$`));
     await page.waitForLoadState('networkidle');
@@ -503,7 +474,7 @@ test(`${viewport.name} keeps the dashboard and all eight visible modules reachab
     }
   }
 });
-````
+```
 
 Keep the separate mobile dialog test unchanged.
 
