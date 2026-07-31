@@ -255,6 +255,10 @@ button:disabled {
   gap: 28px;
 }
 
+.module-page > section {
+  min-width: 0;
+}
+
 .page-heading {
   display: flex;
   align-items: end;
