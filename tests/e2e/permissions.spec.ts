@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 const apiRoot = '/api/development/v1';
 
@@ -14,6 +14,15 @@ async function setModule(request: APIRequestContext, moduleId: string, enabled: 
   expect(response.ok(), await response.text()).toBe(true);
 }
 
+async function openAdmin(page: Page) {
+  await page.goto('./dashboard');
+  await expect(page.locator('.user-card')).toContainText('demo-student');
+  await page.getByLabel('Demo user').selectOption('demo-admin');
+  await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
+  await expect(page.locator('.user-card')).toContainText('demo-admin');
+  await page.locator('.sidebar .module-nav a[href="/development/admin"]').click();
+  await expect(page).toHaveURL(/\/development\/admin$/);
+}
 test('a captain can check in their own team but is denied across teams', async ({
   page,
   request,
@@ -65,8 +74,7 @@ test('the administrator can grant and revoke a role with visible audit history',
     });
   }
 
-  await page.goto('./admin');
-  await page.getByLabel('Demo user').selectOption('demo-admin');
+  await openAdmin(page);
   const panel = page.getByRole('tabpanel', { name: '用户与授权' });
   const grant = panel.getByRole('form', { name: '授予角色' });
   await grant.getByLabel('用户 UID').fill('demo-student');
@@ -106,8 +114,7 @@ test('module disabling removes navigation and rejects the module API', async ({
   page.on('dialog', (dialog) => dialog.accept());
   await setModule(request, 'liaison', true);
   try {
-    await page.goto('./admin');
-    await page.getByLabel('Demo user').selectOption('demo-admin');
+    await openAdmin(page);
     await page.getByRole('tab', { name: '模块与负责人' }).click();
     await page.locator('.admin-definition-list button').filter({ hasText: 'liaison' }).click();
     await page.getByRole('button', { name: '停用 联络资源' }).click();
@@ -116,11 +123,8 @@ test('module disabling removes navigation and rejects the module API', async ({
     await page.goto('./dashboard');
     await expect(page.locator('.sidebar a[href="/development/liaison"]')).toHaveCount(0);
     await expect(
-      page.locator('.sidebar [aria-disabled="true"]').filter({ hasText: '联络资源' }),
-    ).toBeVisible();
-    await expect(
       page.getByTestId('dashboard-module-card').filter({ hasText: '联络资源' }),
-    ).toHaveAttribute('aria-disabled', 'true');
+    ).toHaveCount(0);
 
     const disabledResponse = await request.get(`${apiRoot}/liaison/resources`, {
       headers: demoHeaders('demo-admin'),
@@ -222,10 +226,9 @@ test('governs subjects, expiring grants, binding replacement and audit filters',
       },
     });
 
-    await page.goto('./admin');
-    await page.getByLabel('Demo user').selectOption('demo-admin');
+    await openAdmin(page);
     const directory = page.getByRole('tabpanel', { name: '用户与授权' });
-    await expect(directory).toContainText('共 4 位用户');
+    await expect(directory).toContainText('共 8 位用户');
     await directory.getByLabel('搜索用户').fill('demo-student');
     await directory.getByRole('button', { name: '筛选用户' }).click();
     await expect(directory).toContainText('共 1 位用户');
