@@ -69,10 +69,13 @@ test('interest groups cover membership, support, archive and restore flows', asy
   };
   let membership = memberships.data.find((item) => item.memberUid === 'demo-student');
   expect(membership?.status).toBe('pending');
-  let decision = await request.patch(`${apiRoot}/interest-groups/${id}/memberships/${membership!.id}`, {
-    headers: headers('demo-admin'),
-    data: { status: 'rejected' },
-  });
+  let decision = await request.patch(
+    `${apiRoot}/interest-groups/${id}/memberships/${membership!.id}`,
+    {
+      headers: headers('demo-admin'),
+      data: { status: 'rejected' },
+    },
+  );
   expect(decision.status()).toBe(200);
 
   await page.reload();
