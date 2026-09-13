@@ -237,6 +237,135 @@ integration('real MySQL 8 store integration', () => {
       RecordConflictError,
     );
   });
+  it('matches memory reference and RESTRICT semantics for liaison aggregates', async () => {
+    const memberUid = `${runId}-member`;
+    const participantUid = `${runId}-participant`;
+    const stores = [createMemoryStore({ seed: false }), handle.store];
+    for (const store of stores) {
+      if (store !== handle.store) {
+        for (const uid of [memberUid, participantUid]) {
+          await store.subjects.create({
+            uid,
+            displayName: uid,
+            avatarUrl: null,
+            status: 'active',
+            ownerUid: runId,
+            scope: publicScope,
+          });
+        }
+      }
+      await expect(
+        store.liaisonTeams.create({
+          problemId: `${runId}-missing-problem`,
+          name: 'Orphan team',
+          proposal: 'Must fail',
+          maintainerUid: memberUid,
+          status: 'active',
+          ownerUid: runId,
+          scope: publicScope,
+        }),
+      ).rejects.toMatchObject({ code: 'ER_NO_REFERENCED_ROW_2', errno: 1452 });
+      const problemInput = {
+        background: 'Integration background',
+        sourceType: 'campus' as const,
+        sourceName: 'Integration source',
+        expectedOutcome: 'Integration outcome',
+        constraints: 'Integration only',
+        internalContactNote: '',
+        recorderUid: memberUid,
+        status: 'open' as const,
+        ownerUid: runId,
+        scope: { type: 'integration_liaison_references', id: runId },
+      };
+      const problem = await store.liaisonProblems.create({
+        ...problemInput,
+        title: 'Reference problem',
+      });
+      const otherProblem = await store.liaisonProblems.create({
+        ...problemInput,
+        title: 'Other reference problem',
+      });
+      const team = await store.liaisonTeams.create({
+        problemId: problem.id,
+        name: 'Reference team',
+        proposal: 'Reference proposal',
+        maintainerUid: memberUid,
+        status: 'active',
+        ownerUid: runId,
+        scope: { type: 'liaison_problem', id: problem.id },
+      });
+      await expect(
+        store.liaisonTeamMembers.create({
+          problemId: otherProblem.id,
+          teamId: team.id,
+          memberUid: participantUid,
+          role: 'member',
+          joinedAt: '2026-10-02T03:04:05.006Z',
+          status: 'active',
+          ownerUid: runId,
+          scope: { type: 'liaison_team', id: team.id },
+        }),
+      ).rejects.toMatchObject({ code: 'ER_NO_REFERENCED_ROW_2', errno: 1452 });
+      const membership = await store.liaisonTeamMembers.create({
+        problemId: problem.id,
+        teamId: team.id,
+        memberUid: participantUid,
+        role: 'member',
+        joinedAt: '2026-10-02T03:04:05.006Z',
+        status: 'active',
+        ownerUid: runId,
+        scope: { type: 'liaison_team', id: team.id },
+      });
+      const post = await store.liaisonPosts.create({
+        problemId: problem.id,
+        teamId: team.id,
+        authorUid: memberUid,
+        kind: 'progress',
+        body: 'Reference progress',
+        status: 'visible',
+        ownerUid: runId,
+        scope: { type: 'liaison_problem', id: problem.id },
+      });
+      const outcome = await store.liaisonOutcomes.create({
+        problemId: problem.id,
+        teamId: team.id,
+        version: 1,
+        title: 'Reference outcome',
+        description: 'Reference description',
+        submittedAt: '2026-10-08T03:04:05.006Z',
+        adoptedAt: '2026-10-09T03:04:05.006Z',
+        adoptedByUid: memberUid,
+        status: 'adopted',
+        ownerUid: runId,
+        scope: { type: 'liaison_team', id: team.id },
+      });
+
+      await expect(
+        store.liaisonTeams.update(team.id, { problemId: otherProblem.id }),
+      ).rejects.toMatchObject({ code: 'ER_ROW_IS_REFERENCED_2', errno: 1451 });
+      const referencedSubject = (await store.subjects.list({ query: memberUid })).find(
+        (subject) => subject.uid === memberUid,
+      );
+      expect(referencedSubject).toBeDefined();
+      await expect(
+        store.subjects.update(referencedSubject!.id, { uid: `${memberUid}-renamed` }),
+      ).rejects.toMatchObject({ code: 'ER_ROW_IS_REFERENCED_2', errno: 1451 });
+      await expect(store.liaisonProblems.delete(problem.id)).rejects.toMatchObject({
+        code: 'ER_ROW_IS_REFERENCED_2',
+        errno: 1451,
+      });
+      await expect(store.liaisonTeams.delete(team.id)).rejects.toMatchObject({
+        code: 'ER_ROW_IS_REFERENCED_2',
+        errno: 1451,
+      });
+      await store.liaisonOutcomes.delete(outcome.id);
+      await store.liaisonPosts.delete(post.id);
+      await store.liaisonTeamMembers.delete(membership.id);
+      await expect(store.liaisonTeams.delete(team.id)).resolves.toBe(true);
+      await expect(store.liaisonProblems.delete(problem.id)).resolves.toBe(true);
+      await expect(store.liaisonProblems.delete(otherProblem.id)).resolves.toBe(true);
+    }
+  });
   it('round-trips UTC time, date-only and integer cents while enforcing unique domain records', async () => {
     const club = await handle.store.clubs.create({
       name: 'MySQL integration club',

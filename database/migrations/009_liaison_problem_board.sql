@@ -1,4 +1,4 @@
-CREATE TABLE liaison_problems (
+CREATE TABLE IF NOT EXISTS liaison_problems (
   id VARCHAR(64) PRIMARY KEY,
   title VARCHAR(255) NOT NULL,
   summary VARCHAR(500) NOT NULL,
@@ -33,7 +33,7 @@ CREATE TABLE liaison_problems (
     FOREIGN KEY (reviewer_uid) REFERENCES subjects(uid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE liaison_teams (
+CREATE TABLE IF NOT EXISTS liaison_teams (
   id VARCHAR(64) PRIMARY KEY,
   problem_id VARCHAR(64) NOT NULL,
   name VARCHAR(255) NOT NULL,
@@ -54,7 +54,7 @@ CREATE TABLE liaison_teams (
     FOREIGN KEY (maintainer_uid) REFERENCES subjects(uid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE liaison_team_members (
+CREATE TABLE IF NOT EXISTS liaison_team_members (
   id VARCHAR(64) PRIMARY KEY,
   problem_id VARCHAR(64) NOT NULL,
   team_id VARCHAR(64) NOT NULL,
@@ -76,7 +76,7 @@ CREATE TABLE liaison_team_members (
     FOREIGN KEY (member_uid) REFERENCES subjects(uid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE liaison_posts (
+CREATE TABLE IF NOT EXISTS liaison_posts (
   id VARCHAR(64) PRIMARY KEY,
   problem_id VARCHAR(64) NOT NULL,
   team_id VARCHAR(64) NULL,
@@ -104,7 +104,7 @@ CREATE TABLE liaison_posts (
     FOREIGN KEY (hidden_by_uid) REFERENCES subjects(uid)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
-CREATE TABLE liaison_outcomes (
+CREATE TABLE IF NOT EXISTS liaison_outcomes (
   id VARCHAR(64) PRIMARY KEY,
   problem_id VARCHAR(64) NOT NULL,
   team_id VARCHAR(64) NOT NULL,

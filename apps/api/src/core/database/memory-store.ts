@@ -92,6 +92,21 @@ interface StateHolder {
   current: MemoryState;
   transactionTail: Promise<void>;
 }
+
+function missingReferenceError(message: string): Error {
+  return Object.assign(new Error(message), {
+    code: 'ER_NO_REFERENCED_ROW_2',
+    errno: 1452,
+  });
+}
+
+function referencedRowError(message: string): Error {
+  return Object.assign(new Error(message), {
+    code: 'ER_ROW_IS_REFERENCED_2',
+    errno: 1451,
+  });
+}
+
 async function withWriteLock<T>(holder: StateHolder, operation: () => Promise<T>): Promise<T> {
   const previous = holder.transactionTail;
   let release: () => void = () => {};
@@ -1090,12 +1105,17 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
 
   async create(input: NewRecord<T>): Promise<T> {
     return withWriteLock(this.holder, async () => {
-      const conflictMessage = this.conflictMessage(input);
+      const normalizedInput = normalizedValues(input);
+      const recordInput = {
+        ...collectionDefaults(this.collection),
+        ...normalizedInput,
+      } as NewRecord<T>;
+      this.assertLiaisonReferences(recordInput);
+      const conflictMessage = this.conflictMessage(recordInput);
       if (conflictMessage !== undefined) throw new RecordConflictError(conflictMessage);
       const now = new Date().toISOString();
       const record = {
-        ...collectionDefaults(this.collection),
-        ...normalizedValues(input),
+        ...recordInput,
         id: randomUUID(),
         createdAt: now,
         updatedAt: now,
@@ -1182,10 +1202,10 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       if (!existing) return null;
       const normalizedPatch = normalizedValues(patch);
       if (Object.keys(normalizedPatch).length === 0) return structuredClone(existing);
-      const conflictMessage = this.conflictMessage(
-        { ...existing, ...normalizedPatch } as NewRecord<T>,
-        existing.id,
-      );
+      this.assertReferencedKeyUpdateAllowed(existing, normalizedPatch);
+      const candidate = { ...existing, ...normalizedPatch } as NewRecord<T>;
+      this.assertLiaisonReferences(candidate);
+      const conflictMessage = this.conflictMessage(candidate, existing.id);
       if (conflictMessage !== undefined) throw new RecordConflictError(conflictMessage);
       const updated = {
         ...existing,
@@ -1204,9 +1224,131 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       const records = this.records();
       const index = records.findIndex((record) => record.id === id);
       if (index === -1) return false;
+      const existing = records[index];
+      if (!existing) return false;
+      this.assertDeleteAllowed(existing);
       records.splice(index, 1);
       return true;
     });
+  }
+
+  private assertLiaisonReferences(input: NewRecord<T>): void {
+    const state = this.holder.current;
+    const candidate = input as unknown as Record<string, unknown>;
+    const subjectExists = (uid: unknown): boolean =>
+      typeof uid === 'string' && state.subjects.some((subject) => subject.uid === uid);
+    const nullableSubjectExists = (uid: unknown): boolean => uid === null || subjectExists(uid);
+    const problemExists = (problemId: unknown): boolean =>
+      typeof problemId === 'string' &&
+      state.liaisonProblems.some((problem) => problem.id === problemId);
+    const matchingTeamExists = (problemId: unknown, teamId: unknown): boolean =>
+      typeof problemId === 'string' &&
+      typeof teamId === 'string' &&
+      state.liaisonTeams.some((team) => team.id === teamId && team.problemId === problemId);
+
+    switch (this.collection) {
+      case 'liaisonProblems':
+        if (
+          !subjectExists(candidate.recorderUid) ||
+          !nullableSubjectExists(candidate.reviewerUid)
+        ) {
+          throw missingReferenceError('Liaison problem references a missing subject');
+        }
+        break;
+      case 'liaisonTeams':
+        if (!problemExists(candidate.problemId)) {
+          throw missingReferenceError('Liaison team references a missing problem');
+        }
+        if (!subjectExists(candidate.maintainerUid)) {
+          throw missingReferenceError('Liaison team references a missing maintainer');
+        }
+        break;
+      case 'liaisonTeamMembers':
+        if (!matchingTeamExists(candidate.problemId, candidate.teamId)) {
+          throw missingReferenceError('Liaison membership references a missing matching team');
+        }
+        if (!subjectExists(candidate.memberUid)) {
+          throw missingReferenceError('Liaison membership references a missing subject');
+        }
+        break;
+      case 'liaisonPosts':
+        if (!problemExists(candidate.problemId)) {
+          throw missingReferenceError('Liaison post references a missing problem');
+        }
+        if (
+          candidate.teamId !== null &&
+          !matchingTeamExists(candidate.problemId, candidate.teamId)
+        ) {
+          throw missingReferenceError('Liaison post references a missing matching team');
+        }
+        if (!subjectExists(candidate.authorUid) || !nullableSubjectExists(candidate.hiddenByUid)) {
+          throw missingReferenceError('Liaison post references a missing subject');
+        }
+        break;
+      case 'liaisonOutcomes':
+        if (!matchingTeamExists(candidate.problemId, candidate.teamId)) {
+          throw missingReferenceError('Liaison outcome references a missing matching team');
+        }
+        if (!nullableSubjectExists(candidate.adoptedByUid)) {
+          throw missingReferenceError('Liaison outcome references a missing adopter');
+        }
+        break;
+    }
+  }
+
+  private assertDeleteAllowed(record: T): void {
+    const state = this.holder.current;
+    if (this.collection === 'liaisonProblems') {
+      const problemId = record.id;
+      if (
+        state.liaisonTeams.some((team) => team.problemId === problemId) ||
+        state.liaisonPosts.some((post) => post.problemId === problemId)
+      ) {
+        throw referencedRowError('Liaison problem is still referenced');
+      }
+    }
+    if (this.collection === 'liaisonTeams') {
+      const teamId = record.id;
+      if (
+        state.liaisonTeamMembers.some((member) => member.teamId === teamId) ||
+        state.liaisonPosts.some((post) => post.teamId === teamId) ||
+        state.liaisonOutcomes.some((outcome) => outcome.teamId === teamId)
+      ) {
+        throw referencedRowError('Liaison team is still referenced');
+      }
+    }
+    if (this.collection === 'subjects') {
+      const uid = (record as unknown as SubjectRecord).uid;
+      if (
+        state.liaisonProblems.some(
+          (problem) => problem.recorderUid === uid || problem.reviewerUid === uid,
+        ) ||
+        state.liaisonTeams.some((team) => team.maintainerUid === uid) ||
+        state.liaisonTeamMembers.some((member) => member.memberUid === uid) ||
+        state.liaisonPosts.some((post) => post.authorUid === uid || post.hiddenByUid === uid) ||
+        state.liaisonOutcomes.some((outcome) => outcome.adoptedByUid === uid)
+      ) {
+        throw referencedRowError('Subject is still referenced by liaison records');
+      }
+    }
+  }
+
+  private assertReferencedKeyUpdateAllowed(record: T, patch: RecordPatch<T>): void {
+    const values = patch as Record<string, unknown>;
+    if (
+      this.collection === 'liaisonTeams' &&
+      Object.hasOwn(values, 'problemId') &&
+      values.problemId !== (record as unknown as LiaisonTeamRecord).problemId
+    ) {
+      this.assertDeleteAllowed(record);
+    }
+    if (
+      this.collection === 'subjects' &&
+      Object.hasOwn(values, 'uid') &&
+      values.uid !== (record as unknown as SubjectRecord).uid
+    ) {
+      this.assertDeleteAllowed(record);
+    }
   }
 
   private hasAssignmentConflict(input: NewRecord<T>, excludeId?: string): boolean {

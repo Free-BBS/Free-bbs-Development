@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from './memory-store.js';
 import { createMySqlStore } from './mysql-store.js';
 import { RecordConflictError } from './record-conflict-error.js';
-import type { LiaisonProblemRecord, NewRecord } from './types.js';
+import type { DevelopmentStore, LiaisonProblemRecord, NewRecord } from './types.js';
 
 const publicScope = { type: 'public', id: '*' } as const;
 
@@ -30,9 +30,23 @@ const problemInput: NewRecord<LiaisonProblemRecord> = {
   scope: publicScope,
 };
 
+async function seedLiaisonSubjects(store: DevelopmentStore): Promise<void> {
+  for (const uid of ['demo-liaison-member', 'demo-student', 'demo-captain']) {
+    await store.subjects.create({
+      uid,
+      displayName: uid,
+      avatarUrl: null,
+      status: 'active',
+      ownerUid: 'test',
+      scope: publicScope,
+    });
+  }
+}
+
 describe('liaison problem-board repository contract', () => {
   it('supplies stable defaults and exact tag filters for new problems', async () => {
     const store = createMemoryStore({ seed: false });
+    await seedLiaisonSubjects(store);
     const created = await store.liaisonProblems.create({
       title: '最小问题',
       background: '背景',
@@ -64,6 +78,7 @@ describe('liaison problem-board repository contract', () => {
 
   it('round-trips problem fields, normalized instants and deep-cloned tags in memory', async () => {
     const store = createMemoryStore({ seed: false });
+    await seedLiaisonSubjects(store);
     const created = await store.liaisonProblems.create(problemInput);
 
     expect(created).toMatchObject({
@@ -77,6 +92,7 @@ describe('liaison problem-board repository contract', () => {
 
   it('supports parallel teams while rejecting duplicate memberships and outcome versions', async () => {
     const store = createMemoryStore({ seed: false });
+    await seedLiaisonSubjects(store);
     const problem = await store.liaisonProblems.create(problemInput);
     const firstTeam = await store.liaisonTeams.create({
       problemId: problem.id,
