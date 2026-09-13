@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -28,6 +28,48 @@ const draft = {
 };
 
 describe('KnowledgePage', () => {
+  it('searches title, summary, tags and body, and edits readability metadata in a drawer', async () => {
+    const entry = {
+      ...draft,
+      category: '活动运营',
+      tags: ['交接', '复盘'],
+      summary: '活动结束后的经验整理。',
+      maintainedAt: '2026-09-01T00:00:00.000Z',
+      maintainerUid: 'demo-admin',
+    };
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/knowledge/entries?audience=general') return [entry];
+      if (path === '/knowledge/entries' && init?.method === 'PATCH') return entry;
+      throw new Error(`Unexpected request: ${init?.method ?? 'GET'} ${path}`);
+    });
+    const user = userEvent.setup();
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={admin} />);
+
+    await screen.findByText('活动复盘模板');
+    expect(screen.getByText('活动结束后的经验整理。')).toBeInTheDocument();
+    expect(screen.getByText('交接')).toBeInTheDocument();
+    const search = screen.getByRole('search', { name: '搜索经验库' });
+    await user.type(within(search).getByLabelText('搜索'), '记录目标');
+    expect(screen.getByText('活动复盘模板')).toBeInTheDocument();
+    await user.clear(within(search).getByLabelText('搜索'));
+    await user.type(within(search).getByLabelText('搜索'), '复盘');
+    expect(screen.getByText('活动复盘模板')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '编辑 活动复盘模板' }));
+    expect(screen.getByRole('dialog', { name: '编辑经验' })).toBeInTheDocument();
+    expect(screen.getByLabelText('摘要')).toHaveValue('活动结束后的经验整理。');
+    expect(screen.getByLabelText('维护日期')).toHaveValue('2026-09-01T00:00:00.000Z');
+    expect(screen.getByLabelText('维护人')).toHaveValue('demo-admin');
+    await user.clear(screen.getByLabelText('分类'));
+    await user.type(screen.getByLabelText('分类'), '经验沉淀');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await user.click(screen.getByRole('button', { name: '保存修改' }));
+    expect(request).toHaveBeenCalledWith(
+      '/knowledge/entries',
+      expect.objectContaining({ body: expect.stringContaining('"category":"经验沉淀"') }),
+    );
+  });
+
   it('distinguishes loading, empty, error and successful list states', async () => {
     let resolveList!: (value: unknown[]) => void;
     const pending = new Promise<unknown[]>((resolve) => {
@@ -35,7 +77,7 @@ describe('KnowledgePage', () => {
     });
     const loadingClient = { request: vi.fn().mockReturnValue(pending) } as unknown as ApiClient;
     const loadingView = render(<KnowledgePage client={loadingClient} user={admin} />);
-    expect(screen.getByText('正在加载经验条目…')).toBeInTheDocument();
+    expect(screen.getByText('正在加载…')).toBeInTheDocument();
     resolveList([draft]);
     expect(await screen.findByText('活动复盘模板')).toBeInTheDocument();
     loadingView.unmount();
@@ -76,8 +118,9 @@ describe('KnowledgePage', () => {
     render(<KnowledgePage client={{ request } as unknown as ApiClient} user={admin} />);
 
     await screen.findByText('活动复盘模板');
+    await user.click(screen.getByRole('button', { name: '新建经验' }));
     await user.click(screen.getByRole('button', { name: '保存草稿' }));
-    expect(screen.getByText('标题不能为空')).toBeInTheDocument();
+    expect(screen.getByText('标题和正文不能为空')).toBeInTheDocument();
     expect(request).toHaveBeenCalledTimes(1);
 
     await user.type(screen.getByLabelText('经验标题'), '部门交接清单');
@@ -90,6 +133,11 @@ describe('KnowledgePage', () => {
       expect.objectContaining({
         method: 'POST',
         body: JSON.stringify({
+          category: 'general',
+          tags: [],
+          summary: '',
+          maintainedAt: null,
+          maintainerUid: null,
           type: 'workflow',
           title: '部门交接清单',
           body: '列出账号、联系人和周期任务。',

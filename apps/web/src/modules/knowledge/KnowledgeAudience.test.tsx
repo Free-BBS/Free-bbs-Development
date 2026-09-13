@@ -25,6 +25,12 @@ const artsMember: UserContext = {
   ],
 };
 
+const admin: UserContext = {
+  ...ordinary,
+  uid: 'admin',
+  roles: ['platform.super_admin'],
+};
+
 const generalEntry = {
   id: 'general-1',
   type: 'faq' as const,
@@ -49,6 +55,31 @@ const organizationEntry = {
 };
 
 describe('KnowledgePage audience entry points', () => {
+  it('creates social-organization drafts in the selected authorized organization scope', async () => {
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path === '/knowledge/entries?audience=social_org') return [];
+      if (path === '/knowledge/entries?audience=general') return [generalEntry];
+      if (path === '/knowledge/entries' && init?.method === 'POST') return generalEntry;
+      throw new Error(`Unexpected request: ${init?.method ?? 'GET'} ${path}`);
+    });
+    const user = userEvent.setup();
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={admin} />);
+
+    await screen.findByText('General 常见问题');
+    await user.click(screen.getByRole('button', { name: '社工组织' }));
+    await user.click(screen.getByRole('button', { name: '新建经验' }));
+    await user.type(screen.getByLabelText('经验标题'), '社工交接');
+    await user.type(screen.getByLabelText('经验正文'), '仅授权组织可读。');
+    await user.click(screen.getByRole('button', { name: '保存草稿' }));
+
+    expect(request).toHaveBeenCalledWith(
+      '/knowledge/entries',
+      expect.objectContaining({
+        body: expect.stringContaining('"scope":{"type":"social_organization"'),
+      }),
+    );
+  });
+
   it('keeps the social-organization entry point unmounted for ordinary students', async () => {
     const request = vi.fn().mockResolvedValue([generalEntry]);
 

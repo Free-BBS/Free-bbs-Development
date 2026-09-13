@@ -31,9 +31,11 @@ test('knowledge covers reader visibility and the complete manager lifecycle', as
 
   await page.goto('./knowledge');
   await expect(page.getByRole('heading', { name: 'General', exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '创建经验草稿' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '社工组织' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '新建经验' })).toHaveCount(0);
 
   await switchUser(page, 'demo-admin');
+  await page.getByRole('button', { name: '新建经验' }).click();
   await page.getByLabel('经验标题').fill(title);
   await page.getByLabel('经验正文').fill('由真实界面创建的端到端经验草稿。');
   await page.getByRole('button', { name: '保存草稿' }).click();
@@ -41,9 +43,9 @@ test('knowledge covers reader visibility and the complete manager lifecycle', as
 
   const createdCard = page.locator('.record-card').filter({ hasText: title });
   await createdCard.getByRole('button', { name: `编辑 ${title}` }).click();
-  await createdCard.getByLabel('编辑标题').fill(editedTitle);
-  await createdCard.getByLabel('编辑正文').fill('刷新后仍应保留的经验正文。');
-  await createdCard.getByRole('button', { name: '保存修改' }).click();
+  await page.getByLabel('编辑标题').fill(editedTitle);
+  await page.getByLabel('编辑正文').fill('刷新后仍应保留的经验正文。');
+  await page.getByRole('button', { name: '保存修改' }).click();
   await expect(page.getByRole('status')).toHaveText('修改已保存');
   await page.reload();
   await switchUser(page, 'demo-admin');

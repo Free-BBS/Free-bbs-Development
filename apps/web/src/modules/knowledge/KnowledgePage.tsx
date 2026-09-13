@@ -6,15 +6,25 @@ import {
   type ScopeRef,
   type UserContext,
 } from '@freebbs-development/contracts';
+import { EditorDrawer } from '../../components/EditorDrawer.js';
+import { FilterBar } from '../../components/FilterBar.js';
+import { ModulePageHeader } from '../../components/ModulePageHeader.js';
+import { ResponsiveRecordList } from '../../components/ResponsiveRecordList.js';
+import { StatusBadge } from '../../components/StatusBadge.js';
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
-import { Can } from '../../core/permissions/Can.js';
+import { hasPresentationPermission, type PresentationUser } from '../../core/permissions/Can.js';
 
 type KnowledgeType = 'workflow' | 'faq' | 'contact' | 'retrospective' | 'notice';
 type KnowledgeStatus = 'draft' | 'published' | 'archived';
 
 interface KnowledgeEntry {
   id: string;
+  category?: string;
+  tags?: string[];
+  summary?: string;
+  maintainedAt?: string | null;
+  maintainerUid?: string | null;
   type: KnowledgeType;
   title: string;
   body: string;
@@ -23,8 +33,6 @@ interface KnowledgeEntry {
   status: KnowledgeStatus;
   ownerUid: string;
   scope: ScopeRef;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface KnowledgePageProps {
@@ -39,21 +47,34 @@ const typeLabels: Record<KnowledgeType, string> = {
   retrospective: '活动复盘',
   notice: '注意事项',
 };
-
 const statusLabels: Record<KnowledgeStatus, string> = {
   draft: '草稿',
   published: '已发布',
   archived: '已归档',
 };
-
-function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message.trim() ? error.message : fallback;
-}
+const tone = (status: KnowledgeStatus): 'success' | 'warning' | 'neutral' =>
+  status === 'published' ? 'success' : status === 'draft' ? 'warning' : 'neutral';
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message.trim() ? error.message : fallback;
+const splitTags = (value: string) => [
+  ...new Set(
+    value
+      .split(/[,，]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean),
+  ),
+];
+const matchesQuery = (entry: KnowledgeEntry, query: string) =>
+  [entry.title, entry.summary ?? '', ...(entry.tags ?? []), entry.body]
+    .join(' ')
+    .toLocaleLowerCase()
+    .includes(query.trim().toLocaleLowerCase());
 
 export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps) {
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const auth = useOptionalAuth();
   const user = suppliedUser === undefined ? (auth?.user ?? null) : suppliedUser;
+  const presentationUser = user as PresentationUser | null;
   const managesAcrossOrganizations =
     user?.roles.includes('platform.super_admin') === true ||
     user?.roles.some((role) => organizationForRole(role)?.level === 'lead') === true;
@@ -67,408 +88,360 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
     [managesAcrossOrganizations, user],
   );
   const canViewSocialOrganizations = organizations.length > 0;
+  const canCreate =
+    presentationUser !== null && hasPresentationPermission(presentationUser, 'knowledge.create');
+  const canPublish =
+    presentationUser !== null && hasPresentationPermission(presentationUser, 'knowledge.publish');
   const [audience, setAudience] = useState<'general' | 'social_org'>('general');
-  const [organizationId, setOrganizationId] = useState(
-    () => organizations[0]?.id ?? SOCIAL_ORGANIZATIONS[0].id,
-  );
+  const [organizationId, setOrganizationId] = useState<string>(() => organizations[0]?.id ?? '');
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [pending, setPending] = useState(false);
+  const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [query, setQuery] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [drawerEntry, setDrawerEntry] = useState<KnowledgeEntry | 'create' | null>(null);
   const [type, setType] = useState<KnowledgeType>('workflow');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editType, setEditType] = useState<KnowledgeType>('workflow');
-  const [editTitle, setEditTitle] = useState('');
-  const [editBody, setEditBody] = useState('');
+  const [category, setCategory] = useState('general');
+  const [tags, setTags] = useState('');
+  const [summary, setSummary] = useState('');
+  const [maintainedAt, setMaintainedAt] = useState('');
+  const [maintainerUid, setMaintainerUid] = useState('');
 
-  const loadEntries = useCallback(
-    async (announceLoading = true) => {
-      if (announceLoading) setLoading(true);
-      setLoadError(false);
-      try {
-        const loaded = await api.request<KnowledgeEntry[]>(
-          `/knowledge/entries?audience=${audience}`,
-        );
-        setEntries(loaded);
-      } catch {
-        setLoadError(true);
-      } finally {
-        if (announceLoading) setLoading(false);
-      }
-    },
-    [api, audience],
-  );
-
+  const loadEntries = useCallback(async () => {
+    setState('loading');
+    try {
+      setEntries(await api.request<KnowledgeEntry[]>(`/knowledge/entries?audience=${audience}`));
+      setState('ready');
+    } catch {
+      setState('error');
+    }
+  }, [api, audience]);
   useEffect(() => {
     if (!canViewSocialOrganizations && audience === 'social_org') setAudience('general');
-    if (
-      organizations.length > 0 &&
-      !organizations.some((organization) => organization.id === organizationId)
-    ) {
-      setOrganizationId(organizations[0].id);
+  }, [audience, canViewSocialOrganizations]);
+  useEffect(() => {
+    if (!organizations.some((organization) => organization.id === organizationId)) {
+      setOrganizationId(organizations[0]?.id ?? '');
     }
-  }, [audience, canViewSocialOrganizations, organizationId, organizations]);
-
+  }, [organizationId, organizations]);
   useEffect(() => {
     void loadEntries();
   }, [loadEntries]);
 
-  async function createDraft(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function openDrawer(entry: KnowledgeEntry | 'create') {
     setFeedback(null);
     setOperationError(null);
+    setDrawerEntry(entry);
+    setType(entry === 'create' ? 'workflow' : entry.type);
+    setTitle(entry === 'create' ? '' : entry.title);
+    setBody(entry === 'create' ? '' : entry.body);
+    setCategory(entry === 'create' ? 'general' : (entry.category ?? 'general'));
+    setTags(entry === 'create' ? '' : (entry.tags ?? []).join(', '));
+    setSummary(entry === 'create' ? '' : (entry.summary ?? ''));
+    setMaintainedAt(entry === 'create' ? '' : (entry.maintainedAt ?? ''));
+    setMaintainerUid(entry === 'create' ? '' : (entry.maintainerUid ?? ''));
+    if (entry === 'create') setOrganizationId(organizations[0]?.id ?? '');
+  }
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     const cleanTitle = title.trim();
     const cleanBody = body.trim();
-    if (!cleanTitle) {
-      setFormError('标题不能为空');
-      return;
-    }
-    if (!cleanBody) {
-      setFormError('正文不能为空');
-      return;
-    }
-    setFormError(null);
-    setPending(true);
-    try {
-      await api.request<KnowledgeEntry>('/knowledge/entries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          title: cleanTitle,
-          body: cleanBody,
-          status: 'draft',
-          audience,
-          organizationId: audience === 'social_org' ? organizationId : null,
-          scope:
-            audience === 'social_org'
-              ? {
-                  type: 'social_organization',
-                  id: organizationId,
-                }
-              : { type: 'public', id: '*' },
-        }),
-      });
-      setTitle('');
-      setBody('');
-      setFeedback('草稿已创建');
-      await loadEntries(false);
-    } catch (error) {
-      setFormError(errorMessage(error, '草稿保存失败，请稍后重试'));
-    } finally {
-      setPending(false);
-    }
-  }
-
-  function beginEdit(entry: KnowledgeEntry) {
-    setFeedback(null);
-    setOperationError(null);
-    setEditingId(entry.id);
-    setEditType(entry.type);
-    setEditTitle(entry.title);
-    setEditBody(entry.body);
-  }
-
-  async function saveEdit(event: FormEvent<HTMLFormElement>, entry: KnowledgeEntry) {
-    event.preventDefault();
-    const cleanTitle = editTitle.trim();
-    const cleanBody = editBody.trim();
     if (!cleanTitle || !cleanBody) {
       setOperationError('标题和正文不能为空');
       return;
     }
-    if (!globalThis.confirm(`确认保存“${entry.title}”的修改吗？`)) return;
-    setFeedback(null);
-    setOperationError(null);
+    const creating = drawerEntry === 'create';
+    const existing = drawerEntry !== null && drawerEntry !== 'create' ? drawerEntry : null;
+    if (!creating && !globalThis.confirm(`确认保存“${existing!.title}”的修改吗？`)) return;
     setPending(true);
+    setOperationError(null);
+    setFeedback(null);
     try {
+      const metadata = {
+        category: category.trim() || 'general',
+        tags: splitTags(tags),
+        summary: summary.trim(),
+        maintainedAt: maintainedAt.trim() || null,
+        maintainerUid: maintainerUid.trim() || null,
+      };
+      const socialOrganizationId = organizationId || organizations[0]?.id;
       await api.request<KnowledgeEntry>('/knowledge/entries', {
-        method: 'PATCH',
+        method: creating ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: entry.id,
-          type: editType,
-          title: cleanTitle,
-          body: cleanBody,
-          scope: entry.scope,
-        }),
+        body: JSON.stringify(
+          creating
+            ? {
+                ...metadata,
+                type,
+                title: cleanTitle,
+                body: cleanBody,
+                status: 'draft',
+                audience,
+                organizationId: audience === 'social_org' ? socialOrganizationId : null,
+                scope:
+                  audience === 'social_org'
+                    ? { type: 'social_organization', id: socialOrganizationId }
+                    : { type: 'public', id: '*' },
+              }
+            : {
+                ...metadata,
+                id: existing!.id,
+                type,
+                title: cleanTitle,
+                body: cleanBody,
+                scope: existing!.scope,
+              },
+        ),
       });
-      setEditingId(null);
-      setFeedback('修改已保存');
-      await loadEntries(false);
+      setDrawerEntry(null);
+      setFeedback(creating ? '草稿已创建' : '修改已保存');
+      await loadEntries();
     } catch (error) {
-      setOperationError(errorMessage(error, '修改保存失败，请稍后重试'));
+      setOperationError(
+        errorMessage(error, creating ? '草稿保存失败，请稍后重试' : '修改保存失败，请稍后重试'),
+      );
     } finally {
       setPending(false);
     }
   }
-
   async function transition(
     entry: KnowledgeEntry,
     to: KnowledgeStatus,
-    actionLabel: '发布' | '撤回' | '归档',
+    label: '发布' | '撤回' | '归档',
   ) {
-    if (!globalThis.confirm(`确认${actionLabel}“${entry.title}”吗？`)) return;
-    setFeedback(null);
-    setOperationError(null);
+    if (!globalThis.confirm(`确认${label}“${entry.title}”吗？`)) return;
     setPending(true);
+    setOperationError(null);
+    setFeedback(null);
     try {
-      await api.request<KnowledgeEntry>(`/knowledge/entries/${entry.id}/transitions`, {
+      await api.request(`/knowledge/entries/${entry.id}/transitions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ to }),
       });
-      setEditingId(null);
       setFeedback(to === 'published' ? '经验已发布' : to === 'draft' ? '经验已撤回' : '经验已归档');
-      await loadEntries(false);
+      await loadEntries();
     } catch (error) {
-      setOperationError(errorMessage(error, `${actionLabel}失败，请检查权限后重试`));
+      setOperationError(errorMessage(error, `${label}失败，请检查权限后重试`));
     } finally {
       setPending(false);
     }
   }
-
+  const visibleEntries = useMemo(
+    () => entries.filter((entry) => matchesQuery(entry, query)),
+    [entries, query],
+  );
   return (
-    <div className="module-page">
-      <section aria-labelledby="knowledge-list-heading">
-        <header className="page-section-header">
-          <div>
-            <h2 id="knowledge-list-heading">{audience === 'general' ? 'General' : '社工组织'}</h2>
-            <p>
-              {audience === 'general'
-                ? '所有同学都可以访问的基础流程、常见问题、联系人和活动复盘。'
-                : '仅向社工组织成员开放的内部经验与传承资料。'}
-            </p>
-          </div>
-          <div className="audience-switcher" role="group" aria-label="经验库分区">
-            <button
-              aria-pressed={audience === 'general'}
-              type="button"
-              onClick={() => setAudience('general')}
-            >
-              General
+    <section className="module-page" aria-label="经验库">
+      <ModulePageHeader
+        title={audience === 'general' ? 'General' : '社工组织'}
+        description={
+          audience === 'general'
+            ? '面向全体同学的流程、常见问题与经验沉淀。'
+            : '仅限已获授权的社工组织经验资料。'
+        }
+        actions={
+          canCreate ? (
+            <button type="button" onClick={() => openDrawer('create')}>
+              新建经验
             </button>
-            {canViewSocialOrganizations ? (
+          ) : undefined
+        }
+      />
+      <FilterBar ariaLabel="搜索经验库" onSubmit={(event) => event.preventDefault()}>
+        <label>
+          搜索
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="标题、摘要、标签或正文"
+          />
+        </label>
+        <div className="audience-switcher" role="group" aria-label="经验库分区">
+          <button
+            aria-pressed={audience === 'general'}
+            type="button"
+            onClick={() => setAudience('general')}
+          >
+            General
+          </button>
+          {canViewSocialOrganizations ? (
+            <button
+              aria-pressed={audience === 'social_org'}
+              type="button"
+              onClick={() => setAudience('social_org')}
+            >
+              社工组织
+            </button>
+          ) : null}
+        </div>
+      </FilterBar>
+      {feedback ? <p role="status">{feedback}</p> : null}
+      {operationError ? <p role="alert">{operationError}</p> : null}
+      <ResponsiveRecordList
+        ariaLabel="经验条目列表"
+        records={visibleEntries}
+        state={state}
+        errorMessage="暂时无法加载经验库"
+        emptyTitle={entries.length === 0 ? '经验库中还没有内容' : '没有匹配的经验'}
+        emptyDescription={
+          entries.length === 0 ? '有维护权限的同学可以新建一份草稿。' : '请调整搜索词后再试。'
+        }
+        getKey={(entry) => entry.id}
+        renderRecord={(entry) => (
+          <article className="record-card" aria-labelledby={`knowledge-${entry.id}`}>
+            <header>
+              <div>
+                <p className="record-eyebrow">
+                  {entry.category ?? typeLabels[entry.type]} · {typeLabels[entry.type]}
+                </p>
+                <h3 id={`knowledge-${entry.id}`}>{entry.title}</h3>
+              </div>
+              <StatusBadge status={tone(entry.status)}>{statusLabels[entry.status]}</StatusBadge>
+            </header>
+            {entry.summary ? <p>{entry.summary}</p> : null}
+            <p>{entry.body}</p>
+            <p className="record-meta">
+              {(entry.tags ?? []).map((tag) => (
+                <span key={tag} className="record-tag">
+                  {tag}
+                </span>
+              ))}
+            </p>
+            {canCreate && entry.status !== 'archived' ? (
               <button
-                aria-pressed={audience === 'social_org'}
                 type="button"
-                onClick={() => setAudience('social_org')}
+                disabled={pending}
+                aria-label={`编辑 ${entry.title}`}
+                onClick={() => openDrawer(entry)}
               >
-                社工组织
+                编辑
               </button>
             ) : null}
-          </div>
-        </header>
-
-        {loading ? <p role="status">正在加载经验条目…</p> : null}
-        {!loading && loadError ? (
-          <section role="alert">
-            <h3>暂时无法加载经验库</h3>
-            <button type="button" onClick={() => void loadEntries()}>
-              重试
-            </button>
-          </section>
-        ) : null}
-        {operationError ? <p role="alert">{operationError}</p> : null}
-        {feedback ? <p role="status">{feedback}</p> : null}
-        {!loading && !loadError && entries.length === 0 ? (
-          <section>
-            <h3>经验库中还没有内容</h3>
-            <p>有维护权限的同学可以先创建一份草稿。</p>
-          </section>
-        ) : null}
-        {!loading && !loadError && entries.length > 0 ? (
-          <ul className="record-list" aria-label="经验条目列表">
-            {entries.map((entry) => (
-              <li key={entry.id} className="record-card">
-                <article>
-                  <header>
-                    <div>
-                      <span>{typeLabels[entry.type]}</span>
-                      <h3>{entry.title}</h3>
-                      {entry.organizationId ? (
-                        <small>
-                          {SOCIAL_ORGANIZATIONS.find(({ id }) => id === entry.organizationId)?.name}
-                        </small>
-                      ) : null}
-                    </div>
-                    <span
-                      className="status-badge"
-                      data-status={entry.status === 'published' ? 'success' : 'warning'}
-                    >
-                      {statusLabels[entry.status]}
-                    </span>
-                  </header>
-
-                  {editingId === entry.id ? (
-                    <form onSubmit={(event) => void saveEdit(event, entry)} noValidate>
-                      <label>
-                        编辑类型
-                        <select
-                          value={editType}
-                          onChange={(event) => setEditType(event.target.value as KnowledgeType)}
-                        >
-                          {Object.entries(typeLabels).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        编辑标题
-                        <input
-                          value={editTitle}
-                          maxLength={200}
-                          onChange={(event) => setEditTitle(event.target.value)}
-                        />
-                      </label>
-                      <label>
-                        编辑正文
-                        <textarea
-                          value={editBody}
-                          maxLength={20000}
-                          onChange={(event) => setEditBody(event.target.value)}
-                        />
-                      </label>
-                      <button type="submit" disabled={pending}>
-                        保存修改
-                      </button>
-                      <button type="button" disabled={pending} onClick={() => setEditingId(null)}>
-                        取消
-                      </button>
-                    </form>
-                  ) : (
-                    <>
-                      <p>{entry.body}</p>
-                      {entry.status !== 'archived' ? (
-                        <Can user={user} permission="knowledge.create">
-                          {entry.status === 'published' ? (
-                            <Can user={user} permission="knowledge.publish">
-                              <button
-                                type="button"
-                                disabled={pending}
-                                onClick={() => beginEdit(entry)}
-                                aria-label={`编辑 ${entry.title}`}
-                              >
-                                编辑
-                              </button>
-                            </Can>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={pending}
-                              onClick={() => beginEdit(entry)}
-                              aria-label={`编辑 ${entry.title}`}
-                            >
-                              编辑
-                            </button>
-                          )}
-                        </Can>
-                      ) : null}
-                      <Can user={user} permission="knowledge.publish">
-                        {entry.status === 'draft' ? (
-                          <button
-                            type="button"
-                            disabled={pending}
-                            onClick={() => void transition(entry, 'published', '发布')}
-                            aria-label={`发布 ${entry.title}`}
-                          >
-                            发布
-                          </button>
-                        ) : null}
-                        {entry.status === 'published' ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={pending}
-                              onClick={() => void transition(entry, 'draft', '撤回')}
-                              aria-label={`撤回 ${entry.title}`}
-                            >
-                              撤回
-                            </button>
-                            <button
-                              type="button"
-                              disabled={pending}
-                              onClick={() => void transition(entry, 'archived', '归档')}
-                              aria-label={`归档 ${entry.title}`}
-                            >
-                              归档
-                            </button>
-                          </>
-                        ) : null}
-                      </Can>
-                    </>
-                  )}
-                </article>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
-      <Can user={user} permission="knowledge.create">
-        <section aria-labelledby="knowledge-create-heading">
-          <h2 id="knowledge-create-heading">创建经验草稿</h2>
-          <form onSubmit={createDraft} noValidate>
-            {audience === 'social_org' && organizations.length > 1 ? (
-              <label>
-                所属社工组织
-                <select
-                  value={organizationId}
-                  onChange={(event) =>
-                    setOrganizationId(event.target.value as typeof organizationId)
-                  }
-                >
-                  {organizations.map((organization) => (
-                    <option key={organization.id} value={organization.id}>
-                      {organization.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <label>
-              经验类型
-              <select
-                value={type}
-                onChange={(event) => setType(event.target.value as KnowledgeType)}
+            {canPublish && entry.status === 'draft' ? (
+              <button
+                type="button"
+                disabled={pending}
+                aria-label={`发布 ${entry.title}`}
+                onClick={() => void transition(entry, 'published', '发布')}
               >
-                {Object.entries(typeLabels).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
+                发布
+              </button>
+            ) : null}
+            {canPublish && entry.status === 'published' ? (
+              <>
+                <button
+                  type="button"
+                  disabled={pending}
+                  aria-label={`撤回 ${entry.title}`}
+                  onClick={() => void transition(entry, 'draft', '撤回')}
+                >
+                  撤回
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  aria-label={`归档 ${entry.title}`}
+                  onClick={() => void transition(entry, 'archived', '归档')}
+                >
+                  归档
+                </button>
+              </>
+            ) : null}
+          </article>
+        )}
+      />
+      <EditorDrawer
+        open={drawerEntry !== null}
+        title={drawerEntry === 'create' ? '新建经验' : '编辑经验'}
+        description="维护内容与可读性元数据。"
+        onClose={() => setDrawerEntry(null)}
+      >
+        <form onSubmit={(event) => void save(event)} noValidate>
+          <label>
+            经验类型
+            <select value={type} onChange={(event) => setType(event.target.value as KnowledgeType)}>
+              {Object.entries(typeLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {drawerEntry === 'create' && audience === 'social_org' && organizations.length > 1 ? (
+            <label>
+              所属社工组织
+              <select
+                value={organizationId}
+                onChange={(event) => setOrganizationId(event.target.value)}
+              >
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.name}
                   </option>
                 ))}
               </select>
             </label>
-            <label>
-              经验标题
-              <input
-                value={title}
-                maxLength={200}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-            </label>
-            <label>
-              经验正文
-              <textarea
-                value={body}
-                maxLength={20000}
-                onChange={(event) => setBody(event.target.value)}
-              />
-            </label>
-            {formError ? <p role="alert">{formError}</p> : null}
-            <button type="submit" disabled={pending}>
-              {pending ? '正在保存…' : '保存草稿'}
-            </button>
-          </form>
-        </section>
-      </Can>
-    </div>
+          ) : null}
+          <label>
+            {drawerEntry === 'create' ? '经验标题' : '编辑标题'}
+            <input
+              value={title}
+              maxLength={200}
+              onChange={(event) => setTitle(event.target.value)}
+            />
+          </label>
+          <label>
+            {drawerEntry === 'create' ? '经验正文' : '编辑正文'}
+            <textarea
+              value={body}
+              maxLength={20000}
+              onChange={(event) => setBody(event.target.value)}
+            />
+          </label>
+          <label>
+            分类
+            <input
+              value={category}
+              maxLength={80}
+              onChange={(event) => setCategory(event.target.value)}
+            />
+          </label>
+          <label>
+            标签
+            <input
+              value={tags}
+              onChange={(event) => setTags(event.target.value)}
+              placeholder="用逗号分隔"
+            />
+          </label>
+          <label>
+            摘要
+            <textarea
+              value={summary}
+              maxLength={500}
+              onChange={(event) => setSummary(event.target.value)}
+            />
+          </label>
+          <label>
+            维护日期
+            <input value={maintainedAt} onChange={(event) => setMaintainedAt(event.target.value)} />
+          </label>
+          <label>
+            维护人
+            <input
+              value={maintainerUid}
+              onChange={(event) => setMaintainerUid(event.target.value)}
+            />
+          </label>
+          <button type="submit" disabled={pending}>
+            {drawerEntry === 'create' ? '保存草稿' : '保存修改'}
+          </button>
+        </form>
+      </EditorDrawer>
+    </section>
   );
 }

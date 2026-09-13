@@ -137,7 +137,7 @@ describe('ClubsPage', () => {
     const card = await screen.findByRole('article', { name: '自由跑团' });
     expect(within(card).getByRole('button', { name: '编辑自由跑团' })).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: '归档自由跑团' })).toBeInTheDocument();
-    expect(within(card).getByText('new-member')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: '批准 new-member' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '校园夜跑' })).toHaveAttribute(
       'href',
       '/development/events',
