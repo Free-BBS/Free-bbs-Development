@@ -148,6 +148,36 @@ VALUES
   ('liaison-tuanwei', '校团委活动联络窗口', '大型活动审批与资源协调。', 'contact', 'public', 'active', 'demo-liaison-member', 'public', '*', NOW(3), NOW(3)),
   ('liaison-venue', '公共场地预约说明', '常用场地管理部门和预约入口。', 'venue', 'organization', 'active', 'demo-liaison-member', 'organization', 'freebbs', NOW(3), NOW(3));
 
+INSERT INTO liaison_problems
+  (id, title, summary, background, source_type, source_name, tags, expected_outcome, constraints_text, starts_at, deadline, public_contact, internal_contact_note, recorder_uid, reviewer_uid, reviewed_at, review_note, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('liaison-problem-lab-energy', '校园能耗数据可视化', '把匿名化能耗指标转化为同学可理解的交互展示。', '校内课题组希望验证面向校园公共空间的数据叙事方案。', 'lab', '校园计算实验室', JSON_ARRAY('数据可视化', '前端', '校园治理'), '可运行原型、设计说明和一次公开演示。', '只能使用匿名化样例数据，不得上传原始敏感数据。', '2026-10-01 00:00:00.000', '2026-11-15 00:00:00.000', '联络中心公开咨询台', '演示数据由联络中心线下转交。', 'demo-liaison-member', 'demo-tuanwei-lead', '2026-09-20 08:00:00.000', '已确认公开范围与匿名化要求。', 'open', 'demo-liaison-member', 'public', '*', '2026-09-20 08:00:00.000', '2026-09-20 08:00:00.000'),
+  ('liaison-problem-company-accessibility', '公共服务页面无障碍检查工具', '为常见校园服务页面制作轻量的可访问性检查原型。', '合作企业希望与同学共同验证前端无障碍检查流程。', 'company', '校企联合创新伙伴', JSON_ARRAY('无障碍', 'Web', '工具开发'), '检查清单、命令行原型和示例报告。', '首期只分析公开页面，不采集账号或个人信息。', '2026-10-10 00:00:00.000', NULL, '联络中心公开咨询台', '企业联系人信息由联络中心保管。', 'demo-liaison-member', 'demo-admin', '2026-09-22 08:00:00.000', '公开内容已脱敏。', 'open', 'demo-liaison-member', 'public', '*', '2026-09-22 08:00:00.000', '2026-09-22 08:00:00.000');
+
+INSERT INTO liaison_teams
+  (id, problem_id, name, proposal, maintainer_uid, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('liaison-team-energy-story', 'liaison-problem-lab-energy', '数据叙事队', '先建立公共指标卡片，再制作可解释的趋势视图。', 'demo-student', 'active', 'demo-student', 'liaison_problem', 'liaison-problem-lab-energy', '2026-10-02 08:00:00.000', '2026-10-02 08:00:00.000'),
+  ('liaison-team-energy-map', 'liaison-problem-lab-energy', '空间可视化队', '使用匿名化建筑指标制作校园能耗地图原型。', 'demo-captain', 'active', 'demo-captain', 'liaison_problem', 'liaison-problem-lab-energy', '2026-10-03 08:00:00.000', '2026-10-03 08:00:00.000');
+
+INSERT INTO liaison_team_members
+  (id, problem_id, team_id, member_uid, member_role, joined_at, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('liaison-member-energy-story', 'liaison-problem-lab-energy', 'liaison-team-energy-story', 'demo-student', 'maintainer', '2026-10-02 08:00:00.000', 'active', 'demo-student', 'liaison_team', 'liaison-team-energy-story', '2026-10-02 08:00:00.000', '2026-10-02 08:00:00.000'),
+  ('liaison-member-energy-map', 'liaison-problem-lab-energy', 'liaison-team-energy-map', 'demo-captain', 'maintainer', '2026-10-03 08:00:00.000', 'active', 'demo-captain', 'liaison_team', 'liaison-team-energy-map', '2026-10-03 08:00:00.000', '2026-10-03 08:00:00.000');
+
+INSERT INTO liaison_posts
+  (id, problem_id, team_id, author_uid, post_kind, body, hidden_at, hidden_by_uid, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('liaison-post-energy-question', 'liaison-problem-lab-energy', NULL, 'demo-student', 'discussion', '公开样例数据会提供哪些时间粒度？', NULL, NULL, 'visible', 'demo-student', 'liaison_problem', 'liaison-problem-lab-energy', '2026-10-04 08:00:00.000', '2026-10-04 08:00:00.000'),
+  ('liaison-post-energy-story-progress', 'liaison-problem-lab-energy', 'liaison-team-energy-story', 'demo-student', 'progress', '已完成指标卡片的信息层级草图。', NULL, NULL, 'visible', 'demo-student', 'liaison_problem', 'liaison-problem-lab-energy', '2026-10-08 08:00:00.000', '2026-10-08 08:00:00.000'),
+  ('liaison-post-energy-map-progress', 'liaison-problem-lab-energy', 'liaison-team-energy-map', 'demo-captain', 'progress', '已完成地图底图和匿名化样例数据接入。', NULL, NULL, 'visible', 'demo-captain', 'liaison_problem', 'liaison-problem-lab-energy', '2026-10-09 08:00:00.000', '2026-10-09 08:00:00.000');
+
+INSERT INTO liaison_outcomes
+  (id, problem_id, team_id, version, title, description, link_url, attachment_ref, submitted_at, adopted_at, adopted_by_uid, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('liaison-outcome-energy-story-v1', 'liaison-problem-lab-energy', 'liaison-team-energy-story', 1, '能耗指标叙事原型', '包含关键指标卡片、趋势解释和公开演示说明。', 'https://example.invalid/freebbs/energy-story', NULL, '2026-10-20 08:00:00.000', '2026-10-22 08:00:00.000', 'demo-liaison-member', 'adopted', 'demo-student', 'liaison_team', 'liaison-team-energy-story', '2026-10-20 08:00:00.000', '2026-10-22 08:00:00.000');
+
 INSERT INTO finance_records
   (id, title, record_kind, amount_cents, activity_id, organization_id, reviewer_uid, reviewed_at, review_decision, status, owner_uid, scope_type, scope_id, created_at, updated_at)
 VALUES

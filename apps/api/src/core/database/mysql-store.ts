@@ -31,7 +31,12 @@ import type {
   DevelopmentStore,
   FinanceRecord,
   KnowledgeEntryRecord,
+  LiaisonOutcomeRecord,
+  LiaisonPostRecord,
+  LiaisonProblemRecord,
   LiaisonResourceRecord,
+  LiaisonTeamMemberRecord,
+  LiaisonTeamRecord,
   ListFilters,
   ModuleOwnerRecord,
   ModuleRecord,
@@ -119,6 +124,11 @@ const safeIntegerField = (key: string, column: string) =>
     encode: (value) => safeInteger(value),
     decode: (value) => safeInteger(value),
   });
+const positiveIntegerField = (key: string, column: string) =>
+  field(key, column, {
+    encode: (value) => positiveInteger(value, key),
+    decode: (value) => positiveInteger(value, key),
+  });
 const jsonField = (key: string, column: string) =>
   field(key, column, {
     encode: (value) => JSON.stringify(value ?? {}),
@@ -132,6 +142,14 @@ function safeInteger(value: unknown): number {
     typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : (value as number);
   if (!Number.isSafeInteger(number) || number < 0) {
     throw new TypeError('amountCents must be a non-negative safe integer');
+  }
+  return number;
+}
+function positiveInteger(value: unknown, key: string): number {
+  const number =
+    typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : (value as number);
+  if (!Number.isSafeInteger(number) || number < 1) {
+    throw new TypeError(`${key} must be a positive safe integer`);
   }
   return number;
 }
@@ -412,6 +430,88 @@ const definitions = {
     ],
     searchColumns: ['name', 'description', 'category'],
   },
+  liaisonProblems: {
+    table: 'liaison_problems',
+    fields: [
+      field('title', 'title'),
+      defaultedField('summary', 'summary', ''),
+      field('background', 'background'),
+      field('sourceType', 'source_type'),
+      field('sourceName', 'source_name'),
+      tagsField,
+      field('expectedOutcome', 'expected_outcome'),
+      field('constraints', 'constraints_text'),
+      utcDateTimeField('startsAt', 'starts_at'),
+      utcDateTimeField('deadline', 'deadline'),
+      defaultedField('publicContact', 'public_contact', ''),
+      field('internalContactNote', 'internal_contact_note'),
+      field('recorderUid', 'recorder_uid'),
+      field('reviewerUid', 'reviewer_uid'),
+      utcDateTimeField('reviewedAt', 'reviewed_at'),
+      field('reviewNote', 'review_note'),
+    ],
+    searchColumns: [
+      'title',
+      'summary',
+      'background',
+      'source_name',
+      'expected_outcome',
+      'constraints_text',
+      'public_contact',
+    ],
+  },
+  liaisonTeams: {
+    table: 'liaison_teams',
+    fields: [
+      field('problemId', 'problem_id'),
+      field('name', 'name'),
+      field('proposal', 'proposal'),
+      field('maintainerUid', 'maintainer_uid'),
+    ],
+    searchColumns: ['problem_id', 'name', 'proposal', 'maintainer_uid'],
+  },
+  liaisonTeamMembers: {
+    table: 'liaison_team_members',
+    conflictMessage: 'Liaison team membership already exists',
+    fields: [
+      field('problemId', 'problem_id'),
+      field('teamId', 'team_id'),
+      field('memberUid', 'member_uid'),
+      field('role', 'member_role'),
+      utcDateTimeField('joinedAt', 'joined_at'),
+    ],
+    searchColumns: ['problem_id', 'team_id', 'member_uid'],
+  },
+  liaisonPosts: {
+    table: 'liaison_posts',
+    fields: [
+      field('problemId', 'problem_id'),
+      field('teamId', 'team_id'),
+      field('authorUid', 'author_uid'),
+      field('kind', 'post_kind'),
+      field('body', 'body'),
+      utcDateTimeField('hiddenAt', 'hidden_at'),
+      field('hiddenByUid', 'hidden_by_uid'),
+    ],
+    searchColumns: ['problem_id', 'team_id', 'author_uid', 'body'],
+  },
+  liaisonOutcomes: {
+    table: 'liaison_outcomes',
+    conflictMessage: 'Liaison outcome version already exists',
+    fields: [
+      field('problemId', 'problem_id'),
+      field('teamId', 'team_id'),
+      positiveIntegerField('version', 'version'),
+      field('title', 'title'),
+      field('description', 'description'),
+      field('linkUrl', 'link_url'),
+      field('attachmentRef', 'attachment_ref'),
+      utcDateTimeField('submittedAt', 'submitted_at'),
+      utcDateTimeField('adoptedAt', 'adopted_at'),
+      field('adoptedByUid', 'adopted_by_uid'),
+    ],
+    searchColumns: ['problem_id', 'team_id', 'title', 'description', 'link_url'],
+  },
   financeRecords: {
     table: 'finance_records',
     fields: [
@@ -489,10 +589,12 @@ function buildWhere(
     const query = filters.query.trim().toLocaleLowerCase();
     const textMatch = `LOWER(CONCAT_WS(' ', ${definition.searchColumns.join(', ')})) LIKE ? ESCAPE '\\\\'`;
     values.push(`%${escapeLikeQuery(query)}%`);
-    if (definition.table === 'knowledge_entries') {
+    if (definition.table === 'knowledge_entries' || definition.table === 'liaison_problems') {
       // JSON_TABLE unescapes values; LOCATE treats punctuation as literal characters.
+      const tagAlias =
+        definition.table === 'knowledge_entries' ? 'knowledge_tags' : 'liaison_problem_tags';
       clauses.push(
-        `(${textMatch} OR EXISTS (SELECT 1 FROM JSON_TABLE(tags, '$[*]' COLUMNS (tag_value VARCHAR(80) PATH '$')) AS knowledge_tags WHERE LOCATE(CAST(? AS BINARY), CAST(LOWER(knowledge_tags.tag_value) AS BINARY)) > 0))`,
+        `(${textMatch} OR EXISTS (SELECT 1 FROM JSON_TABLE(tags, '$[*]' COLUMNS (tag_value VARCHAR(80) PATH '$')) AS ${tagAlias} WHERE LOCATE(CAST(? AS BINARY), CAST(LOWER(${tagAlias}.tag_value) AS BINARY)) > 0))`,
       );
       values.push(query);
     } else clauses.push(textMatch);
@@ -722,6 +824,11 @@ function buildMySqlStore(executor: Executor, pool: Pool, inTransaction: boolean)
     sportsTeamMembers: repository<SportsTeamMemberRecord>(definitions.sportsTeamMembers),
     sportsCheckins: repository<SportsCheckinRecord>(definitions.sportsCheckins),
     liaisonResources: repository<LiaisonResourceRecord>(definitions.liaisonResources),
+    liaisonProblems: repository<LiaisonProblemRecord>(definitions.liaisonProblems),
+    liaisonTeams: repository<LiaisonTeamRecord>(definitions.liaisonTeams),
+    liaisonTeamMembers: repository<LiaisonTeamMemberRecord>(definitions.liaisonTeamMembers),
+    liaisonPosts: repository<LiaisonPostRecord>(definitions.liaisonPosts),
+    liaisonOutcomes: repository<LiaisonOutcomeRecord>(definitions.liaisonOutcomes),
     financeRecords: repository<FinanceRecord>(definitions.financeRecords),
   };
   return store;

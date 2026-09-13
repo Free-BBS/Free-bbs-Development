@@ -30,6 +30,13 @@ type DefaultedContentKeys<T> = Extract<
   | 'season'
   | 'trainingSchedule'
   | (T extends KnowledgeEntryRecord | ClubRecord ? 'category' : never)
+  | (T extends LiaisonProblemRecord
+      ? 'startsAt' | 'deadline' | 'reviewerUid' | 'reviewedAt' | 'reviewNote'
+      : never)
+  | (T extends LiaisonPostRecord ? 'teamId' | 'hiddenAt' | 'hiddenByUid' : never)
+  | (T extends LiaisonOutcomeRecord
+      ? 'linkUrl' | 'attachmentRef' | 'adoptedAt' | 'adoptedByUid'
+      : never)
 >;
 export type NewRecord<T extends StoredRecord> = Pick<
   StoredRecord,
@@ -277,6 +284,67 @@ export interface LiaisonResourceRecord extends StoredRecord {
   visibility: 'public' | 'organization' | 'restricted';
 }
 
+export type LiaisonProblemStatus =
+  'draft' | 'pending_review' | 'rejected' | 'open' | 'paused' | 'closed' | 'archived';
+
+export interface LiaisonProblemRecord extends StoredRecord {
+  status: LiaisonProblemStatus;
+  title: string;
+  summary: string;
+  background: string;
+  sourceType: 'lab' | 'company' | 'campus' | 'other';
+  sourceName: string;
+  tags: string[];
+  expectedOutcome: string;
+  constraints: string;
+  startsAt: string | null;
+  deadline: string | null;
+  publicContact: string;
+  internalContactNote: string;
+  recorderUid: string;
+  reviewerUid: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+}
+
+export interface LiaisonTeamRecord extends StoredRecord {
+  problemId: string;
+  name: string;
+  proposal: string;
+  maintainerUid: string;
+}
+
+export interface LiaisonTeamMemberRecord extends StoredRecord {
+  problemId: string;
+  teamId: string;
+  memberUid: string;
+  role: 'maintainer' | 'member';
+  joinedAt: string;
+}
+
+export interface LiaisonPostRecord extends StoredRecord {
+  problemId: string;
+  teamId: string | null;
+  authorUid: string;
+  kind: 'discussion' | 'progress';
+  body: string;
+  hiddenAt: string | null;
+  hiddenByUid: string | null;
+}
+
+export interface LiaisonOutcomeRecord extends StoredRecord {
+  problemId: string;
+  teamId: string;
+  version: number;
+  title: string;
+  description: string;
+  linkUrl: string | null;
+  attachmentRef: string | null;
+  submittedAt: string;
+  adoptedAt: string | null;
+  adoptedByUid: string | null;
+}
+
 export interface FinanceRecord extends StoredRecord {
   title: string;
   kind: 'budget' | 'settlement';
@@ -316,5 +384,10 @@ export interface DevelopmentStore {
   sportsTeamMembers: RecordRepository<SportsTeamMemberRecord>;
   sportsCheckins: RecordRepository<SportsCheckinRecord>;
   liaisonResources: RecordRepository<LiaisonResourceRecord>;
+  liaisonProblems: RecordRepository<LiaisonProblemRecord>;
+  liaisonTeams: RecordRepository<LiaisonTeamRecord>;
+  liaisonTeamMembers: RecordRepository<LiaisonTeamMemberRecord>;
+  liaisonPosts: RecordRepository<LiaisonPostRecord>;
+  liaisonOutcomes: RecordRepository<LiaisonOutcomeRecord>;
   financeRecords: RecordRepository<FinanceRecord>;
 }

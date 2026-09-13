@@ -19,6 +19,7 @@ describe('database migrations', () => {
       '006_domain_reference_integrity.sql',
       '007_platform_content_update.sql',
       '008_module_readability_fields.sql',
+      '009_liaison_problem_board.sql',
     ]);
 
     const sql = (await Promise.all(migrations.map(({ path }) => readFile(path, 'utf8')))).join(
@@ -51,6 +52,11 @@ describe('database migrations', () => {
       'sports_team_members',
       'sports_checkins',
       'liaison_resources',
+      'liaison_problems',
+      'liaison_teams',
+      'liaison_team_members',
+      'liaison_posts',
+      'liaison_outcomes',
       'finance_records',
     ];
 
@@ -145,5 +151,20 @@ describe('database migrations', () => {
         seed.match(new RegExp(`INSERT\\s+INTO\\s+${table}[\\s\\S]*?;`, 'i'))?.[0] ?? '';
       expect((values.match(/\),\s*\(/g) ?? []).length).toBeGreaterThanOrEqual(1);
     }
+    for (const table of [
+      'liaison_problems',
+      'liaison_teams',
+      'liaison_team_members',
+      'liaison_posts',
+      'liaison_outcomes',
+    ]) {
+      expect(seed).toMatch(new RegExp(`INSERT\\s+INTO\\s+${table}\\b`, 'i'));
+    }
+    expect(seed).toContain("'lab', '校园计算实验室'");
+    expect(seed).toContain("'company', '校企联合创新伙伴'");
+    expect(seed.match(/INSERT INTO liaison_teams[\s\S]*?;/)?.[0]).toContain(
+      "'liaison-problem-lab-energy'",
+    );
+    expect(seed.match(/INSERT INTO liaison_outcomes[\s\S]*?;/)?.[0]).toContain("'adopted'");
   });
 });

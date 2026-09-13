@@ -25,7 +25,12 @@ import type {
   DevelopmentStore,
   FinanceRecord,
   KnowledgeEntryRecord,
+  LiaisonOutcomeRecord,
+  LiaisonPostRecord,
+  LiaisonProblemRecord,
   LiaisonResourceRecord,
+  LiaisonTeamMemberRecord,
+  LiaisonTeamRecord,
   ListFilters,
   ModuleOwnerRecord,
   ModuleRecord,
@@ -74,6 +79,11 @@ interface MemoryState {
   sportsTeamMembers: SportsTeamMemberRecord[];
   sportsCheckins: SportsCheckinRecord[];
   liaisonResources: LiaisonResourceRecord[];
+  liaisonProblems: LiaisonProblemRecord[];
+  liaisonTeams: LiaisonTeamRecord[];
+  liaisonTeamMembers: LiaisonTeamMemberRecord[];
+  liaisonPosts: LiaisonPostRecord[];
+  liaisonOutcomes: LiaisonOutcomeRecord[];
   financeRecords: FinanceRecord[];
 }
 
@@ -129,6 +139,19 @@ const searchFields: Record<CollectionName, string[]> = {
   sportsTeamMembers: ['teamId', 'memberUid'],
   sportsCheckins: ['teamId', 'memberUid'],
   liaisonResources: ['name', 'description', 'category'],
+  liaisonProblems: [
+    'title',
+    'summary',
+    'background',
+    'sourceName',
+    'expectedOutcome',
+    'constraints',
+    'publicContact',
+  ],
+  liaisonTeams: ['problemId', 'name', 'proposal', 'maintainerUid'],
+  liaisonTeamMembers: ['problemId', 'teamId', 'memberUid'],
+  liaisonPosts: ['problemId', 'teamId', 'authorUid', 'body'],
+  liaisonOutcomes: ['problemId', 'teamId', 'title', 'description', 'linkUrl'],
   financeRecords: ['title', 'kind'],
 };
 
@@ -161,6 +184,21 @@ function collectionDefaults(collection: CollectionName): Record<string, unknown>
         organizationId: null,
         standingActivity: false,
       };
+    case 'liaisonProblems':
+      return {
+        summary: '',
+        tags: [],
+        startsAt: null,
+        deadline: null,
+        publicContact: '',
+        reviewerUid: null,
+        reviewedAt: null,
+        reviewNote: null,
+      };
+    case 'liaisonPosts':
+      return { teamId: null, hiddenAt: null, hiddenByUid: null };
+    case 'liaisonOutcomes':
+      return { linkUrl: null, attachmentRef: null, adoptedAt: null, adoptedByUid: null };
     case 'financeRecords':
       return {
         organizationId: null,
@@ -189,6 +227,11 @@ function normalizedValues<T extends object>(value: T): T {
     'maintainedAt',
     'dueAt',
     'registrationDeadline',
+    'deadline',
+    'joinedAt',
+    'submittedAt',
+    'adoptedAt',
+    'hiddenAt',
   ]) {
     if (!Object.hasOwn(result, key) || result[key] === null || result[key] === undefined) continue;
     const encoded = encodeUtcDateTime(result[key] as string);
@@ -201,6 +244,12 @@ function normalizedValues<T extends object>(value: T): T {
     (!Number.isSafeInteger(result.amountCents) || result.amountCents < 0)
   ) {
     throw new TypeError('amountCents must be a non-negative safe integer');
+  }
+  if (
+    Object.hasOwn(result, 'version') &&
+    (!Number.isSafeInteger(result.version) || (result.version as number) < 1)
+  ) {
+    throw new TypeError('version must be a positive safe integer');
   }
   return result as T;
 }
@@ -241,6 +290,11 @@ function createEmptyState(): MemoryState {
     sportsTeamMembers: [],
     sportsCheckins: [],
     liaisonResources: [],
+    liaisonProblems: [],
+    liaisonTeams: [],
+    liaisonTeamMembers: [],
+    liaisonPosts: [],
+    liaisonOutcomes: [],
     financeRecords: [],
   };
 }
@@ -855,6 +909,147 @@ function createDemoState(): MemoryState {
       scope: { type: 'organization', id: 'freebbs' },
     }),
   ];
+  state.liaisonProblems = [
+    stored('liaison-problem-lab-energy', {
+      title: '校园能耗数据可视化',
+      summary: '把匿名化能耗指标转化为同学可理解的交互展示。',
+      background: '校内课题组希望验证面向校园公共空间的数据叙事方案。',
+      sourceType: 'lab',
+      sourceName: '校园计算实验室',
+      tags: ['数据可视化', '前端', '校园治理'],
+      expectedOutcome: '可运行原型、设计说明和一次公开演示。',
+      constraints: '只能使用匿名化样例数据，不得上传原始敏感数据。',
+      startsAt: '2026-10-01T00:00:00.000Z',
+      deadline: '2026-11-15T00:00:00.000Z',
+      publicContact: '联络中心公开咨询台',
+      internalContactNote: '演示数据由联络中心线下转交。',
+      recorderUid: 'demo-liaison-member',
+      reviewerUid: 'demo-tuanwei-lead',
+      reviewedAt: '2026-09-20T08:00:00.000Z',
+      reviewNote: '已确认公开范围与匿名化要求。',
+      status: 'open',
+      ownerUid: 'demo-liaison-member',
+      scope: publicScope,
+    }),
+    stored('liaison-problem-company-accessibility', {
+      title: '公共服务页面无障碍检查工具',
+      summary: '为常见校园服务页面制作轻量的可访问性检查原型。',
+      background: '合作企业希望与同学共同验证前端无障碍检查流程。',
+      sourceType: 'company',
+      sourceName: '校企联合创新伙伴',
+      tags: ['无障碍', 'Web', '工具开发'],
+      expectedOutcome: '检查清单、命令行原型和示例报告。',
+      constraints: '首期只分析公开页面，不采集账号或个人信息。',
+      startsAt: '2026-10-10T00:00:00.000Z',
+      deadline: null,
+      publicContact: '联络中心公开咨询台',
+      internalContactNote: '企业联系人信息由联络中心保管。',
+      recorderUid: 'demo-liaison-member',
+      reviewerUid: 'demo-admin',
+      reviewedAt: '2026-09-22T08:00:00.000Z',
+      reviewNote: '公开内容已脱敏。',
+      status: 'open',
+      ownerUid: 'demo-liaison-member',
+      scope: publicScope,
+    }),
+  ];
+  state.liaisonTeams = [
+    stored('liaison-team-energy-story', {
+      problemId: 'liaison-problem-lab-energy',
+      name: '数据叙事队',
+      proposal: '先建立公共指标卡片，再制作可解释的趋势视图。',
+      maintainerUid: 'demo-student',
+      status: 'active',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+    stored('liaison-team-energy-map', {
+      problemId: 'liaison-problem-lab-energy',
+      name: '空间可视化队',
+      proposal: '使用匿名化建筑指标制作校园能耗地图原型。',
+      maintainerUid: 'demo-captain',
+      status: 'active',
+      ownerUid: 'demo-captain',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+  ];
+  state.liaisonTeamMembers = [
+    stored('liaison-member-energy-story', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-story',
+      memberUid: 'demo-student',
+      role: 'maintainer',
+      joinedAt: '2026-10-02T08:00:00.000Z',
+      status: 'active',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_team', id: 'liaison-team-energy-story' },
+    }),
+    stored('liaison-member-energy-map', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-map',
+      memberUid: 'demo-captain',
+      role: 'maintainer',
+      joinedAt: '2026-10-03T08:00:00.000Z',
+      status: 'active',
+      ownerUid: 'demo-captain',
+      scope: { type: 'liaison_team', id: 'liaison-team-energy-map' },
+    }),
+  ];
+  state.liaisonPosts = [
+    stored('liaison-post-energy-question', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: null,
+      authorUid: 'demo-student',
+      kind: 'discussion',
+      body: '公开样例数据会提供哪些时间粒度？',
+      hiddenAt: null,
+      hiddenByUid: null,
+      status: 'visible',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+    stored('liaison-post-energy-story-progress', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-story',
+      authorUid: 'demo-student',
+      kind: 'progress',
+      body: '已完成指标卡片的信息层级草图。',
+      hiddenAt: null,
+      hiddenByUid: null,
+      status: 'visible',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+    stored('liaison-post-energy-map-progress', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-map',
+      authorUid: 'demo-captain',
+      kind: 'progress',
+      body: '已完成地图底图和匿名化样例数据接入。',
+      hiddenAt: null,
+      hiddenByUid: null,
+      status: 'visible',
+      ownerUid: 'demo-captain',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+  ];
+  state.liaisonOutcomes = [
+    stored('liaison-outcome-energy-story-v1', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-story',
+      version: 1,
+      title: '能耗指标叙事原型',
+      description: '包含关键指标卡片、趋势解释和公开演示说明。',
+      linkUrl: 'https://example.invalid/freebbs/energy-story',
+      attachmentRef: null,
+      submittedAt: '2026-10-20T08:00:00.000Z',
+      adoptedAt: '2026-10-22T08:00:00.000Z',
+      adoptedByUid: 'demo-liaison-member',
+      status: 'adopted',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_team', id: 'liaison-team-energy-story' },
+    }),
+  ];
   state.financeRecords = [
     stored('finance-orientation-budget', {
       title: '新生见面会预算',
@@ -948,7 +1143,7 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
         const searchable = record as unknown as Record<string, unknown>;
         // Search each decoded tag, never JSON syntax or separators between tags.
         if (
-          this.collection === 'knowledge' &&
+          (this.collection === 'knowledge' || this.collection === 'liaisonProblems') &&
           Array.isArray(searchable.tags) &&
           searchable.tags.some((tag) => String(tag).toLocaleLowerCase().includes(query))
         )
@@ -1103,6 +1298,46 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
         return 'Registration already exists';
       }
     }
+    if (this.collection === 'liaisonTeamMembers') {
+      const candidate = input as unknown as {
+        problemId: string;
+        teamId: string;
+        memberUid: string;
+      };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return (
+            current.problemId === candidate.problemId &&
+            current.teamId === candidate.teamId &&
+            current.memberUid === candidate.memberUid
+          );
+        })
+      ) {
+        return 'Liaison team membership already exists';
+      }
+    }
+    if (this.collection === 'liaisonOutcomes') {
+      const candidate = input as unknown as {
+        problemId: string;
+        teamId: string;
+        version: number;
+      };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return (
+            current.problemId === candidate.problemId &&
+            current.teamId === candidate.teamId &&
+            current.version === candidate.version
+          );
+        })
+      ) {
+        return 'Liaison outcome version already exists';
+      }
+    }
     if (this.collection === 'sportsCheckins') {
       const candidate = input as unknown as {
         teamId: string;
@@ -1172,6 +1407,11 @@ function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStor
     sportsTeamMembers: repository('sportsTeamMembers'),
     sportsCheckins: repository('sportsCheckins'),
     liaisonResources: repository('liaisonResources'),
+    liaisonProblems: repository('liaisonProblems'),
+    liaisonTeams: repository('liaisonTeams'),
+    liaisonTeamMembers: repository('liaisonTeamMembers'),
+    liaisonPosts: repository('liaisonPosts'),
+    liaisonOutcomes: repository('liaisonOutcomes'),
     financeRecords: repository('financeRecords'),
   };
   return store;

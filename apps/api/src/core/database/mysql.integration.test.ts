@@ -15,6 +15,11 @@ let handle: MySqlStoreHandle;
 async function cleanCreatedRecords(): Promise<void> {
   for (const table of [
     'audit_logs',
+    'liaison_outcomes',
+    'liaison_posts',
+    'liaison_team_members',
+    'liaison_teams',
+    'liaison_problems',
     'knowledge_entries',
     'finance_records',
     'liaison_resources',
@@ -138,6 +143,99 @@ integration('real MySQL 8 store integration', () => {
     ).resolves.toMatchObject({ name: 'MySQL integration updated' });
     await expect(handle.store.liaisonResources.delete(created.id)).resolves.toBe(true);
     await expect(handle.store.liaisonResources.get(created.id)).resolves.toBeNull();
+  });
+  it('round-trips liaison problem community records and enforces compound uniqueness', async () => {
+    const problem = await handle.store.liaisonProblems.create({
+      title: 'MySQL liaison problem',
+      summary: runId,
+      background: 'Integration background',
+      sourceType: 'lab',
+      sourceName: 'Integration lab',
+      tags: ['quote"tag', '50%_off', 'x\\y'],
+      expectedOutcome: 'Integration outcome',
+      constraints: 'Integration only',
+      startsAt: '2026-10-01T12:00:00.123+08:00',
+      deadline: '2026-11-01T12:00:00.456+08:00',
+      publicContact: 'Integration desk',
+      internalContactNote: 'Not public',
+      recorderUid: `${runId}-member`,
+      reviewerUid: null,
+      reviewedAt: null,
+      reviewNote: null,
+      status: 'open',
+      ownerUid: runId,
+      scope: { type: 'integration_liaison', id: runId },
+    });
+    expect(problem).toMatchObject({
+      startsAt: '2026-10-01T04:00:00.123Z',
+      deadline: '2026-11-01T04:00:00.456Z',
+      tags: ['quote"tag', '50%_off', 'x\\y'],
+    });
+    expect(
+      await handle.store.liaisonProblems.list({
+        scopeType: 'integration_liaison',
+        scopeId: runId,
+        tag: 'quote"tag',
+      }),
+    ).toHaveLength(1);
+
+    const team = await handle.store.liaisonTeams.create({
+      problemId: problem.id,
+      name: 'Integration team',
+      proposal: 'Integration proposal',
+      maintainerUid: `${runId}-member`,
+      status: 'active',
+      ownerUid: runId,
+      scope: { type: 'liaison_problem', id: problem.id },
+    });
+    const membership = {
+      problemId: problem.id,
+      teamId: team.id,
+      memberUid: `${runId}-participant`,
+      role: 'member' as const,
+      joinedAt: '2026-10-02T03:04:05.006Z',
+      status: 'active',
+      ownerUid: runId,
+      scope: { type: 'liaison_team', id: team.id },
+    };
+    await handle.store.liaisonTeamMembers.create(membership);
+    await expect(handle.store.liaisonTeamMembers.create(membership)).rejects.toBeInstanceOf(
+      RecordConflictError,
+    );
+    await handle.store.liaisonPosts.create({
+      problemId: problem.id,
+      teamId: team.id,
+      authorUid: `${runId}-member`,
+      kind: 'progress',
+      body: runId,
+      hiddenAt: null,
+      hiddenByUid: null,
+      status: 'visible',
+      ownerUid: runId,
+      scope: { type: 'liaison_problem', id: problem.id },
+    });
+    const outcome = {
+      problemId: problem.id,
+      teamId: team.id,
+      version: 1,
+      title: 'Integration outcome',
+      description: runId,
+      linkUrl: null,
+      attachmentRef: null,
+      submittedAt: '2026-10-08T03:04:05.006Z',
+      adoptedAt: null,
+      adoptedByUid: null,
+      status: 'submitted',
+      ownerUid: runId,
+      scope: { type: 'liaison_team', id: team.id },
+    } as const;
+    expect(await handle.store.liaisonOutcomes.create(outcome)).toMatchObject({
+      version: 1,
+      submittedAt: '2026-10-08T03:04:05.006Z',
+    });
+    await expect(handle.store.liaisonOutcomes.create(outcome)).rejects.toBeInstanceOf(
+      RecordConflictError,
+    );
   });
   it('round-trips UTC time, date-only and integer cents while enforcing unique domain records', async () => {
     const club = await handle.store.clubs.create({
