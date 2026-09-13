@@ -24,6 +24,28 @@
   margin: 0;
 }
 
+.workbench-card .activity-summary {
+  display: grid;
+  gap: 4px;
+  color: var(--color-muted);
+}
+
+.workbench-card .activity-summary strong {
+  color: var(--color-text);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+.editor-drawer-body form {
+  display: grid;
+  gap: 14px;
+}
+
+.editor-drawer-body form label {
+  display: grid;
+  gap: 6px;
+}
+
 [role='progressbar'][aria-label='活动筹备进度'] {
   position: relative;
   height: 14px;

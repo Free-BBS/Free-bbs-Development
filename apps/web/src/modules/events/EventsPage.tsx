@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Link } from 'react-router-dom';
 
 import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
+import { EditorDrawer } from '../../components/EditorDrawer.js';
 import { createApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
 
@@ -22,6 +23,9 @@ interface ActivityRecord {
   startsAt: string | null;
   endsAt?: string | null;
   location?: string;
+  registrationDeadline?: string | null;
+  capacity?: number | null;
+  contact?: string;
   organizationId?: string | null;
   standingActivity?: boolean;
   technicalSupportStatus: TechnicalSupportStatus;
@@ -77,12 +81,13 @@ function formatStart(value: string | null): string {
     new Date(value),
   );
 }
-function localDateTimeValue(value: string | null): string {
+export function utcInstantToLocalDateTimeInput(value: string | null): string {
   if (value === null) return '';
   const date = new Date(value);
-  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  const padded = (part: number, width = 2) => String(part).padStart(width, '0');
+  return `${date.getFullYear()}-${padded(date.getMonth() + 1)}-${padded(date.getDate())}T${padded(date.getHours())}:${padded(date.getMinutes())}:${padded(date.getSeconds())}.${padded(date.getMilliseconds(), 3)}`;
 }
-function isoDateTimeValue(value: string): string | null {
+export function localDateTimeInputToUtcInstant(value: string): string | null {
   return value === '' ? null : new Date(value).toISOString();
 }
 function matches(pattern: string, value: string): boolean {
@@ -131,12 +136,19 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
   const [editStartsAt, setEditStartsAt] = useState('');
   const [editEndsAt, setEditEndsAt] = useState('');
   const [editLocation, setEditLocation] = useState('');
+  const [editRegistrationDeadline, setEditRegistrationDeadline] = useState('');
+  const [editCapacity, setEditCapacity] = useState('');
+  const [editContact, setEditContact] = useState('');
+  const [createDrawerOpen, setCreateDrawerOpen] = useState(false);
   const [createTitle, setCreateTitle] = useState('');
   const [createDescription, setCreateDescription] = useState('');
   const [createClubId, setCreateClubId] = useState('');
   const [createStartsAt, setCreateStartsAt] = useState('');
   const [createEndsAt, setCreateEndsAt] = useState('');
   const [createLocation, setCreateLocation] = useState('');
+  const [createRegistrationDeadline, setCreateRegistrationDeadline] = useState('');
+  const [createCapacity, setCreateCapacity] = useState('');
+  const [createContact, setCreateContact] = useState('');
   const [createOrganizationId, setCreateOrganizationId] = useState('');
   const [createStanding, setCreateStanding] = useState(false);
   const [supportNotes, setSupportNotes] = useState<Record<string, string>>({});
@@ -198,9 +210,18 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
     setEditTitle(activity.title);
     setEditDescription(activity.description);
     setEditClubId(activity.clubId ?? '');
-    setEditStartsAt(localDateTimeValue(activity.startsAt));
-    setEditEndsAt(localDateTimeValue(activity.endsAt ?? null));
+    setEditStartsAt(utcInstantToLocalDateTimeInput(activity.startsAt));
+    setEditEndsAt(utcInstantToLocalDateTimeInput(activity.endsAt ?? null));
     setEditLocation(activity.location ?? '');
+    setEditRegistrationDeadline(
+      utcInstantToLocalDateTimeInput(activity.registrationDeadline ?? null),
+    );
+    setEditCapacity(
+      activity.capacity === null || activity.capacity === undefined
+        ? ''
+        : String(activity.capacity),
+    );
+    setEditContact(activity.contact ?? '');
   }
 
   async function saveEdit(activity: ActivityRecord, event: FormEvent<HTMLFormElement>) {
@@ -220,9 +241,12 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
           title,
           description,
           clubId: editClubId.trim() || null,
-          startsAt: isoDateTimeValue(editStartsAt),
-          endsAt: isoDateTimeValue(editEndsAt),
+          startsAt: localDateTimeInputToUtcInstant(editStartsAt),
+          endsAt: localDateTimeInputToUtcInstant(editEndsAt),
           location: editLocation.trim(),
+          registrationDeadline: localDateTimeInputToUtcInstant(editRegistrationDeadline),
+          capacity: editCapacity === '' ? null : Number(editCapacity),
+          contact: editContact.trim(),
         }),
       });
       setEditingId(null);
@@ -247,9 +271,12 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
           title,
           description,
           clubId: createClubId.trim() || null,
-          startsAt: isoDateTimeValue(createStartsAt),
-          endsAt: isoDateTimeValue(createEndsAt),
+          startsAt: localDateTimeInputToUtcInstant(createStartsAt),
+          endsAt: localDateTimeInputToUtcInstant(createEndsAt),
           location: createLocation.trim(),
+          registrationDeadline: localDateTimeInputToUtcInstant(createRegistrationDeadline),
+          capacity: createCapacity === '' ? null : Number(createCapacity),
+          contact: createContact.trim(),
           organizationId: createOrganizationId || organizationOptions[0] || null,
           standingActivity: createStanding,
           status: 'draft',
@@ -262,8 +289,12 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
       setCreateStartsAt('');
       setCreateEndsAt('');
       setCreateLocation('');
+      setCreateRegistrationDeadline('');
+      setCreateCapacity('');
+      setCreateContact('');
       setCreateOrganizationId('');
       setCreateStanding(false);
+      setCreateDrawerOpen(false);
       setFeedback('活动草稿已创建');
       await loadActivities();
     } catch (error) {
@@ -374,11 +405,23 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
                 >
                   {statusLabels[activity.status]}
                 </span>
+                {activity.standingActivity ? <span className="status-badge">常设活动</span> : null}
                 <h3 id={headingId}>{activity.title}</h3>
-                <p>{activity.description}</p>
+                <p className="activity-summary">
+                  <strong>活动简介</strong>
+                  {activity.description}
+                </p>
                 <p>开始时间：{formatStart(activity.startsAt)}</p>
                 {activity.endsAt ? <p>结束时间：{formatStart(activity.endsAt)}</p> : null}
                 <p>地点：{activity.location || '待定'}</p>
+                <p>报名截止：{formatStart(activity.registrationDeadline ?? null)}</p>
+                <p>
+                  容量：
+                  {activity.capacity === null || activity.capacity === undefined
+                    ? '不限'
+                    : `${activity.capacity} 人`}
+                </p>
+                <p>联系人：{activity.contact || '待公布'}</p>
                 <p>
                   主办：
                   {activity.organizationId
@@ -390,61 +433,8 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
                   <Link to="/interest-groups">查看所属趣缘群体</Link>
                 ) : null}
 
-                {editingId === activity.id ? (
-                  <form onSubmit={(event) => void saveEdit(activity, event)}>
-                    <label>
-                      活动名称
-                      <input
-                        value={editTitle}
-                        onChange={(event) => setEditTitle(event.target.value)}
-                      />
-                    </label>
-                    <label>
-                      活动介绍
-                      <textarea
-                        value={editDescription}
-                        onChange={(event) => setEditDescription(event.target.value)}
-                      />
-                    </label>
-                    <label>
-                      所属趣缘群体 ID（可选）
-                      <input
-                        value={editClubId}
-                        onChange={(event) => setEditClubId(event.target.value)}
-                      />
-                    </label>
-                    <label>
-                      开始时间（可选）
-                      <input
-                        type="datetime-local"
-                        value={editStartsAt}
-                        onChange={(event) => setEditStartsAt(event.target.value)}
-                      />
-                    </label>
-                    <label>
-                      结束时间（可选）
-                      <input
-                        type="datetime-local"
-                        value={editEndsAt}
-                        onChange={(event) => setEditEndsAt(event.target.value)}
-                      />
-                    </label>
-                    <label>
-                      地点
-                      <input
-                        value={editLocation}
-                        onChange={(event) => setEditLocation(event.target.value)}
-                      />
-                    </label>
-                    <button type="submit" disabled={busy}>
-                      保存活动
-                    </button>
-                    <button type="button" onClick={() => setEditingId(null)}>
-                      取消编辑
-                    </button>
-                  </form>
-                ) : canManageCreatorEdge &&
-                  (activity.status === 'draft' || activity.status === 'rejected') ? (
+                {canManageCreatorEdge &&
+                (activity.status === 'draft' || activity.status === 'rejected') ? (
                   <button
                     type="button"
                     aria-label={`编辑${activity.title}`}
@@ -585,6 +575,96 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
       {canCreate ? (
         <section aria-labelledby="event-create-title">
           <h2 id="event-create-title">创建活动草稿</h2>
+          <p>在编辑器中补全时间、报名与联系信息，再保存为草稿。</p>
+          <button type="button" onClick={() => setCreateDrawerOpen(true)}>
+            创建活动
+          </button>
+        </section>
+      ) : null}
+
+      <EditorDrawer
+        open={editingId !== null || createDrawerOpen}
+        title={editingId === null ? '创建活动草稿' : '编辑活动'}
+        description="活动资料在保存前会保留在此编辑器中。"
+        onClose={() => {
+          setEditingId(null);
+          setCreateDrawerOpen(false);
+        }}
+      >
+        {editingId !== null ? (
+          <form
+            onSubmit={(event) => {
+              const activity = activities?.find(({ id }) => id === editingId);
+              if (activity !== undefined) void saveEdit(activity, event);
+            }}
+          >
+            <label>
+              活动名称
+              <input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} />
+            </label>
+            <label>
+              活动介绍
+              <textarea
+                value={editDescription}
+                onChange={(event) => setEditDescription(event.target.value)}
+              />
+            </label>
+            <label>
+              所属趣缘群体 ID（可选）
+              <input value={editClubId} onChange={(event) => setEditClubId(event.target.value)} />
+            </label>
+            <label>
+              开始时间（可选）
+              <input
+                type="datetime-local"
+                step="0.001"
+                value={editStartsAt}
+                onChange={(event) => setEditStartsAt(event.target.value)}
+              />
+            </label>
+            <label>
+              结束时间（可选）
+              <input
+                type="datetime-local"
+                step="0.001"
+                value={editEndsAt}
+                onChange={(event) => setEditEndsAt(event.target.value)}
+              />
+            </label>
+            <label>
+              报名截止（可选）
+              <input
+                type="datetime-local"
+                step="0.001"
+                value={editRegistrationDeadline}
+                onChange={(event) => setEditRegistrationDeadline(event.target.value)}
+              />
+            </label>
+            <label>
+              地点
+              <input
+                value={editLocation}
+                onChange={(event) => setEditLocation(event.target.value)}
+              />
+            </label>
+            <label>
+              容量（可选）
+              <input
+                type="number"
+                min="1"
+                value={editCapacity}
+                onChange={(event) => setEditCapacity(event.target.value)}
+              />
+            </label>
+            <label>
+              联系人
+              <input value={editContact} onChange={(event) => setEditContact(event.target.value)} />
+            </label>
+            <button type="submit" disabled={busyActivityId === editingId}>
+              保存活动
+            </button>
+          </form>
+        ) : (
           <form onSubmit={createActivity}>
             <label>
               新活动名称
@@ -608,6 +688,7 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
               开始时间（可选）
               <input
                 type="datetime-local"
+                step="0.001"
                 value={createStartsAt}
                 onChange={(event) => setCreateStartsAt(event.target.value)}
               />
@@ -616,8 +697,18 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
               结束时间（可选）
               <input
                 type="datetime-local"
+                step="0.001"
                 value={createEndsAt}
                 onChange={(event) => setCreateEndsAt(event.target.value)}
+              />
+            </label>
+            <label>
+              报名截止（可选）
+              <input
+                type="datetime-local"
+                step="0.001"
+                value={createRegistrationDeadline}
+                onChange={(event) => setCreateRegistrationDeadline(event.target.value)}
               />
             </label>
             <label>
@@ -625,6 +716,22 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
               <input
                 value={createLocation}
                 onChange={(event) => setCreateLocation(event.target.value)}
+              />
+            </label>
+            <label>
+              容量（可选）
+              <input
+                type="number"
+                min="1"
+                value={createCapacity}
+                onChange={(event) => setCreateCapacity(event.target.value)}
+              />
+            </label>
+            <label>
+              联系人
+              <input
+                value={createContact}
+                onChange={(event) => setCreateContact(event.target.value)}
               />
             </label>
             {organizationOptions.length > 1 ? (
@@ -655,8 +762,8 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
               保存草稿
             </button>
           </form>
-        </section>
-      ) : null}
+        )}
+      </EditorDrawer>
     </section>
   );
 }

@@ -61,6 +61,12 @@ describe('EventsPage', () => {
       status: 'draft',
       clubId: 'club-running' as string | null,
       startsAt: '2026-08-01T11:00:00.000Z' as string | null,
+      endsAt: '2026-08-01T13:00:00.000Z' as string | null,
+      location: '紫荆操场',
+      registrationDeadline: '2026-07-31T16:00:00.000Z' as string | null,
+      capacity: 120 as number | null,
+      contact: 'running@example.edu.cn',
+      standingActivity: true,
       technicalSupportStatus: 'not_requested',
       technicalSupportNote: null as string | null,
       scope,
@@ -111,7 +117,12 @@ describe('EventsPage', () => {
 
     renderPage({ request: request as DevelopmentApi['request'] });
     let card = await screen.findByRole('article', { name: '校园夜跑' });
-    expect(within(card).getByText('地点：待定')).toBeInTheDocument();
+    expect(within(card).getByText('常设活动')).toBeInTheDocument();
+    expect(within(card).getByText('活动简介')).toBeInTheDocument();
+    expect(within(card).getByText('地点：紫荆操场')).toBeInTheDocument();
+    expect(within(card).getByText(/报名截止：/)).toBeInTheDocument();
+    expect(within(card).getByText('容量：120 人')).toBeInTheDocument();
+    expect(within(card).getByText('联系人：running@example.edu.cn')).toBeInTheDocument();
     expect(within(card).getByRole('link', { name: '查看所属趣缘群体' })).toHaveAttribute(
       'href',
       '/development/interest-groups',
@@ -122,14 +133,15 @@ describe('EventsPage', () => {
     );
 
     await user.click(within(card).getByRole('button', { name: '编辑校园夜跑' }));
-    await user.clear(within(card).getByLabelText('活动名称'));
-    await user.type(within(card).getByLabelText('活动名称'), '校园荧光夜跑');
-    await user.clear(within(card).getByLabelText('所属趣缘群体 ID（可选）'));
-    await user.type(within(card).getByLabelText('所属趣缘群体 ID（可选）'), 'club-updated');
-    const startsAt = within(card).getByLabelText('开始时间（可选）');
+    const editor = screen.getByRole('dialog', { name: '编辑活动' });
+    await user.clear(within(editor).getByLabelText('活动名称'));
+    await user.type(within(editor).getByLabelText('活动名称'), '校园荧光夜跑');
+    await user.clear(within(editor).getByLabelText('所属趣缘群体 ID（可选）'));
+    await user.type(within(editor).getByLabelText('所属趣缘群体 ID（可选）'), 'club-updated');
+    const startsAt = within(editor).getByLabelText('开始时间（可选）');
     await user.clear(startsAt);
     await user.type(startsAt, startsAtLocal);
-    await user.click(within(card).getByRole('button', { name: '保存活动' }));
+    await user.click(within(editor).getByRole('button', { name: '保存活动' }));
     card = await screen.findByRole('article', { name: '校园荧光夜跑' });
     expect(current.clubId).toBe('club-updated');
     expect(current.startsAt).toBe(new Date(startsAtLocal).toISOString());

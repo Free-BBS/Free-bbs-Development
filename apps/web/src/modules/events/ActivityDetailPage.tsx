@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
+import { EditorDrawer } from '../../components/EditorDrawer.js';
 import { createApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
 
@@ -37,6 +38,9 @@ interface ActivityDetail {
   startsAt: string | null;
   endsAt: string | null;
   location: string;
+  registrationDeadline: string | null;
+  capacity: number | null;
+  contact: string;
   organizationId: string | null;
   standingActivity: boolean;
   clubId: string | null;
@@ -88,6 +92,10 @@ function formatDateTime(value: string | null): string {
   }).format(new Date(value));
 }
 
+function localDateTimeToInstant(value: string): string {
+  return new Date(value).toISOString();
+}
+
 function matches(pattern: string, value: string): boolean {
   return (
     pattern === '*' ||
@@ -132,6 +140,13 @@ export function ActivityDetailPage({
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [milestoneTitle, setMilestoneTitle] = useState('');
+  const [milestoneAt, setMilestoneAt] = useState('');
+  const [fixtureRound, setFixtureRound] = useState('');
+  const [fixtureA, setFixtureA] = useState('');
+  const [fixtureB, setFixtureB] = useState('');
+  const [fixtureAt, setFixtureAt] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -189,6 +204,69 @@ export function ActivityDetailPage({
     }
   }
 
+  async function addMilestone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!milestoneTitle.trim() || !milestoneAt) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await activeClient.request(
+        `/events/activities/${encodeURIComponent(activityId)}/milestones`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            occursAt: localDateTimeToInstant(milestoneAt),
+            title: milestoneTitle.trim(),
+            type: 'workflow',
+            description: '',
+            completed: false,
+            displayOrder: detail?.milestones.length ?? 0,
+          }),
+        },
+      );
+      setMilestoneTitle('');
+      setMilestoneAt('');
+      setFeedback('活动节点已添加');
+      await load();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addFixture(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!fixtureRound.trim() || !fixtureA.trim() || !fixtureB.trim() || !fixtureAt) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await activeClient.request(`/events/activities/${encodeURIComponent(activityId)}/fixtures`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          round: fixtureRound.trim(),
+          participantA: fixtureA.trim(),
+          participantB: fixtureB.trim(),
+          scheduledAt: localDateTimeToInstant(fixtureAt),
+          location: detail?.location ?? '',
+          score: null,
+        }),
+      });
+      setFixtureRound('');
+      setFixtureA('');
+      setFixtureB('');
+      setFixtureAt('');
+      setFeedback('赛程已添加');
+      await load();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) return <p role="status">正在加载活动详情…</p>;
   if (error !== null && detail === null) return <p role="alert">活动详情加载失败：{error}</p>;
   if (detail === null) return null;
@@ -206,6 +284,18 @@ export function ActivityDetailPage({
     'activity_registration',
     registrationScope,
   );
+  const canMaintain =
+    permitted(user, 'events.update', 'activity', detail.scope) ||
+    (detail.ownerUid === user?.uid &&
+      permitted(user, 'events.create', 'activity', detail.scope) &&
+      (detail.status === 'draft' || detail.status === 'rejected'));
+  const milestones = [...detail.milestones].sort(
+    (left, right) =>
+      left.displayOrder - right.displayOrder || left.occursAt.localeCompare(right.occursAt),
+  );
+  const completed = milestones.filter((milestone) => milestone.completed).length;
+  const progress =
+    milestones.length === 0 ? null : Math.round((completed / milestones.length) * 100);
 
   return (
     <section className="module-page" aria-labelledby="activity-detail-title">
@@ -233,6 +323,18 @@ export function ActivityDetailPage({
           <dd>{detail.location || '待定'}</dd>
         </div>
         <div>
+          <dt>报名截止</dt>
+          <dd>{formatDateTime(detail.registrationDeadline)}</dd>
+        </div>
+        <div>
+          <dt>容量</dt>
+          <dd>{detail.capacity === null ? '不限' : `${detail.capacity} 人`}</dd>
+        </div>
+        <div>
+          <dt>联系人</dt>
+          <dd>{detail.contact || '待公布'}</dd>
+        </div>
+        <div>
           <dt>主办组织</dt>
           <dd>
             {detail.organizationId === null
@@ -242,7 +344,7 @@ export function ActivityDetailPage({
         </div>
       </dl>
 
-      {detail.progress !== null ? (
+      {progress !== null ? (
         <section aria-labelledby="activity-progress-title">
           <h3 id="activity-progress-title">筹备进度</h3>
           <div
@@ -250,24 +352,23 @@ export function ActivityDetailPage({
             aria-label="活动筹备进度"
             aria-valuemin={0}
             aria-valuemax={100}
-            aria-valuenow={detail.progress.percentage}
+            aria-valuenow={progress}
           >
-            <span style={{ width: `${detail.progress.percentage}%` }} />
+            <span style={{ width: `${progress}%` }} />
           </div>
           <p>
-            已完成 {detail.progress.completed} / {detail.progress.total} 项（
-            {detail.progress.percentage}%）
+            已完成 {completed} / {milestones.length} 项（{progress}%）
           </p>
         </section>
       ) : null}
 
       <section aria-labelledby="activity-timeline-title">
         <h3 id="activity-timeline-title">活动时间线</h3>
-        {detail.milestones.length === 0 ? (
-          <p>时间线待发布</p>
+        {milestones.length === 0 ? (
+          <p>尚未发布流程</p>
         ) : (
           <ol aria-label="活动时间线">
-            {detail.milestones.map((milestone) => (
+            {milestones.map((milestone) => (
               <li key={milestone.id}>
                 <time dateTime={milestone.occursAt}>{formatDateTime(milestone.occursAt)}</time>
                 <strong>{milestone.title}</strong>
@@ -319,6 +420,78 @@ export function ActivityDetailPage({
             报名活动
           </button>
         )
+      ) : null}
+
+      {canMaintain ? (
+        <button type="button" onClick={() => setMaintenanceOpen(true)}>
+          维护活动流程
+        </button>
+      ) : null}
+
+      {canMaintain ? (
+        <EditorDrawer
+          open={maintenanceOpen}
+          title="维护活动流程"
+          description="在当前活动中维护筹备节点和比赛赛程。"
+          onClose={() => setMaintenanceOpen(false)}
+        >
+          <section aria-labelledby="add-milestone-title">
+            <h3 id="add-milestone-title">添加筹备节点</h3>
+            <form onSubmit={(event) => void addMilestone(event)}>
+              <label>
+                节点名称
+                <input
+                  value={milestoneTitle}
+                  onChange={(event) => setMilestoneTitle(event.target.value)}
+                />
+              </label>
+              <label>
+                发生时间
+                <input
+                  type="datetime-local"
+                  step="0.001"
+                  value={milestoneAt}
+                  onChange={(event) => setMilestoneAt(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={busy}>
+                添加节点
+              </button>
+            </form>
+          </section>
+          <section aria-labelledby="add-fixture-title">
+            <h3 id="add-fixture-title">添加比赛赛程</h3>
+            <form onSubmit={(event) => void addFixture(event)}>
+              <label>
+                轮次
+                <input
+                  value={fixtureRound}
+                  onChange={(event) => setFixtureRound(event.target.value)}
+                />
+              </label>
+              <label>
+                参赛方 A
+                <input value={fixtureA} onChange={(event) => setFixtureA(event.target.value)} />
+              </label>
+              <label>
+                参赛方 B
+                <input value={fixtureB} onChange={(event) => setFixtureB(event.target.value)} />
+              </label>
+              <label>
+                比赛时间
+                <input
+                  type="datetime-local"
+                  step="0.001"
+                  value={fixtureAt}
+                  onChange={(event) => setFixtureAt(event.target.value)}
+                />
+              </label>
+              <button type="submit" disabled={busy}>
+                添加赛程
+              </button>
+            </form>
+          </section>
+        </EditorDrawer>
       ) : null}
     </section>
   );
