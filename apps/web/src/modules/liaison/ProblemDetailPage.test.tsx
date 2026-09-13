@@ -261,6 +261,68 @@ describe('ProblemDetailPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('keeps pending applicants read-only when the maintainer has an explicit join deny', async () => {
+    const pendingMember = {
+      ...member,
+      id: 'member-applicant',
+      memberUid: 'demo-captain',
+      role: 'member' as const,
+      status: 'pending',
+    };
+    const maintainedTeam = { ...teams[0], members: [member, pendingMember] };
+    const request = vi.fn(async (path: string): Promise<unknown> => {
+      if (path === `/liaison/problems/${problem.id}`) return problem;
+      if (path === `/liaison/problems/${problem.id}/teams`) return [maintainedTeam];
+      if (path.includes('/posts') || path.includes('/outcomes')) return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const deniedMaintainer = {
+      ...student,
+      policies: [
+        {
+          action: 'liaison.problem.join',
+          resource: 'liaison_problem',
+          effect: 'deny',
+        },
+      ],
+    };
+
+    renderDetail({ request } as Pick<ApiClient, 'request'>, deniedMaintainer);
+
+    expect(await screen.findByText('demo-captain 申请加入')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '确认 demo-captain 加入' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(['paused', 'closed'] as const)(
+    'keeps pending applicants read-only while the problem is %s',
+    async (status) => {
+      const inactiveProblem = { ...problem, status };
+      const pendingMember = {
+        ...member,
+        id: 'member-applicant',
+        memberUid: 'demo-captain',
+        role: 'member' as const,
+        status: 'pending',
+      };
+      const maintainedTeam = { ...teams[0], members: [member, pendingMember] };
+      const request = vi.fn(async (path: string): Promise<unknown> => {
+        if (path === `/liaison/problems/${problem.id}`) return inactiveProblem;
+        if (path === `/liaison/problems/${problem.id}/teams`) return [maintainedTeam];
+        if (path.includes('/posts') || path.includes('/outcomes')) return [];
+        throw new Error(`Unexpected request: ${path}`);
+      });
+
+      renderDetail({ request } as Pick<ApiClient, 'request'>);
+
+      expect(await screen.findByText('demo-captain 申请加入')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: '确认 demo-captain 加入' }),
+      ).not.toBeInTheDocument();
+    },
+  );
+
   it('lets an explicit maintainer submit a draft for review', async () => {
     const draft = { ...problem, status: 'draft' as const };
     const activeClient = clientFor(draft);

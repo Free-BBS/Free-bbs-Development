@@ -172,6 +172,8 @@ export function ProblemDetailPage({
           <ul className="liaison-team-list" aria-label="参与课题的团队">
             {teams.map((team) => {
               const membership = team.members.find(({ memberUid }) => memberUid === user?.uid);
+              const canConfirmMembers =
+                isOpen && detail.canJoin && team.maintainerUid === user?.uid;
               const pendingMembers =
                 team.maintainerUid === user?.uid
                   ? team.members.filter(({ status }) => status === 'pending')
@@ -198,17 +200,19 @@ export function ProblemDetailPage({
                         {pendingMembers.map((candidate) => (
                           <li key={candidate.id}>
                             <span>{candidate.memberUid} 申请加入</span>
-                            <button
-                              className="secondary-action"
-                              type="button"
-                              disabled={detail.pending !== null}
-                              aria-label={`确认 ${candidate.memberUid} 加入`}
-                              onClick={() =>
-                                void detail.confirmMembership(team, candidate.memberUid)
-                              }
-                            >
-                              确认加入
-                            </button>
+                            {canConfirmMembers ? (
+                              <button
+                                className="secondary-action"
+                                type="button"
+                                disabled={detail.pending !== null}
+                                aria-label={`确认 ${candidate.memberUid} 加入`}
+                                onClick={() =>
+                                  void detail.confirmMembership(team, candidate.memberUid)
+                                }
+                              >
+                                确认加入
+                              </button>
+                            ) : null}
                           </li>
                         ))}
                       </ul>

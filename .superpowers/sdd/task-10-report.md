@@ -82,3 +82,18 @@ A separate RED test then established the applicant's confirmed `已加入团队`
 - Production build: contracts, API, and web passed; Vite transformed 88 modules.
 - Liaison, module-navigation, and responsive E2E with `PLAYWRIGHT_USE_SYSTEM_CHROME=true`: all 8 tests passed in 31.1 seconds.
 - `git diff --check` passed; only Windows line-ending conversion warnings were emitted.
+
+## Final confirmation-boundary remediation
+
+A final review found that the pending-member list was correctly scoped to the team maintainer, but its confirmation control did not also honor the problem lifecycle and the resolved `liaison.problem.join` permission.
+
+The RED run added two UI behavior classes and failed three cases as expected: an explicit join deny on an open problem, plus paused and closed problems, all still rendered the confirmation button. The detail view now renders that button only when the problem is open, the resolved join capability is allowed, and the current user is the team's maintainer. Pending applicants remain visible as read-only context to their maintainer when any of those action conditions is false. The API authorization and service behavior were not changed.
+
+Final verification:
+
+- Focused liaison UI/API and dashboard suite: 7 files passed, 54 tests passed.
+- Full Vitest: 139 files passed and 1 environment-gated file skipped; 627 tests passed and 9 skipped.
+- Type checks passed for contracts, API, and web.
+- Changed-file ESLint and Prettier checks passed.
+- Production build passed for contracts, API, and web; Vite transformed 88 modules.
+- Liaison E2E with `PLAYWRIGHT_USE_SYSTEM_CHROME=true`: 1 test passed in 10.8 seconds.
