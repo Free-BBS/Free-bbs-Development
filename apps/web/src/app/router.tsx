@@ -12,10 +12,16 @@ import { DashboardPage } from '../modules/dashboard/DashboardPage.js';
 import { ActivityDetailPage } from '../modules/events/ActivityDetailPage.js';
 import { EventsPage } from '../modules/events/EventsPage.js';
 import { FinancePage } from '../modules/finance/FinancePage.js';
-import { InformationPage } from '../modules/information/InformationPage.js';
+import { AnnouncementsPage } from '../modules/information/AnnouncementsPage.js';
+import { ConsultationsPage } from '../modules/information/ConsultationsPage.js';
+import { InformationLayout } from '../modules/information/InformationLayout.js';
+import { ProposalPool } from '../modules/information/ProposalPool.js';
+import { TriagePage } from '../modules/information/TriagePage.js';
 import { KnowledgePage } from '../modules/knowledge/KnowledgePage.js';
 import { LiaisonPage } from '../modules/liaison/LiaisonPage.js';
+import { ProblemDetailPage } from '../modules/liaison/ProblemDetailPage.js';
 import { SportsPage } from '../modules/sports/SportsPage.js';
+import { SportsTeamDetailPage } from '../modules/sports/SportsTeamDetailPage.js';
 import { AppShell } from './AppShell.js';
 import { MODULE_MANIFESTS, type ModuleStateOverrides } from './module-manifests.js';
 
@@ -56,10 +62,40 @@ function KnowledgeRoute() {
   return <KnowledgePage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
 }
 
-function InformationRoute() {
+function AnnouncementsRoute() {
   const auth = useAuth();
   return (
-    <InformationPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} user={auth.user} />
+    <AnnouncementsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} user={auth.user} />
+  );
+}
+
+function ConsultationsRoute() {
+  const auth = useAuth();
+  return (
+    <ConsultationsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} user={auth.user} />
+  );
+}
+
+function TriageRoute() {
+  const auth = useAuth();
+  return <TriagePage key={auth.demoUser ?? auth.user?.uid} client={auth.client} user={auth.user} />;
+}
+
+function ProposalPoolRoute() {
+  const auth = useAuth();
+  return (
+    <InformationLayout title="公开提案池">
+      <ProposalPool client={auth.client} user={auth.user} />
+    </InformationLayout>
+  );
+}
+
+function ProposalDetailRoute() {
+  const auth = useAuth();
+  return (
+    <InformationLayout title="提案详情">
+      <ProposalPool client={auth.client} user={auth.user} />
+    </InformationLayout>
   );
 }
 
@@ -90,9 +126,19 @@ function LiaisonRoute() {
   return <LiaisonPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
 }
 
+function ProblemDetailRoute() {
+  const { problemId = '' } = useParams();
+  return <ProblemDetailPage problemId={problemId} />;
+}
+
 function SportsRoute() {
   const auth = useAuth();
   return <SportsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
+function SportsTeamDetailRoute() {
+  const { teamId = '' } = useParams();
+  return <SportsTeamDetailPage teamId={teamId} />;
 }
 
 function FinanceRoute() {
@@ -119,13 +165,20 @@ export const appRouter = createBrowserRouter(
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: 'dashboard', element: <DashboardRoute /> },
         { path: 'knowledge', element: <KnowledgeRoute /> },
-        { path: 'information', element: <InformationRoute /> },
+        { path: 'information', element: <Navigate to="/information/announcements" replace /> },
+        { path: 'information/announcements', element: <AnnouncementsRoute /> },
+        { path: 'information/consultations', element: <ConsultationsRoute /> },
+        { path: 'information/triage', element: <TriageRoute /> },
+        { path: 'information/proposals', element: <ProposalPoolRoute /> },
+        { path: 'information/proposals/:proposalId', element: <ProposalDetailRoute /> },
         { path: 'interest-groups', element: <ClubsRoute /> },
         { path: 'clubs', element: <Navigate to="/interest-groups" replace /> },
         { path: 'events', element: <EventsRoute /> },
         { path: 'liaison', element: <LiaisonRoute /> },
+        { path: 'liaison/problems/:problemId', element: <ProblemDetailRoute /> },
         { path: 'events/:activityId', element: <ActivityDetailRoute /> },
         { path: 'sports', element: <SportsRoute /> },
+        { path: 'sports/:teamId', element: <SportsTeamDetailRoute /> },
         { path: 'finance', element: <FinanceRoute /> },
         { path: 'admin', element: <AdminRoute /> },
         { path: '*', element: <Navigate to="/dashboard" replace /> },

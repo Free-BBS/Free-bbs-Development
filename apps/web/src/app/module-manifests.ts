@@ -78,7 +78,7 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
   {
     id: 'liaison',
     name: '联络资源',
-    description: '维护组织通讯录与校内外联络资源。',
+    description: '围绕真实问题协作，并维护校内外联络资源。',
     route: '/liaison',
     icon: liaisonIcon,
     ownerTeam: '联络团队',

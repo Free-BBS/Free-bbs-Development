@@ -116,6 +116,31 @@ describe('AppShell', () => {
     }
   });
 
+  it('marks the information module active for nested routes', () => {
+    mockUseAuth.mockReturnValue(authenticatedAuth());
+
+    renderShell('/information/triage');
+
+    const navigation = screen.getByRole('navigation', { name: '主要导航' });
+    expect(within(navigation).getByRole('link', { name: '信息与咨询' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('navigation', { name: '移动导航' })).toHaveTextContent('信息与咨询');
+  });
+
+  it('does not mark information active for an unrelated route prefix', () => {
+    mockUseAuth.mockReturnValue(authenticatedAuth());
+
+    renderShell('/information-archive');
+
+    expect(
+      within(screen.getByRole('navigation', { name: '主要导航' })).getByRole('link', {
+        name: '信息与咨询',
+      }),
+    ).not.toHaveAttribute('aria-current', 'page');
+  });
+
   it('omits a disabled module from navigation', () => {
     mockUseAuth.mockReturnValue(authenticatedAuth());
 

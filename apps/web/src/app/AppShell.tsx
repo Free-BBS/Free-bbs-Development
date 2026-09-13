@@ -71,7 +71,6 @@ function ModuleNavigation({
             <div data-testid="module-navigation-item" key={module.id}>
               <NavLink
                 className={({ isActive }) => `module-link${isActive ? ' active' : ''}`}
-                end
                 to={module.route}
               >
                 {content}
