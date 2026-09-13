@@ -28,6 +28,7 @@ import type {
   LiaisonOutcomeRecord,
   LiaisonPostRecord,
   LiaisonProblemRecord,
+  LiaisonProblemVisibility,
   LiaisonResourceRecord,
   LiaisonTeamMemberRecord,
   LiaisonTeamRecord,
@@ -1141,6 +1142,10 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
   }
 
   async list(filters: ListFilters = {}): Promise<T[]> {
+    return this.filteredRecords(filters);
+  }
+
+  private filteredRecords(filters: ListFilters = {}): T[] {
     const query = filters.query?.trim().toLocaleLowerCase();
     return this.records()
       .filter((record) => !filters.status || record.status === filters.status)
@@ -1184,6 +1189,27 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
   async page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>> {
     validatePageRequest(request);
     const records = await this.list(filters);
+    const offset = (request.page - 1) * request.pageSize;
+    return {
+      items: records.slice(offset, offset + request.pageSize),
+      page: request.page,
+      pageSize: request.pageSize,
+      total: records.length,
+    };
+  }
+
+  async pageVisible(
+    filters: ListFilters | undefined,
+    request: PageRequest,
+    visibility: LiaisonProblemVisibility,
+  ): Promise<Page<LiaisonProblemRecord>> {
+    if (this.collection !== 'liaisonProblems') {
+      throw new Error('Authorized liaison pagination requires the liaison problem repository');
+    }
+    validatePageRequest(request);
+    const records = (this.filteredRecords(filters) as unknown as LiaisonProblemRecord[]).filter(
+      (problem) => liaisonProblemIsVisible(problem, visibility),
+    );
     const offset = (request.page - 1) * request.pageSize;
     return {
       items: records.slice(offset, offset + request.pageSize),
@@ -1566,6 +1592,24 @@ function validatePageRequest(request: PageRequest): void {
   if (!Number.isInteger(request.pageSize) || request.pageSize < 1 || request.pageSize > 100) {
     throw new RangeError('pageSize must be an integer between 1 and 100');
   }
+}
+
+function scopedAccessAllows(access: LiaisonProblemVisibility['read'], id: string): boolean {
+  if (access.deniedIds.includes(id)) return false;
+  return access.all || access.ids.includes(id);
+}
+
+function liaisonProblemIsVisible(
+  problem: LiaisonProblemRecord,
+  visibility: LiaisonProblemVisibility,
+): boolean {
+  if (!scopedAccessAllows(visibility.read, problem.id)) return false;
+  return (
+    visibility.publicStatuses.includes(problem.status) ||
+    problem.ownerUid === visibility.actorUid ||
+    scopedAccessAllows(visibility.maintain, problem.id) ||
+    (problem.status === 'pending_review' && scopedAccessAllows(visibility.review, problem.id))
+  );
 }
 
 export interface MemoryStoreOptions {

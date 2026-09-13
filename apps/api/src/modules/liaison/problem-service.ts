@@ -8,6 +8,7 @@ import type {
   LiaisonPostRecord,
   LiaisonProblemRecord,
   LiaisonProblemStatus,
+  LiaisonProblemVisibility,
   LiaisonTeamMemberRecord,
   LiaisonTeamRecord,
   Page,
@@ -83,6 +84,15 @@ function permitted(
   return authorize(actor, { action, resource, scope }).allowed;
 }
 
+function permittedAcross(
+  actor: AuthorizationContext,
+  action: string,
+  resource: 'liaison_problem' | 'liaison_outcome',
+  scopes: readonly ScopeRef[],
+): boolean {
+  return scopes.every((scope) => permitted(actor, action, resource, scope));
+}
+
 function problemScope(problemId: string): ScopeRef {
   return { type: 'liaison_problem', id: problemId };
 }
@@ -93,6 +103,43 @@ function teamScope(teamId: string): ScopeRef {
 
 function outcomeScope(outcomeId: string): ScopeRef {
   return { type: 'liaison_outcome', id: outcomeId };
+}
+
+function scopedProblemAccess(
+  actor: AuthorizationContext,
+  action: string,
+  resource: 'liaison_problem' | 'liaison_outcome',
+): LiaisonProblemVisibility['read'] {
+  const candidateIds = [
+    ...new Set(
+      (actor.policies ?? [])
+        .filter(({ scope }) => scope?.type === 'liaison_problem')
+        .map(({ scope }) => scope?.id)
+        .filter((id): id is string => id !== undefined && id !== '*'),
+    ),
+  ];
+  let probeId = '__liaison_problem_list_probe__';
+  while (candidateIds.includes(probeId)) probeId = `_${probeId}`;
+  const all = permitted(actor, action, resource, problemScope(probeId));
+  const decisions = candidateIds.map((id) => ({
+    id,
+    allowed: permitted(actor, action, resource, problemScope(id)),
+  }));
+  return {
+    all,
+    ids: all ? [] : decisions.filter(({ allowed }) => allowed).map(({ id }) => id),
+    deniedIds: all ? decisions.filter(({ allowed }) => !allowed).map(({ id }) => id) : [],
+  };
+}
+
+function problemVisibility(actor: AuthorizationContext): LiaisonProblemVisibility {
+  return {
+    actorUid: actor.uid,
+    publicStatuses: ['open', 'paused', 'closed'],
+    read: scopedProblemAccess(actor, 'liaison.problem.read', 'liaison_problem'),
+    maintain: scopedProblemAccess(actor, 'liaison.problem.update', 'liaison_problem'),
+    review: scopedProblemAccess(actor, 'liaison.problem.review', 'liaison_problem'),
+  };
 }
 
 function problemNotFound(): HttpError {
@@ -189,33 +236,14 @@ export class LiaisonProblemService {
       ...(input.status === undefined ? {} : { status: input.status }),
       ...(input.tag === undefined ? {} : { tag: input.tag }),
     };
-    const firstVisibleIndex = (page - 1) * pageSize;
-    const lastVisibleIndex = firstVisibleIndex + pageSize;
-    const items: ProblemProjection[] = [];
-    let visibleTotal = 0;
-    let storagePage = 1;
-    const storagePageSize = 100;
-    let storageTotal = 0;
-    do {
-      const records = await this.store.liaisonProblems.page(filters, {
-        page: storagePage,
-        pageSize: storagePageSize,
-      });
-      storageTotal = records.total;
-      for (const problem of records.items) {
-        if (!canSee(actor, problem)) continue;
-        if (visibleTotal >= firstVisibleIndex && visibleTotal < lastVisibleIndex) {
-          items.push(project(actor, problem));
-        }
-        visibleTotal += 1;
-      }
-      storagePage += 1;
-    } while ((storagePage - 1) * storagePageSize < storageTotal);
+    const records = await this.store.transaction((store) =>
+      store.liaisonProblems.pageVisible(filters, { page, pageSize }, problemVisibility(actor)),
+    );
     return {
-      items,
+      items: records.items.map((problem) => project(actor, problem)),
       page,
       pageSize,
-      total: visibleTotal,
+      total: records.total,
     };
   }
 
@@ -448,7 +476,10 @@ export class LiaisonProblemService {
         team === null ||
         team.problemId !== problemId ||
         !(await actorIsActive(store, actor.uid)) ||
-        !permitted(actor, 'liaison.problem.join', 'liaison_problem', teamScope(teamId))
+        !permittedAcross(actor, 'liaison.problem.join', 'liaison_problem', [
+          problemScope(problemId),
+          teamScope(teamId),
+        ])
       )
         throw teamNotFound();
       if (problem.status !== 'open') throw problemNotOpen();
@@ -498,7 +529,10 @@ export class LiaisonProblemService {
         team.problemId !== problemId ||
         team.maintainerUid !== actor.uid ||
         !(await actorIsActive(store, actor.uid)) ||
-        !permitted(actor, 'liaison.problem.join', 'liaison_problem', teamScope(teamId))
+        !permittedAcross(actor, 'liaison.problem.join', 'liaison_problem', [
+          problemScope(problemId),
+          teamScope(teamId),
+        ])
       ) {
         throw teamNotFound();
       }
@@ -554,7 +588,10 @@ export class LiaisonProblemService {
         if (
           team === null ||
           team.problemId !== problemId ||
-          !permitted(actor, 'liaison.problem.post', 'liaison_problem', teamScope(input.teamId))
+          !permittedAcross(actor, 'liaison.problem.post', 'liaison_problem', [
+            problemScope(problemId),
+            teamScope(input.teamId),
+          ])
         )
           throw teamNotFound();
         if (problem.status !== 'open') throw problemNotOpen();
@@ -620,12 +657,10 @@ export class LiaisonProblemService {
         team === null ||
         team.problemId !== problemId ||
         !(await actorIsActive(store, actor.uid)) ||
-        !permitted(
-          actor,
-          'liaison.problem.outcome.submit',
-          'liaison_outcome',
+        !permittedAcross(actor, 'liaison.problem.outcome.submit', 'liaison_outcome', [
+          problemScope(problemId),
           teamScope(input.teamId),
-        )
+        ])
       )
         throw teamNotFound();
       if (problem.status !== 'open' && problem.status !== 'paused')
@@ -680,12 +715,11 @@ export class LiaisonProblemService {
         team === null ||
         team.problemId !== problemId ||
         !(await actorIsActive(store, actor.uid)) ||
-        !permitted(
-          actor,
-          'liaison.problem.outcome.manage',
-          'liaison_outcome',
+        !permittedAcross(actor, 'liaison.problem.outcome.manage', 'liaison_outcome', [
+          problemScope(problemId),
+          teamScope(outcome.teamId),
           outcomeScope(outcomeId),
-        )
+        ])
       )
         throw outcomeNotFound();
       if (!publicStatuses.has(problem.status)) throw problemNotAcceptingOutcomes();

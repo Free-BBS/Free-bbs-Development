@@ -90,6 +90,28 @@ export interface RecordRepository<T extends StoredRecord> {
   delete(id: string): Promise<boolean>;
 }
 
+export interface ScopedRecordAccess {
+  all: boolean;
+  ids: string[];
+  deniedIds: string[];
+}
+
+export interface LiaisonProblemVisibility {
+  actorUid: string;
+  publicStatuses: LiaisonProblemStatus[];
+  read: ScopedRecordAccess;
+  maintain: ScopedRecordAccess;
+  review: ScopedRecordAccess;
+}
+
+export interface LiaisonProblemRepository extends RecordRepository<LiaisonProblemRecord> {
+  pageVisible(
+    filters: ListFilters | undefined,
+    request: PageRequest,
+    visibility: LiaisonProblemVisibility,
+  ): Promise<Page<LiaisonProblemRecord>>;
+}
+
 export interface SubjectRecord extends StoredRecord {
   uid: string;
   displayName: string;
@@ -384,7 +406,7 @@ export interface DevelopmentStore {
   sportsTeamMembers: RecordRepository<SportsTeamMemberRecord>;
   sportsCheckins: RecordRepository<SportsCheckinRecord>;
   liaisonResources: RecordRepository<LiaisonResourceRecord>;
-  liaisonProblems: RecordRepository<LiaisonProblemRecord>;
+  liaisonProblems: LiaisonProblemRepository;
   liaisonTeams: RecordRepository<LiaisonTeamRecord>;
   liaisonTeamMembers: RecordRepository<LiaisonTeamMemberRecord>;
   liaisonPosts: RecordRepository<LiaisonPostRecord>;

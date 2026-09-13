@@ -34,6 +34,7 @@ import type {
   LiaisonOutcomeRecord,
   LiaisonPostRecord,
   LiaisonProblemRecord,
+  LiaisonProblemVisibility,
   LiaisonResourceRecord,
   LiaisonTeamMemberRecord,
   LiaisonTeamRecord,
@@ -605,6 +606,49 @@ function buildWhere(
   };
 }
 
+function buildScopedRecordAccess(access: LiaisonProblemVisibility['read']): {
+  clause: string;
+  values: SqlValue[];
+} {
+  const allowedIds = [...new Set(access.ids)];
+  const deniedIds = [...new Set(access.deniedIds)];
+  const clauses: string[] = [];
+  const values: SqlValue[] = [];
+  if (!access.all) {
+    if (allowedIds.length === 0) return { clause: '1 = 0', values };
+    clauses.push(`id IN (${allowedIds.map(() => '?').join(', ')})`);
+    values.push(...allowedIds);
+  }
+  if (deniedIds.length > 0) {
+    clauses.push(`id NOT IN (${deniedIds.map(() => '?').join(', ')})`);
+    values.push(...deniedIds);
+  }
+  return { clause: clauses.length === 0 ? '1 = 1' : clauses.join(' AND '), values };
+}
+
+function buildLiaisonProblemVisibilityWhere(visibility: LiaisonProblemVisibility): {
+  clause: string;
+  values: SqlValue[];
+} {
+  const read = buildScopedRecordAccess(visibility.read);
+  const maintain = buildScopedRecordAccess(visibility.maintain);
+  const review = buildScopedRecordAccess(visibility.review);
+  const statuses = [...new Set(visibility.publicStatuses)];
+  const publicClause =
+    statuses.length === 0 ? '1 = 0' : `status IN (${statuses.map(() => '?').join(', ')})`;
+  return {
+    clause: `(${read.clause}) AND (${publicClause} OR owner_uid = ? OR (${maintain.clause}) OR (status = ? AND (${review.clause})))`,
+    values: [
+      ...read.values,
+      ...statuses,
+      visibility.actorUid,
+      ...maintain.values,
+      'pending_review',
+      ...review.values,
+    ],
+  };
+}
+
 class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
   constructor(
     private readonly executor: Executor,
@@ -708,6 +752,37 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
     );
     return {
       items: rows.map((row) => this.decode(row)),
+      page: request.page,
+      pageSize: request.pageSize,
+      total,
+    };
+  }
+
+  async pageVisible(
+    filters: ListFilters | undefined,
+    request: PageRequest,
+    visibility: LiaisonProblemVisibility,
+  ): Promise<Page<LiaisonProblemRecord>> {
+    if (this.definition.table !== 'liaison_problems') {
+      throw new Error('Authorized liaison pagination requires the liaison problem repository');
+    }
+    validatePageRequest(request);
+    const base = buildWhere(this.definition, filters ?? {});
+    const authorized = buildLiaisonProblemVisibilityWhere(visibility);
+    const where = `${base.where}${base.where === '' ? ' WHERE ' : ' AND '}${authorized.clause}`;
+    const values = [...base.values, ...authorized.values];
+    const [countRows] = await this.executor.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total FROM ${this.definition.table}${where}`,
+      values,
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+    const offset = (request.page - 1) * request.pageSize;
+    const [rows] = await this.executor.query<RowDataPacket[]>(
+      `SELECT * FROM ${this.definition.table}${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      [...values, request.pageSize, offset],
+    );
+    return {
+      items: rows.map((row) => this.decode(row)) as unknown as LiaisonProblemRecord[],
       page: request.page,
       pageSize: request.pageSize,
       total,
