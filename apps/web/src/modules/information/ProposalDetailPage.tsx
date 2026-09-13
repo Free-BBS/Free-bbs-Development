@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
@@ -82,10 +82,31 @@ function isPublicProposal(value: unknown): value is PublicProposal {
     typeof candidate.problemDescription === 'string' &&
     typeof candidate.proposedSolution === 'string' &&
     typeof candidate.category === 'string' &&
+    typeof candidate.submitterUid === 'string' &&
+    (candidate.assigneeUid === null || typeof candidate.assigneeUid === 'string') &&
     typeof candidate.publicProgress === 'string' &&
     (candidate.dueAt === null || typeof candidate.dueAt === 'string') &&
+    typeof candidate.createdAt === 'string' &&
+    typeof candidate.updatedAt === 'string' &&
     statuses.includes(candidate.status as ProposalStatus)
   );
+}
+
+function projectPublicProposal(proposal: PublicProposal): PublicProposal {
+  return {
+    id: proposal.id,
+    title: proposal.title,
+    problemDescription: proposal.problemDescription,
+    proposedSolution: proposal.proposedSolution,
+    category: proposal.category,
+    submitterUid: proposal.submitterUid,
+    assigneeUid: proposal.assigneeUid,
+    dueAt: proposal.dueAt,
+    publicProgress: proposal.publicProgress,
+    status: proposal.status,
+    createdAt: proposal.createdAt,
+    updatedAt: proposal.updatedAt,
+  };
 }
 
 function isMaintenanceProposal(value: unknown): value is MaintenanceProposal {
@@ -93,8 +114,32 @@ function isMaintenanceProposal(value: unknown): value is MaintenanceProposal {
   return typeof value.internalNote === 'string';
 }
 
-function dateTimeValue(value: string | null): string {
-  return value === null ? '' : value.slice(0, 16);
+function padded(value: number, width = 2): string {
+  return String(value).padStart(width, '0');
+}
+
+export function utcInstantToLocalDateTimeInput(value: string | null): string {
+  if (value === null) return '';
+  const instant = new Date(value);
+  return `${instant.getFullYear()}-${padded(instant.getMonth() + 1)}-${padded(instant.getDate())}T${padded(instant.getHours())}:${padded(instant.getMinutes())}:${padded(instant.getSeconds())}.${padded(instant.getMilliseconds(), 3)}`;
+}
+
+export function localDateTimeInputToUtcInstant(value: string): string | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/.exec(
+    value,
+  );
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second = '0', milliseconds = '0'] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+    Number(milliseconds.padEnd(3, '0')),
+  ).toISOString();
 }
 
 function dueDate(value: string | null): string {
@@ -112,30 +157,44 @@ export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailP
   const [dueAt, setDueAt] = useState('');
   const [publicProgress, setPublicProgress] = useState('');
   const [category, setCategory] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const requestGeneration = useRef(0);
+
+  const applyProposal = useCallback(
+    (loaded: unknown) => {
+      if (!isPublicProposal(loaded)) throw new Error('Invalid proposal response');
+      const publicProposal = projectPublicProposal(loaded);
+      setProposal(publicProposal);
+      setStatus(publicProposal.status);
+      setAssigneeUid(publicProposal.assigneeUid ?? '');
+      setDueAt(utcInstantToLocalDateTimeInput(publicProposal.dueAt));
+      setPublicProgress(publicProposal.publicProgress);
+      setCategory(publicProposal.category);
+      setInternalNote(maintenance && isMaintenanceProposal(loaded) ? loaded.internalNote : '');
+    },
+    [maintenance],
+  );
 
   const loadProposal = useCallback(async () => {
-    setError(null);
+    const generation = ++requestGeneration.current;
+    setLoadError(null);
     setProposal(null);
     try {
       const loaded = await api.request<unknown>(
         `/information/proposals/${encodeURIComponent(proposalId)}`,
       );
-      if (!isPublicProposal(loaded)) throw new Error('Invalid proposal response');
-      setProposal(loaded);
-      setStatus(loaded.status);
-      setAssigneeUid(loaded.assigneeUid ?? '');
-      setDueAt(dateTimeValue(loaded.dueAt));
-      setPublicProgress(loaded.publicProgress);
-      setCategory(loaded.category);
-      setInternalNote(isMaintenanceProposal(loaded) ? loaded.internalNote : '');
+      if (generation !== requestGeneration.current) return;
+      applyProposal(loaded);
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : '提案详情加载失败，请稍后重试');
+      if (generation === requestGeneration.current) {
+        setLoadError(caught instanceof ApiError ? caught.message : '提案详情加载失败，请稍后重试');
+      }
     }
-  }, [api, proposalId]);
+  }, [api, applyProposal, proposalId]);
 
   useEffect(() => {
     void loadProposal();
@@ -145,7 +204,7 @@ export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailP
     event.preventDefault();
     if (proposal === null || !maintenance) return;
     setPending(true);
-    setError(null);
+    setMutationError(null);
     setFeedback(null);
     try {
       const updated = await api.request<unknown>(`/information/proposals/${proposal.id}`, {
@@ -155,23 +214,23 @@ export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailP
           category: category.trim(),
           status,
           assigneeUid: assigneeUid.trim() || null,
-          dueAt: dueAt ? new Date(dueAt).toISOString() : null,
+          dueAt: localDateTimeInputToUtcInstant(dueAt),
           publicProgress: publicProgress.trim(),
           internalNote: internalNote.trim(),
         }),
       });
-      if (!isPublicProposal(updated)) throw new Error('Invalid proposal response');
-      setProposal(updated);
-      setInternalNote(isMaintenanceProposal(updated) ? updated.internalNote : '');
+      applyProposal(updated);
       setFeedback('提案维护信息已保存');
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : '提案维护信息保存失败，请稍后重试');
+      setMutationError(
+        caught instanceof ApiError ? caught.message : '提案维护信息保存失败，请稍后重试',
+      );
     } finally {
       setPending(false);
     }
   }
 
-  if (error !== null && proposal === null) return <p role="alert">{error}</p>;
+  if (loadError !== null && proposal === null) return <p role="alert">{loadError}</p>;
   if (proposal === null) return <p role="status">正在加载提案详情…</p>;
 
   return (
@@ -248,6 +307,7 @@ export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailP
                 完成期限
                 <input
                   type="datetime-local"
+                  step="0.001"
                   value={dueAt}
                   onChange={(event) => setDueAt(event.target.value)}
                 />
@@ -271,12 +331,12 @@ export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailP
               <button type="submit" disabled={pending}>
                 保存提案维护信息
               </button>
+              {feedback ? <p role="status">{feedback}</p> : null}
+              {mutationError ? <p role="alert">{mutationError}</p> : null}
             </form>
           </EditorDrawer>
         ) : null}
       </div>
-      {feedback ? <p role="status">{feedback}</p> : null}
-      {error ? <p role="alert">{error}</p> : null}
     </section>
   );
 }

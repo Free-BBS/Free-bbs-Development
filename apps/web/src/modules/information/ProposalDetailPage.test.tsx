@@ -1,11 +1,15 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { UserContext } from '@freebbs-development/contracts';
 import type { ApiClient } from '../../core/api/client.js';
-import { ProposalDetailPage } from './ProposalDetailPage.js';
+import {
+  ProposalDetailPage,
+  localDateTimeInputToUtcInstant,
+  utcInstantToLocalDateTimeInput,
+} from './ProposalDetailPage.js';
 
 const student: UserContext = {
   uid: 'proposal-student',
@@ -49,6 +53,12 @@ function renderDetail(user: UserContext, response: object, request = vi.fn(async
 }
 
 describe('ProposalDetailPage', () => {
+  it('round-trips an unchanged UTC due date through the local datetime input', () => {
+    const instant = '2026-10-08T10:07:00.000Z';
+
+    expect(localDateTimeInputToUtcInstant(utcInstantToLocalDateTimeInput(instant))).toBe(instant);
+  });
+
   it('renders a public progress timeline without exposing an unexpected internal note', async () => {
     renderDetail(student, { ...publicProposal, internalNote: '不得展示的内部事项' });
 
@@ -57,7 +67,44 @@ describe('ProposalDetailPage', () => {
     expect(screen.getByRole('list', { name: '提案进展时间线' })).toHaveTextContent('rights-owner');
     expect(screen.getByRole('list', { name: '提案进展时间线' })).toHaveTextContent('2026-10-08');
     expect(screen.queryByText('不得展示的内部事项')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('提案维护抽屉')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '维护提案' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '维护提案' })).not.toBeInTheDocument();
+  });
+
+  it('does not let a stale detail response overwrite the current proposal route', async () => {
+    let resolveFirst!: (value: object) => void;
+    let resolveSecond!: (value: object) => void;
+    const request = vi.fn(
+      () =>
+        new Promise<object>((resolve) => {
+          if (request.mock.calls.length === 1) resolveFirst = resolve;
+          else resolveSecond = resolve;
+        }),
+    );
+    const view = render(
+      <MemoryRouter>
+        <ProposalDetailPage
+          client={{ request } as unknown as ApiClient}
+          proposalId="proposal-a"
+          user={student}
+        />
+      </MemoryRouter>,
+    );
+
+    view.rerender(
+      <MemoryRouter>
+        <ProposalDetailPage
+          client={{ request } as unknown as ApiClient}
+          proposalId="proposal-b"
+          user={student}
+        />
+      </MemoryRouter>,
+    );
+    resolveSecond({ ...publicProposal, id: 'proposal-b', title: '提案 B' });
+    expect(await screen.findByRole('heading', { name: '提案 B' })).toBeInTheDocument();
+    resolveFirst({ ...publicProposal, id: 'proposal-a', title: '提案 A' });
+    expect(await screen.findByRole('heading', { name: '提案 B' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: '提案 A' })).not.toBeInTheDocument();
   });
 
   it('keeps maintenance controls in a right-side drawer for authorized maintainers', async () => {
@@ -78,5 +125,33 @@ describe('ProposalDetailPage', () => {
         body: expect.stringContaining('"status":"advancing"'),
       }),
     );
+  });
+
+  it('keeps mutation errors inside the drawer and reconciles normalized maintenance responses', async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({ ...publicProposal, internalNote: '联系物业' })
+      .mockRejectedValueOnce(new Error('network down'))
+      .mockResolvedValueOnce({
+        ...publicProposal,
+        publicProgress: '服务端已规范化进展',
+        internalNote: '服务端已规范化备注',
+      });
+    renderDetail(maintainer, publicProposal, request);
+    const actor = userEvent.setup();
+
+    await screen.findByRole('heading', { name: '增加夜间自习空间' });
+    await actor.click(screen.getByRole('button', { name: '维护提案' }));
+    const drawer = await screen.findByRole('dialog', { name: '维护提案' });
+    await actor.click(within(drawer).getByRole('button', { name: '保存提案维护信息' }));
+    expect(await within(drawer).findByRole('alert')).toHaveTextContent('提案维护信息保存失败');
+    expect(screen.queryByRole('alert')).toBe(drawer.querySelector('[role="alert"]'));
+
+    await actor.click(within(drawer).getByRole('button', { name: '保存提案维护信息' }));
+    expect(await within(drawer).findByRole('status')).toHaveTextContent('提案维护信息已保存');
+    expect(screen.getByRole('list', { name: '提案进展时间线' })).toHaveTextContent(
+      '服务端已规范化进展',
+    );
+    expect(within(drawer).getByLabelText('内部备注')).toHaveValue('服务端已规范化备注');
   });
 });
