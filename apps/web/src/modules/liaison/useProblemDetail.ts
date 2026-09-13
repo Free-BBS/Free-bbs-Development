@@ -142,6 +142,7 @@ export function useProblemDetail({ api, problemId, user }: UseProblemDetailOptio
       const generation = requestGeneration.current;
       setPending(key);
       setActionError(null);
+      setFeedback(null);
       try {
         const result = await operation();
         return generation === requestGeneration.current ? result : null;
@@ -172,8 +173,8 @@ export function useProblemDetail({ api, problemId, user }: UseProblemDetailOptio
     return true;
   }
 
-  async function requestJoin(team: LiaisonTeam) {
-    const membership = await run(
+  async function requestJoin(team: LiaisonTeam): Promise<void> {
+    const membership = await run<LiaisonTeam['members'][number]>(
       `join:${team.id}`,
       () =>
         api.request(
@@ -186,7 +187,43 @@ export function useProblemDetail({ api, problemId, user }: UseProblemDetailOptio
         ),
       '加入申请提交失败',
     );
-    if (membership !== null) setFeedback(`已向“${team.name}”提交加入申请`);
+    if (membership === null) return;
+    setTeams((current) =>
+      current.map((item) =>
+        item.id === team.id ? { ...item, members: [...item.members, membership] } : item,
+      ),
+    );
+    setFeedback(`已向“${team.name}”提交加入申请`);
+  }
+
+  async function confirmMembership(team: LiaisonTeam, memberUid: string): Promise<void> {
+    const membership = await run<LiaisonTeam['members'][number]>(
+      `confirm:${team.id}:${memberUid}`,
+      () =>
+        api.request<LiaisonTeam['members'][number]>(
+          `/liaison/problems/${encodeURIComponent(problemId)}/teams/${encodeURIComponent(team.id)}/members`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'confirm', memberUid }),
+          },
+        ),
+      '确认加入失败，请重试',
+    );
+    if (membership === null) return;
+    setTeams((current) =>
+      current.map((item) =>
+        item.id === team.id
+          ? {
+              ...item,
+              members: item.members.map((candidate) =>
+                candidate.id === membership.id ? membership : candidate,
+              ),
+            }
+          : item,
+      ),
+    );
+    setFeedback(`已确认 ${memberUid} 加入`);
   }
 
   async function createPost(input: {
@@ -321,6 +358,7 @@ export function useProblemDetail({ api, problemId, user }: UseProblemDetailOptio
     load,
     createTeam,
     requestJoin,
+    confirmMembership,
     createPost,
     submitOutcome,
     adoptOutcome,

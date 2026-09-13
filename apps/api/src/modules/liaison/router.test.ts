@@ -47,6 +47,33 @@ async function addResource(
 }
 
 describe('liaison API', () => {
+  it('rejects an inverted problem schedule at the request schema boundary', async () => {
+    const { app } = liaisonApp();
+    const response = await request(app)
+      .post('/api/development/v1/liaison/problems')
+      .set(liaisonHeaders)
+      .send({
+        title: 'Invalid schedule',
+        summary: 'The deadline is before the start.',
+        background: 'A research group supplied an anonymized sample.',
+        sourceType: 'lab',
+        sourceName: 'Campus data lab',
+        tags: ['data'],
+        expectedOutcome: 'A working public prototype',
+        constraints: '',
+        startsAt: '2026-10-02T08:00:00.000Z',
+        deadline: '2026-10-01T08:00:00.000Z',
+        publicContact: 'Public liaison desk',
+        internalContactNote: '',
+      })
+      .expect(400);
+
+    expect(response.body.data.error).toMatchObject({
+      code: 'invalid_request',
+      message: '开始时间不得晚于截止时间',
+    });
+  });
+
   it('lets anonymous callers read only public resources', async () => {
     const { app, store } = liaisonApp();
     await addResource(store, {

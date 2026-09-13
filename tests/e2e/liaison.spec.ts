@@ -20,6 +20,63 @@ test('liaison supports proxy entry, explicit review and a student problem commun
   const title = `E2E 校企真实问题 ${suffix}`;
   const editedTitle = `${title} 已校对`;
   const teamName = `E2E 探索队 ${suffix}`;
+  const existingTeamName = `E2E 现有团队 ${suffix}-${Date.now()}`;
+
+  const existingTeamResponse = await request.post(
+    `${apiRoot}/liaison/problems/liaison-problem-lab-energy/teams`,
+    {
+      headers: headers('demo-student'),
+      data: { name: existingTeamName, proposal: '验证已有团队的申请与确认闭环。' },
+    },
+  );
+  expect(existingTeamResponse.status(), await existingTeamResponse.text()).toBe(201);
+  const existingTeamId = ((await existingTeamResponse.json()) as { data: { id: string } }).data.id;
+
+  await page.goto('./liaison/problems/liaison-problem-lab-energy');
+  await switchUser(page, 'demo-captain');
+  const existingTeam = page.locator('.liaison-team-list > li').filter({
+    hasText: existingTeamName,
+  });
+  await existingTeam.getByRole('button', { name: '申请加入' }).click();
+  await expect(existingTeam.getByText('申请待确认')).toBeVisible();
+  await expect(existingTeam.getByRole('button', { name: '申请加入' })).toHaveCount(0);
+
+  await page.reload();
+  await switchUser(page, 'demo-captain');
+  await expect(
+    page
+      .locator('.liaison-team-list > li')
+      .filter({ hasText: existingTeamName })
+      .getByText('申请待确认'),
+  ).toBeVisible();
+  await switchUser(page, 'demo-student');
+  await page
+    .locator('.liaison-team-list > li')
+    .filter({ hasText: existingTeamName })
+    .getByRole('button', { name: '确认 demo-captain 加入' })
+    .click();
+  await expect(page.getByRole('status')).toHaveText('已确认 demo-captain 加入');
+  await switchUser(page, 'demo-captain');
+  await expect(
+    page
+      .locator('.liaison-team-list > li')
+      .filter({ hasText: existingTeamName })
+      .getByText('已加入团队'),
+  ).toBeVisible();
+
+  const confirmedMembership = await request.get(
+    `${apiRoot}/liaison/problems/liaison-problem-lab-energy/teams`,
+    { headers: headers('demo-captain') },
+  );
+  expect(confirmedMembership.status(), await confirmedMembership.text()).toBe(200);
+  const confirmedTeams = (await confirmedMembership.json()) as {
+    data: Array<{ id: string; members: Array<{ memberUid: string; status: string }> }>;
+  };
+  expect(
+    confirmedTeams.data
+      .find(({ id }) => id === existingTeamId)
+      ?.members.find(({ memberUid }) => memberUid === 'demo-captain'),
+  ).toMatchObject({ status: 'active' });
 
   await page.goto('./liaison');
   await expect(page.getByRole('heading', { name: '真实问题揭榜' })).toBeVisible();

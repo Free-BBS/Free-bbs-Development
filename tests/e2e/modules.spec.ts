@@ -7,14 +7,14 @@ const adminHeaders = {
 };
 
 const modules = [
-  ['/knowledge', 'General'],
-  ['/information', '公开信息'],
-  ['/interest-groups', '趣缘群体'],
-  ['/events', '活动'],
-  ['/liaison', '联络资源'],
-  ['/sports', '体育代表队'],
-  ['/finance', '财务治理'],
-  ['/admin', '治理管理台'],
+  ['/knowledge', '/knowledge', 'General'],
+  ['/information', '/information/announcements', '公开信息'],
+  ['/interest-groups', '/interest-groups', '趣缘群体'],
+  ['/events', '/events', '活动'],
+  ['/liaison', '/liaison', '真实问题揭榜'],
+  ['/sports', '/sports', '体育代表队'],
+  ['/finance', '/finance', '财务治理'],
+  ['/admin', '/admin', '治理管理台'],
 ] as const;
 
 async function openAdmin(page: Page) {
@@ -34,18 +34,18 @@ test('navigates to every development module from the shell', async ({ page }) =>
   await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
   await expect(page.locator('.user-card')).toContainText('demo-admin');
 
-  for (const [route, heading] of modules) {
+  for (const [route, destination, heading] of modules) {
     const link = page.locator(`.sidebar .module-nav a[href="/development${route}"]`);
     await expect(link).toBeVisible();
     await link.click();
-    await expect(page).toHaveURL(new RegExp(`/development${route}$`));
+    await expect(page).toHaveURL(new RegExp(`/development${destination}$`));
     await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
   }
 });
 
 test('lets an ordinary student submit a consultation', async ({ page }) => {
   const title = `E2E 咨询 ${Date.now()}`;
-  await page.goto('./information');
+  await page.goto('./information/consultations');
 
   await expect(page.getByRole('heading', { name: '提交咨询' })).toBeVisible();
   await page.getByLabel('咨询标题').fill(title);

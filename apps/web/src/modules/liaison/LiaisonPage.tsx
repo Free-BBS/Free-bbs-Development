@@ -61,37 +61,43 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
   const [pending, setPending] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const requestGeneration = useRef(0);
 
-  const load = useCallback(async () => {
-    const generation = ++requestGeneration.current;
-    setState('loading');
-    setFeedback(null);
-    const params = new URLSearchParams({ page: '1', pageSize: '20' });
-    if (filters.query) params.set('query', filters.query);
-    if (filters.status) params.set('status', filters.status);
-    try {
-      const result = await api.request<ProblemPage>(`/liaison/problems?${params.toString()}`);
-      if (generation !== requestGeneration.current) return;
-      const withCounts = await Promise.all(
-        result.items.map(async (problem): Promise<BoardProblem> => {
-          try {
-            const teams = await api.request<LiaisonTeam[]>(
-              `/liaison/problems/${encodeURIComponent(problem.id)}/teams`,
-            );
-            return { ...problem, teamCount: teams.length };
-          } catch {
-            return { ...problem, teamCount: null };
-          }
-        }),
-      );
-      if (generation !== requestGeneration.current) return;
-      setProblems(withCounts);
-      setState('ready');
-    } catch {
-      if (generation === requestGeneration.current) setState('error');
-    }
-  }, [api, filters]);
+  const load = useCallback(
+    async (successMessage?: string) => {
+      const generation = ++requestGeneration.current;
+      setState('loading');
+      setFeedback(null);
+      setActionError(null);
+      const params = new URLSearchParams({ page: '1', pageSize: '20' });
+      if (filters.query) params.set('query', filters.query);
+      if (filters.status) params.set('status', filters.status);
+      try {
+        const result = await api.request<ProblemPage>(`/liaison/problems?${params.toString()}`);
+        if (generation !== requestGeneration.current) return;
+        const withCounts = await Promise.all(
+          result.items.map(async (problem): Promise<BoardProblem> => {
+            try {
+              const teams = await api.request<LiaisonTeam[]>(
+                `/liaison/problems/${encodeURIComponent(problem.id)}/teams`,
+              );
+              return { ...problem, teamCount: teams.length };
+            } catch {
+              return { ...problem, teamCount: null };
+            }
+          }),
+        );
+        if (generation !== requestGeneration.current) return;
+        setProblems(withCounts);
+        setState('ready');
+        if (successMessage) setFeedback(successMessage);
+      } catch {
+        if (generation === requestGeneration.current) setState('error');
+      }
+    },
+    [api, filters],
+  );
 
   useEffect(() => {
     void load();
@@ -109,6 +115,7 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
     const generation = requestGeneration.current;
     setPending('create');
     setEditorError(null);
+    setFeedback(null);
     try {
       await api.request<LiaisonProblem>('/liaison/problems', {
         method: 'POST',
@@ -118,8 +125,7 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
       if (generation !== requestGeneration.current) return;
       setEditorOpen(false);
       setPending(null);
-      await load();
-      setFeedback('问题草稿已保存');
+      await load('问题草稿已保存');
     } catch (error) {
       if (generation === requestGeneration.current) {
         setEditorError(apiMessage(error, '保存失败，请稍后重试'));
@@ -133,6 +139,7 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
     const generation = requestGeneration.current;
     setPending(`review:${problem.id}`);
     setFeedback(null);
+    setActionError(null);
     try {
       const updated = await api.request<LiaisonProblem>(
         `/liaison/problems/${encodeURIComponent(problem.id)}/review`,
@@ -149,7 +156,7 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
       setFeedback(decision === 'approve' ? '课题已批准发布' : '课题已驳回修改');
     } catch (error) {
       if (generation === requestGeneration.current) {
-        setFeedback(apiMessage(error, '审核失败，请重试'));
+        setActionError(apiMessage(error, '审核失败，请重试'));
       }
     } finally {
       if (generation === requestGeneration.current) setPending(null);
@@ -169,6 +176,7 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
         actions={
           canCreate ? (
             <button
+              className="secondary-action"
               type="button"
               onClick={() => {
                 setEditorError(null);
@@ -203,7 +211,9 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
             ))}
           </select>
         </label>
-        <button type="submit">筛选</button>
+        <button className="secondary-action" type="submit">
+          筛选
+        </button>
       </FilterBar>
 
       <ResponsiveRecordList
@@ -256,12 +266,13 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
                 </div>
               </dl>
               <div className="liaison-card-actions">
-                <Link className="primary-action-link" to={`/liaison/problems/${problem.id}`}>
+                <Link className="secondary-action-link" to={`/liaison/problems/${problem.id}`}>
                   查看课题
                 </Link>
                 {canReview ? (
                   <>
                     <button
+                      className="secondary-action"
                       type="button"
                       disabled={pending !== null}
                       onClick={() => void review(problem, 'approve')}
@@ -269,6 +280,7 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
                       批准发布
                     </button>
                     <button
+                      className="secondary-action"
                       type="button"
                       disabled={pending !== null}
                       onClick={() => void review(problem, 'reject')}
@@ -283,11 +295,16 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
         }}
       />
       {state === 'error' ? (
-        <button type="button" onClick={() => void load()}>
+        <button
+          type="button"
+          className="secondary-action"
+          onClick={() => void load('问题榜已刷新')}
+        >
           重新加载问题榜
         </button>
       ) : null}
       {feedback ? <p role="status">{feedback}</p> : null}
+      {actionError ? <p role="alert">{actionError}</p> : null}
 
       {canCreate ? (
         <ProblemEditorDrawer

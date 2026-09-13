@@ -121,6 +121,22 @@ export function ProblemEditorDrawer({
       setValidationError('请填写有效的开始或截止时间');
       return;
     }
+    if (startsAt !== null && deadline !== null && Date.parse(startsAt) > Date.parse(deadline)) {
+      setValidationError('开始时间不得晚于截止时间');
+      return;
+    }
+    const tags = draft.tags
+      .split(/[，,]/)
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+    if (tags.length > 20) {
+      setValidationError('最多填写 20 个标签');
+      return;
+    }
+    if (tags.some((tag) => tag.length > 64)) {
+      setValidationError('每个标签最多 64 个字符');
+      return;
+    }
     setValidationError(null);
     void onSubmit({
       title: draft.title.trim(),
@@ -128,10 +144,7 @@ export function ProblemEditorDrawer({
       background: draft.background.trim(),
       sourceType: draft.sourceType,
       sourceName: draft.sourceName.trim(),
-      tags: draft.tags
-        .split(/[，,]/)
-        .map((tag) => tag.trim())
-        .filter(Boolean),
+      tags,
       expectedOutcome: draft.expectedOutcome.trim(),
       constraints: draft.constraints.trim(),
       startsAt,

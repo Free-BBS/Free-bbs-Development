@@ -219,6 +219,16 @@ function normalizeTime(value: string | null): string | null {
   return value === null ? null : new Date(value).toISOString();
 }
 
+function ensureProblemSchedule(startsAt: string | null, deadline: string | null): void {
+  if (startsAt !== null && deadline !== null && Date.parse(startsAt) > Date.parse(deadline)) {
+    throw new HttpError(
+      400,
+      'invalid_problem_schedule',
+      'Problem start time must not be later than its deadline',
+    );
+  }
+}
+
 export class LiaisonProblemService {
   constructor(
     private readonly store: DevelopmentStore,
@@ -268,6 +278,7 @@ export class LiaisonProblemService {
       ) {
         throw new HttpError(403, 'forbidden', 'Liaison problem create permission is required');
       }
+      ensureProblemSchedule(input.startsAt, input.deadline);
       const created = await store.liaisonProblems.create({
         ...input,
         startsAt: normalizeTime(input.startsAt),
@@ -309,6 +320,10 @@ export class LiaisonProblemService {
         ...(patch.startsAt === undefined ? {} : { startsAt: normalizeTime(patch.startsAt) }),
         ...(patch.deadline === undefined ? {} : { deadline: normalizeTime(patch.deadline) }),
       };
+      ensureProblemSchedule(
+        patch.startsAt === undefined ? current.startsAt : (normalized.startsAt ?? null),
+        patch.deadline === undefined ? current.deadline : (normalized.deadline ?? null),
+      );
       const updated = await store.liaisonProblems.update(id, normalized);
       if (updated === null) throw problemNotFound();
       await recordAuditEvent(store, {
@@ -415,7 +430,9 @@ export class LiaisonProblemService {
       members: members.filter(
         (member) =>
           member.teamId === team.id &&
-          (member.status === 'active' || team.maintainerUid === actor.uid),
+          (member.status === 'active' ||
+            team.maintainerUid === actor.uid ||
+            member.memberUid === actor.uid),
       ),
     }));
   }

@@ -6,6 +6,70 @@ import { DemoAuthClient } from '../../core/auth/demo-auth-client.js';
 import { createMemoryStore } from '../../core/database/memory-store.js';
 
 describe('liaison problem community', () => {
+  it('shows a pending application only to its applicant and team maintainer until confirmation', async () => {
+    const store = createMemoryStore();
+    const app = createApp({
+      store,
+      databaseMode: 'memory',
+      authMode: 'demo',
+      authClient: new DemoAuthClient(['demo-student', 'demo-captain', 'demo-liaison-member']),
+    });
+    const problemId = 'liaison-problem-lab-energy';
+    const teamId = 'liaison-team-energy-story';
+
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/teams/${teamId}/members`)
+      .set('X-Demo-User', 'demo-captain')
+      .send({ action: 'request' })
+      .expect(201);
+
+    const applicantView = await request(app)
+      .get(`/api/development/v1/liaison/problems/${problemId}/teams`)
+      .set('X-Demo-User', 'demo-captain')
+      .expect(200);
+    expect(
+      applicantView.body.data
+        .find(({ id }: { id: string }) => id === teamId)
+        .members.find(({ memberUid }: { memberUid: string }) => memberUid === 'demo-captain'),
+    ).toMatchObject({ status: 'pending' });
+
+    const unrelatedView = await request(app)
+      .get(`/api/development/v1/liaison/problems/${problemId}/teams`)
+      .set('X-Demo-User', 'demo-liaison-member')
+      .expect(200);
+    expect(
+      unrelatedView.body.data
+        .find(({ id }: { id: string }) => id === teamId)
+        .members.some(({ memberUid }: { memberUid: string }) => memberUid === 'demo-captain'),
+    ).toBe(false);
+
+    const maintainerView = await request(app)
+      .get(`/api/development/v1/liaison/problems/${problemId}/teams`)
+      .set('X-Demo-User', 'demo-student')
+      .expect(200);
+    expect(
+      maintainerView.body.data
+        .find(({ id }: { id: string }) => id === teamId)
+        .members.find(({ memberUid }: { memberUid: string }) => memberUid === 'demo-captain'),
+    ).toMatchObject({ status: 'pending' });
+
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/teams/${teamId}/members`)
+      .set('X-Demo-User', 'demo-student')
+      .send({ action: 'confirm', memberUid: 'demo-captain' })
+      .expect(200);
+
+    const confirmedView = await request(app)
+      .get(`/api/development/v1/liaison/problems/${problemId}/teams`)
+      .set('X-Demo-User', 'demo-captain')
+      .expect(200);
+    expect(
+      confirmedView.body.data
+        .find(({ id }: { id: string }) => id === teamId)
+        .members.find(({ memberUid }: { memberUid: string }) => memberUid === 'demo-captain'),
+    ).toMatchObject({ status: 'active' });
+  });
+
   it('keeps multiple teams and adopted outcomes active without closing the problem', async () => {
     const store = createMemoryStore();
     const app = createApp({

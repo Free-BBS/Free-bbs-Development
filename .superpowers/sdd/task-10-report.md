@@ -39,3 +39,46 @@ The final focused suite passes 9 tests across the liaison board and detail page.
 - Production build: contracts, API, and web passed; Vite transformed 88 modules.
 - Liaison E2E with `PLAYWRIGHT_USE_SYSTEM_CHROME=true`: 1 test passed in 9.8 seconds. It covers proxy creation with a private note, editing, review submission, explicit reviewer approval, student-safe rendering, team creation, discussion posting, and public API privacy.
 - `git diff --check` passed; only the repository's existing Windows line-ending conversion warnings were emitted.
+
+## Review remediation
+
+The Task 10 review identified an incomplete existing-team join experience, missing editor and service schedule checks, stale navigation expectations, and an over-emphasized action hierarchy. Each runtime change was introduced through a focused RED/GREEN cycle.
+
+### RED evidence
+
+The remediation RED run recorded 12 expected failures across the focused API and UI suites:
+
+- applicants could submit a membership request but could not see their own pending membership after refresh;
+- team maintainers had no visible pending-member queue or confirmation control;
+- inverted problem schedules were accepted by both the request boundary and service;
+- the editor accepted inverted dates, more than 20 tags, and tags longer than 64 characters;
+- deadline cards omitted the local time;
+- review failures were announced through the success status region;
+- create feedback could outlive the request generation that produced it;
+- secondary actions still used the primary visual treatment;
+- the dashboard retained the legacy liaison-module description.
+
+A separate RED test then established the applicant's confirmed `已加入团队` state. A further RED test established a generation-safe success announcement for a recovered board refresh.
+
+### Remediation
+
+- Team projections now include a pending membership only for that applicant or the team's maintainer. Unrelated users still see active members only, preserving pending-applicant privacy and the existing generic not-found behavior of protected mutations.
+- Applying to an existing team updates the local read model immediately and survives refresh. The applicant sees `申请待确认`; the maintainer sees a compact pending-member list and can confirm; both the API and UI then expose the active closed-loop state.
+- Problem create and patch schemas reject an explicitly inverted schedule. The service validates the final merged schedule as well, so a one-field patch cannot move the start beyond an existing deadline or vice versa. Rejected service updates remain transactional.
+- The problem editor validates chronological order, a maximum of 20 tags, and a maximum length of 64 characters per tag before submission, with specific Chinese messages.
+- Local date formatting now includes both date and time.
+- Review errors use an alert separate from successful status feedback and leave controls available for retry. Starting any new action clears stale success feedback.
+- Board create and manual refresh success messages are emitted only by the still-current request generation.
+- `参与课题` remains the only primary header action. Viewing, proxy entry, filtering, editing, review submission, decisions, retries, existing-team applications, and confirmations use a secondary treatment.
+- The web module manifest and navigation/responsive E2E expectations now describe the real-problem collaboration module and account for the information module's announcements redirect and current action labels.
+- The responsive probe follows the current sports card DOM and verifies block as well as inline wrapping. Shared cards now inherit `overflow-wrap: anywhere`, preventing unbroken identifiers from being clipped on mobile.
+
+### Remediation verification
+
+- Focused liaison UI/API and dashboard suite: 7 files passed, 51 tests passed.
+- Full Vitest: 139 files passed and 1 environment-gated file skipped; 624 tests passed and 9 skipped.
+- Type check: contracts, API, and web workspaces passed.
+- Changed-file ESLint and Prettier checks passed.
+- Production build: contracts, API, and web passed; Vite transformed 88 modules.
+- Liaison, module-navigation, and responsive E2E with `PLAYWRIGHT_USE_SYSTEM_CHROME=true`: all 8 tests passed in 31.1 seconds.
+- `git diff --check` passed; only Windows line-ending conversion warnings were emitted.

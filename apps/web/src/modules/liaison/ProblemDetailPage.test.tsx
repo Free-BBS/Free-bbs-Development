@@ -166,8 +166,99 @@ describe('ProblemDetailPage', () => {
     expect(screen.getByRole('heading', { name: '成果版本' })).toBeInTheDocument();
     expect(screen.getByText('能耗指标叙事原型')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '参与课题' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '参与课题' })).not.toHaveClass('secondary-action');
+    expect(screen.getByText('已加入团队')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '发布讨论' })).toBeInTheDocument();
     expect(screen.queryByText(/私人手机/)).not.toBeInTheDocument();
+  });
+
+  it('shows the applicant pending state after applying to an existing team and after refresh', async () => {
+    const joinableTeam = {
+      ...teams[0],
+      id: 'team-existing',
+      name: '现有探索队',
+      maintainerUid: 'demo-captain',
+      members: [],
+    };
+    const pendingMember = {
+      ...member,
+      id: 'member-pending',
+      teamId: joinableTeam.id,
+      memberUid: student.uid,
+      role: 'member' as const,
+      status: 'pending',
+    };
+    let teamReads = 0;
+    const request = vi.fn(async (path: string, init?: RequestInit): Promise<unknown> => {
+      if (path === `/liaison/problems/${problem.id}`) return problem;
+      if (path === `/liaison/problems/${problem.id}/teams` && init?.method === 'POST') {
+        throw new Error('Creating a team is not part of this case');
+      }
+      if (
+        path === `/liaison/problems/${problem.id}/teams/${joinableTeam.id}/members` &&
+        init?.method === 'POST'
+      ) {
+        return pendingMember;
+      }
+      if (path === `/liaison/problems/${problem.id}/teams`) {
+        teamReads += 1;
+        return [teamReads === 1 ? joinableTeam : { ...joinableTeam, members: [pendingMember] }];
+      }
+      if (path.includes('/posts') || path.includes('/outcomes')) return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const user = userEvent.setup();
+    const view = renderDetail({ request } as Pick<ApiClient, 'request'>);
+
+    await user.click(await screen.findByRole('button', { name: '申请加入' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('已向“现有探索队”提交加入申请');
+    expect(screen.getByText('申请待确认')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '申请加入' })).not.toBeInTheDocument();
+
+    view.unmount();
+    renderDetail({ request } as Pick<ApiClient, 'request'>);
+    expect(await screen.findByText('申请待确认')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '申请加入' })).not.toBeInTheDocument();
+  });
+
+  it('lets a team maintainer confirm a pending applicant and closes the state', async () => {
+    const pendingMember = {
+      ...member,
+      id: 'member-applicant',
+      memberUid: 'demo-captain',
+      role: 'member' as const,
+      status: 'pending',
+    };
+    const maintainedTeam = { ...teams[0], members: [member, pendingMember] };
+    const request = vi.fn(async (path: string, init?: RequestInit): Promise<unknown> => {
+      if (path === `/liaison/problems/${problem.id}`) return problem;
+      if (
+        path === `/liaison/problems/${problem.id}/teams/${maintainedTeam.id}/members` &&
+        init?.method === 'POST'
+      ) {
+        return { ...pendingMember, status: 'active' };
+      }
+      if (path === `/liaison/problems/${problem.id}/teams`) return [maintainedTeam];
+      if (path.includes('/posts') || path.includes('/outcomes')) return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const user = userEvent.setup();
+    renderDetail({ request } as Pick<ApiClient, 'request'>);
+
+    expect(await screen.findByText('demo-captain 申请加入')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '确认 demo-captain 加入' }));
+    expect(request).toHaveBeenCalledWith(
+      `/liaison/problems/${problem.id}/teams/${maintainedTeam.id}/members`,
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ action: 'confirm', memberUid: 'demo-captain' }),
+      }),
+    );
+    expect(await screen.findByRole('status')).toHaveTextContent('已确认 demo-captain 加入');
+    expect(screen.queryByText('demo-captain 申请加入')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '确认 demo-captain 加入' }),
+    ).not.toBeInTheDocument();
   });
 
   it('lets an explicit maintainer submit a draft for review', async () => {
@@ -195,7 +286,9 @@ describe('ProblemDetailPage', () => {
     const user = userEvent.setup();
     renderDetail(activeClient as Pick<ApiClient, 'request'>, maintainer);
 
-    await user.click(await screen.findByRole('button', { name: '提交审核' }));
+    const submitReview = await screen.findByRole('button', { name: '提交审核' });
+    expect(submitReview).toHaveClass('secondary-action');
+    await user.click(submitReview);
     expect(activeClient.request).toHaveBeenCalledWith(
       `/liaison/problems/${problem.id}/transitions`,
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ to: 'pending_review' }) }),

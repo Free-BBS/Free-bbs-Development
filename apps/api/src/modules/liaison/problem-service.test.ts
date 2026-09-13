@@ -103,6 +103,47 @@ async function draft(store: DevelopmentStore, ownerUid = 'demo-liaison-member') 
 }
 
 describe('liaison problem service', () => {
+  it('rejects inverted schedules on create and on partial updates', async () => {
+    const store = createMemoryStore();
+    const service = new LiaisonProblemService(store);
+    const input = {
+      title: 'Scheduled problem',
+      summary: 'Schedule must remain coherent.',
+      background: 'Public background',
+      sourceType: 'lab' as const,
+      sourceName: 'Research lab',
+      tags: ['data'],
+      expectedOutcome: 'A working prototype',
+      constraints: 'Use public data only',
+      startsAt: '2026-10-02T08:00:00.000Z',
+      deadline: '2026-10-01T08:00:00.000Z',
+      publicContact: 'liaison@example.test',
+      internalContactNote: '',
+    };
+
+    await expect(service.create(maintainer, input)).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_problem_schedule',
+      message: 'Problem start time must not be later than its deadline',
+    });
+
+    const created = await draft(store);
+    await store.liaisonProblems.update(created.id, {
+      startsAt: '2026-10-01T08:00:00.000Z',
+      deadline: '2026-10-03T08:00:00.000Z',
+    });
+    await expect(
+      service.update(maintainer, created.id, { startsAt: '2026-10-04T08:00:00.000Z' }),
+    ).rejects.toMatchObject({
+      status: 400,
+      code: 'invalid_problem_schedule',
+    });
+    expect(await store.liaisonProblems.get(created.id)).toMatchObject({
+      startsAt: '2026-10-01T08:00:00.000Z',
+      deadline: '2026-10-03T08:00:00.000Z',
+    });
+  });
+
   it('binds review only to the configured development and Youth League leads', () => {
     expect(ROLE_PERMISSION_CATALOG['platform.super_admin']).toContainEqual({
       action: 'liaison.problem.review',

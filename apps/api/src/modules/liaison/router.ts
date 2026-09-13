@@ -105,7 +105,18 @@ const problemFields = {
   publicContact: z.string().trim().min(1).max(500),
   internalContactNote: z.string().trim().max(20_000),
 };
-const problemCreateSchema = z.object(problemFields).strict();
+const problemScheduleMessage = '开始时间不得晚于截止时间';
+function validProblemSchedule(value: { startsAt?: string | null; deadline?: string | null }) {
+  return (
+    value.startsAt == null ||
+    value.deadline == null ||
+    Date.parse(value.startsAt) <= Date.parse(value.deadline)
+  );
+}
+const problemCreateSchema = z
+  .object(problemFields)
+  .strict()
+  .refine(validProblemSchedule, { message: problemScheduleMessage, path: ['deadline'] });
 const problemPatchSchema = z
   .object({
     title: problemFields.title.optional(),
@@ -122,7 +133,8 @@ const problemPatchSchema = z
     internalContactNote: problemFields.internalContactNote.optional(),
   })
   .strict()
-  .refine((value) => Object.keys(value).length > 0);
+  .refine((value) => Object.keys(value).length > 0)
+  .refine(validProblemSchedule, { message: problemScheduleMessage, path: ['deadline'] });
 const problemListSchema = z
   .object({
     query: z.string().trim().min(1).max(200).optional(),
@@ -181,6 +193,21 @@ function send<T>(response: Response, statusCode: number, data: T): void {
 function parse<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
   const result = schema.safeParse(value);
   if (!result.success) throw new HttpError(400, 'invalid_request', 'Request validation failed');
+  return result.data;
+}
+
+function parseProblemInput<T extends z.ZodTypeAny>(schema: T, value: unknown): z.output<T> {
+  const result = schema.safeParse(value);
+  if (!result.success) {
+    const scheduleIssue = result.error.issues.find(
+      ({ message, path }) => message === problemScheduleMessage && path.includes('deadline'),
+    );
+    throw new HttpError(
+      400,
+      'invalid_request',
+      scheduleIssue === undefined ? 'Request validation failed' : problemScheduleMessage,
+    );
+  }
   return result.data;
 }
 
@@ -286,7 +313,7 @@ export function createLiaisonRouter(options: LiaisonRouterOptions): Router {
     send(
       response,
       201,
-      await problemService.create(actor, parse(problemCreateSchema, request.body)),
+      await problemService.create(actor, parseProblemInput(problemCreateSchema, request.body)),
     );
   });
 
@@ -304,7 +331,11 @@ export function createLiaisonRouter(options: LiaisonRouterOptions): Router {
     send(
       response,
       200,
-      await problemService.update(actor, problemId, parse(problemPatchSchema, request.body)),
+      await problemService.update(
+        actor,
+        problemId,
+        parseProblemInput(problemPatchSchema, request.body),
+      ),
     );
   });
 

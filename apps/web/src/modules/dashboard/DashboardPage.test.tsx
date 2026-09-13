@@ -26,6 +26,18 @@ function enabledModules(): ModuleManifest[] {
 }
 
 describe('DashboardPage', () => {
+  it('describes liaison as a real-problem collaboration module', async () => {
+    const request = vi.fn().mockResolvedValue(enabledModules());
+    render(
+      <MemoryRouter>
+        <DashboardPage client={{ request } as unknown as ApiClient} user={policyOnlyUser} />
+      </MemoryRouter>,
+    );
+
+    const liaison = (await screen.findByRole('heading', { name: '联络资源' })).closest('a');
+    expect(liaison).toHaveTextContent('课题组与企业发布真实问题，同学组队协作并沉淀成果。');
+  });
+
   it('hides governance from a policy-only administrator', async () => {
     const request = vi.fn().mockResolvedValue(enabledModules());
 

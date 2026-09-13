@@ -85,12 +85,13 @@ export function ProblemDetailPage({
               </button>
             ) : null}
             {detail.canUpdate ? (
-              <button type="button" onClick={() => setEditOpen(true)}>
+              <button className="secondary-action" type="button" onClick={() => setEditOpen(true)}>
                 编辑课题
               </button>
             ) : null}
             {problem.status === 'draft' && detail.canSubmitReview ? (
               <button
+                className="secondary-action"
                 type="button"
                 disabled={detail.pending !== null}
                 onClick={() => void detail.transition('pending_review')}
@@ -100,6 +101,7 @@ export function ProblemDetailPage({
             ) : null}
             {problem.status === 'rejected' && detail.canUpdate ? (
               <button
+                className="secondary-action"
                 type="button"
                 disabled={detail.pending !== null}
                 onClick={() => void detail.transition('draft')}
@@ -110,6 +112,7 @@ export function ProblemDetailPage({
             {problem.status === 'pending_review' && detail.canReview ? (
               <>
                 <button
+                  className="secondary-action"
                   type="button"
                   disabled={detail.pending !== null}
                   onClick={() => void detail.review('approve')}
@@ -117,6 +120,7 @@ export function ProblemDetailPage({
                   批准发布
                 </button>
                 <button
+                  className="secondary-action"
                   type="button"
                   disabled={detail.pending !== null}
                   onClick={() => void detail.review('reject')}
@@ -168,6 +172,10 @@ export function ProblemDetailPage({
           <ul className="liaison-team-list" aria-label="参与课题的团队">
             {teams.map((team) => {
               const membership = team.members.find(({ memberUid }) => memberUid === user?.uid);
+              const pendingMembers =
+                team.maintainerUid === user?.uid
+                  ? team.members.filter(({ status }) => status === 'pending')
+                  : [];
               return (
                 <li key={team.id}>
                   <div>
@@ -176,9 +184,39 @@ export function ProblemDetailPage({
                     <small>
                       {team.members.filter(({ status }) => status === 'active').length} 名成员
                     </small>
+                    {membership?.status === 'pending' ? (
+                      <p className="liaison-membership-state">申请待确认</p>
+                    ) : null}
+                    {membership?.status === 'active' ? (
+                      <p className="liaison-membership-state">已加入团队</p>
+                    ) : null}
+                    {pendingMembers.length > 0 ? (
+                      <ul
+                        className="liaison-pending-members"
+                        aria-label={`${team.name} 待确认成员`}
+                      >
+                        {pendingMembers.map((candidate) => (
+                          <li key={candidate.id}>
+                            <span>{candidate.memberUid} 申请加入</span>
+                            <button
+                              className="secondary-action"
+                              type="button"
+                              disabled={detail.pending !== null}
+                              aria-label={`确认 ${candidate.memberUid} 加入`}
+                              onClick={() =>
+                                void detail.confirmMembership(team, candidate.memberUid)
+                              }
+                            >
+                              确认加入
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
                   </div>
                   {isOpen && detail.canJoin && !membership ? (
                     <button
+                      className="secondary-action"
                       type="button"
                       disabled={detail.pending !== null}
                       onClick={() => void detail.requestJoin(team)}

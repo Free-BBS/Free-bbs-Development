@@ -159,7 +159,10 @@ export function problemScope(problemId: string): ScopeRef {
 
 export function formatLiaisonDate(value: string | null): string {
   if (value === null) return '长期开放';
-  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(new Date(value));
+  return new Intl.DateTimeFormat('zh-CN', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(value));
 }
 
 export function statusTone(status: LiaisonProblemStatus) {
