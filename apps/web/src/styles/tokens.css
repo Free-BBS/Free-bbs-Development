@@ -7,6 +7,10 @@
   --border-subtle: #d8e0dd;
   --action-primary: #155e59;
   --action-primary-text: #ffffff;
+  --nav-link-hover-background: #24504f;
+  --nav-link-hover-text: #ffffff;
+  --nav-link-active-background: #155e59;
+  --nav-link-active-text: #ffffff;
   --color-sidebar: #173a3a;
   --color-sidebar-deep: #103232;
   --color-active: #155e59;

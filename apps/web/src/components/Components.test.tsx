@@ -78,9 +78,77 @@ describe('shared module presentation primitives', () => {
 
     rerender(<ResponsiveRecordList {...props} records={[]} state="loading" />);
     expect(screen.getByRole('status')).toBeInTheDocument();
+    expect(screen.queryByRole('list', { name: '经验条目' })).not.toBeInTheDocument();
+
+    rerender(<ResponsiveRecordList {...props} records={[]} state="ready" />);
+    expect(screen.getByText('暂无经验').closest('[data-state]')).toHaveAttribute(
+      'data-state',
+      'empty',
+    );
+    expect(screen.queryByRole('list', { name: '经验条目' })).not.toBeInTheDocument();
 
     rerender(<ResponsiveRecordList {...props} records={[]} state="error" errorMessage="加载失败" />);
     expect(screen.getByRole('alert')).toHaveTextContent('加载失败');
+    expect(screen.queryByRole('list', { name: '经验条目' })).not.toBeInTheDocument();
+  });
+
+  it('traps focus and restores body scrolling for drawers and confirmation dialogs', async () => {
+    const user = userEvent.setup();
+
+    function Harness() {
+      const [editorOpen, setEditorOpen] = useState(false);
+      const [confirmOpen, setConfirmOpen] = useState(false);
+      return (
+        <>
+          <button type="button" onClick={() => setEditorOpen(true)}>
+            打开编辑器
+          </button>
+          <button type="button" onClick={() => setConfirmOpen(true)}>
+            打开确认框
+          </button>
+          <EditorDrawer open={editorOpen} title="编辑条目" onClose={() => setEditorOpen(false)}>
+            <label>
+              标题
+              <input />
+            </label>
+          </EditorDrawer>
+          <ConfirmDialog
+            open={confirmOpen}
+            title="确认删除"
+            onClose={() => setConfirmOpen(false)}
+            onConfirm={() => setConfirmOpen(false)}
+          />
+        </>
+      );
+    }
+
+    document.body.style.overflow = 'clip';
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: '打开编辑器' }));
+    const closeEditor = screen.getByRole('button', { name: '关闭编辑器' });
+    const title = screen.getByLabelText('标题');
+    expect(document.body).toHaveStyle({ overflow: 'hidden' });
+    expect(closeEditor).toHaveFocus();
+    await user.tab();
+    expect(title).toHaveFocus();
+    await user.tab();
+    expect(closeEditor).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(document.body).toHaveStyle({ overflow: 'clip' });
+
+    await user.click(screen.getByRole('button', { name: '打开确认框' }));
+    const cancel = screen.getByRole('button', { name: '取消' });
+    const confirm = screen.getByRole('button', { name: '确认' });
+    expect(document.body).toHaveStyle({ overflow: 'hidden' });
+    expect(cancel).toHaveFocus();
+    await user.tab();
+    expect(confirm).toHaveFocus();
+    await user.tab();
+    expect(cancel).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(document.body).toHaveStyle({ overflow: 'clip' });
+    document.body.style.overflow = '';
   });
 
   it('labels editor drawers and confirmation dialogs and restores focus when they close', async () => {

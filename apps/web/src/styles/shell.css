@@ -112,8 +112,8 @@
 
 .module-link:hover {
   border-color: var(--glass-stroke);
-  background: var(--color-paper);
-  color: var(--color-sidebar-text);
+  background: var(--nav-link-hover-background);
+  color: var(--nav-link-hover-text);
   opacity: 1;
   transform: translateX(2px);
 }
@@ -121,8 +121,8 @@
 .module-link.active,
 .module-link[aria-current='page'] {
   border-color: var(--glass-stroke);
-  background: var(--color-active);
-  color: var(--color-sidebar-text);
+  background: var(--nav-link-active-background);
+  color: var(--nav-link-active-text);
   opacity: 1;
   box-shadow: 0 8px 26px rgba(0, 0, 0, 0.14);
 }
@@ -365,8 +365,8 @@
 
   .mobile-nav .module-link.active,
   .mobile-nav .module-link[aria-current='page'] {
-    background: var(--color-active);
-    color: var(--color-sidebar-text);
+    background: var(--nav-link-active-background);
+    color: var(--nav-link-active-text);
     box-shadow: none;
     opacity: 1;
   }

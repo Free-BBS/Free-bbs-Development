@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 
+import { focusableElements, lockDocumentScroll, trapModalFocus } from './modal-interactions.js';
+
 export interface ConfirmDialogProps {
   open: boolean;
   title: string;
@@ -28,10 +30,15 @@ export function ConfirmDialog({
 
   useEffect(() => {
     if (!open) return;
+    return lockDocumentScroll();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
 
     triggerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialogRef.current?.querySelector<HTMLElement>('button:not([disabled])')?.focus();
+    focusableElements(dialogRef.current)[0]?.focus();
     return () => {
       triggerRef.current?.focus();
     };
@@ -48,11 +55,14 @@ export function ConfirmDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault();
             onClose();
+            return;
           }
+          trapModalFocus(event, dialogRef.current);
         }}
       >
         <h2 id={titleId}>{title}</h2>

@@ -1,8 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
 import componentsCss from './components.css?raw';
+import shellCss from './shell.css?raw';
 import themeCss from './theme.css?raw';
 import tokensCss from './tokens.css?raw';
+
+function contrastRatio(foreground: string, background: string) {
+  const luminance = (hex: string) => {
+    const channels = hex
+      .slice(1)
+      .match(/.{2}/g)
+      ?.map((channel) => Number.parseInt(channel, 16) / 255);
+    if (!channels || channels.length !== 3) throw new Error(`Expected a hex color, received ${hex}`);
+    const [red, green, blue] = channels.map((channel) =>
+      channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4,
+    );
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+  return (lighter + 0.05) / (darker + 0.05);
+}
 
 describe('dark-theme contrast contract', () => {
   it('provides a light treatment for external sidebar SVG images', () => {
@@ -32,5 +49,21 @@ describe('dark-theme contrast contract', () => {
     }
     expect(tokensCss).toContain('--radius-sm: 12px;');
     expect(tokensCss).toContain('--radius-lg: 18px;');
+  });
+
+  it('keeps sidebar hover and active navigation text above the normal-text contrast threshold', () => {
+    expect(tokensCss).toContain('--nav-link-hover-background: #24504f;');
+    expect(tokensCss).toContain('--nav-link-hover-text: #ffffff;');
+    expect(tokensCss).toContain('--nav-link-active-background: #155e59;');
+    expect(tokensCss).toContain('--nav-link-active-text: #ffffff;');
+    expect(themeCss).toContain('--nav-link-hover-background: #24504f;');
+    expect(themeCss).toContain('--nav-link-active-background: #2f776f;');
+    expect(contrastRatio('#ffffff', '#24504f')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio('#ffffff', '#155e59')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio('#ffffff', '#2f776f')).toBeGreaterThanOrEqual(4.5);
+    expect(shellCss).toContain('background: var(--nav-link-hover-background);');
+    expect(shellCss).toContain('color: var(--nav-link-hover-text);');
+    expect(shellCss).toContain('background: var(--nav-link-active-background);');
+    expect(shellCss).toContain('color: var(--nav-link-active-text);');
   });
 });

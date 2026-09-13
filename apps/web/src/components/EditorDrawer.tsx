@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 
+import { focusableElements, lockDocumentScroll, trapModalFocus } from './modal-interactions.js';
+
 export interface EditorDrawerProps {
   open: boolean;
   title: string;
@@ -16,12 +18,15 @@ export function EditorDrawer({ open, title, description, children, onClose }: Ed
 
   useEffect(() => {
     if (!open) return;
+    return lockDocumentScroll();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
 
     triggerRef.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const firstFocusable = dialogRef.current?.querySelector<HTMLElement>(
-      'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-    );
+    const [firstFocusable] = focusableElements(dialogRef.current);
     (firstFocusable ?? dialogRef.current)?.focus();
 
     return () => {
@@ -40,11 +45,14 @@ export function EditorDrawer({ open, title, description, children, onClose }: Ed
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
             event.preventDefault();
             onClose();
+            return;
           }
+          trapModalFocus(event, dialogRef.current);
         }}
       >
         <header className="editor-drawer-header">

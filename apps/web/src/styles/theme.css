@@ -10,6 +10,10 @@ body:not(.theme-light) {
   --border-subtle: #40514c;
   --action-primary: #4ca99a;
   --action-primary-text: #092522;
+  --nav-link-hover-background: #24504f;
+  --nav-link-hover-text: #ffffff;
+  --nav-link-active-background: #2f776f;
+  --nav-link-active-text: #ffffff;
   --color-sidebar: #102b2a;
   --color-sidebar-deep: #0b2221;
   --color-active: var(--action-primary);
@@ -43,6 +47,10 @@ body.theme-light {
   --border-subtle: #d8e0dd;
   --action-primary: #155e59;
   --action-primary-text: #ffffff;
+  --nav-link-hover-background: #24504f;
+  --nav-link-hover-text: #ffffff;
+  --nav-link-active-background: #155e59;
+  --nav-link-active-text: #ffffff;
   --color-sidebar: #173a3a;
   --color-sidebar-deep: #103232;
   --color-active: var(--action-primary);
