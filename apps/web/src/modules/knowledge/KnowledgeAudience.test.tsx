@@ -55,6 +55,74 @@ const organizationEntry = {
 };
 
 describe('KnowledgePage audience entry points', () => {
+  it('limits creation and published-entry controls to matching knowledge policy scopes', async () => {
+    const publishedGeneral = { ...generalEntry, status: 'published' as const };
+    const scopedDraft = { ...organizationEntry, status: 'draft' as const };
+    const scopedCreator: UserContext & {
+      policies: Array<{
+        action: string;
+        resource: string;
+        effect: 'allow';
+        scope: typeof organizationEntry.scope;
+      }>;
+    } = {
+      ...artsMember,
+      policies: [
+        {
+          action: 'knowledge.create',
+          resource: 'knowledge_entry',
+          effect: 'allow',
+          scope: organizationEntry.scope,
+        },
+      ],
+    };
+    const request = vi.fn(async (path: string) =>
+      path.endsWith('audience=social_org') ? [scopedDraft] : [publishedGeneral],
+    );
+    const user = userEvent.setup();
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={scopedCreator} />);
+
+    await screen.findByText('General 常见问题');
+    expect(screen.queryByRole('button', { name: '新建经验' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑 General 常见问题' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '撤回 General 常见问题' })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: '社工组织' }));
+    expect(await screen.findByText('文艺中心交接清单')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '新建经验' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '编辑 文艺中心交接清单' })).toBeInTheDocument();
+  });
+
+  it('requires matching publish permission before exposing published-entry editing and transitions', async () => {
+    const publishedGeneral = { ...generalEntry, status: 'published' as const };
+    const creatorOnly: UserContext & {
+      policies: Array<{
+        action: string;
+        resource: string;
+        effect: 'allow';
+        scope: typeof generalEntry.scope;
+      }>;
+    } = {
+      ...ordinary,
+      policies: [
+        {
+          action: 'knowledge.create',
+          resource: 'knowledge_entry',
+          effect: 'allow',
+          scope: generalEntry.scope,
+        },
+      ],
+    };
+    const request = vi.fn().mockResolvedValue([publishedGeneral]);
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={creatorOnly} />);
+
+    await screen.findByText('General 常见问题');
+    expect(screen.getByRole('button', { name: '新建经验' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '编辑 General 常见问题' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '撤回 General 常见问题' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '归档 General 常见问题' })).not.toBeInTheDocument();
+  });
+
   it('creates social-organization drafts in the selected authorized organization scope', async () => {
     const request = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/knowledge/entries?audience=social_org') return [];

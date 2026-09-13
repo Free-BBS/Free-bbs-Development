@@ -13,7 +13,7 @@ import { ResponsiveRecordList } from '../../components/ResponsiveRecordList.js';
 import { StatusBadge } from '../../components/StatusBadge.js';
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
-import { hasPresentationPermission, type PresentationUser } from '../../core/permissions/Can.js';
+import { isSuperAdmin } from '../../core/permissions/Can.js';
 
 type KnowledgeType = 'workflow' | 'faq' | 'contact' | 'retrospective' | 'notice';
 type KnowledgeStatus = 'draft' | 'published' | 'archived';
@@ -39,6 +39,13 @@ export interface KnowledgePageProps {
   client?: Pick<ApiClient, 'request'>;
   user?: UserContext | null;
 }
+interface PagePolicy {
+  action: string;
+  resource: string;
+  effect: 'allow' | 'deny';
+  scope?: ScopeRef;
+}
+type PageUser = UserContext & { policies?: readonly PagePolicy[] };
 
 const typeLabels: Record<KnowledgeType, string> = {
   workflow: '工作流程',
@@ -69,12 +76,33 @@ const matchesQuery = (entry: KnowledgeEntry, query: string) =>
     .join(' ')
     .toLocaleLowerCase()
     .includes(query.trim().toLocaleLowerCase());
+const matches = (pattern: string, value: string) =>
+  pattern === '*' ||
+  pattern === value ||
+  (pattern.endsWith('.*') && value.startsWith(pattern.slice(0, -1)));
+const sameScope = (left: ScopeRef | undefined, right: ScopeRef) =>
+  left === undefined || (left.type === right.type && left.id === right.id);
+function permitted(user: PageUser | null, action: string, scope: ScopeRef): boolean {
+  if (user === null) return false;
+  if (isSuperAdmin(user)) return true;
+  const policies = (user.policies ?? []).filter(
+    (policy) =>
+      matches(policy.action, action) &&
+      matches(policy.resource, 'knowledge_entry') &&
+      sameScope(policy.scope, scope),
+  );
+  return (
+    !policies.some((policy) => policy.effect === 'deny') &&
+    policies.some((policy) => policy.effect === 'allow')
+  );
+}
 
 export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps) {
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const auth = useOptionalAuth();
-  const user = suppliedUser === undefined ? (auth?.user ?? null) : suppliedUser;
-  const presentationUser = user as PresentationUser | null;
+  const user = (
+    suppliedUser === undefined ? (auth?.user ?? null) : suppliedUser
+  ) as PageUser | null;
   const managesAcrossOrganizations =
     user?.roles.includes('platform.super_admin') === true ||
     user?.roles.some((role) => organizationForRole(role)?.level === 'lead') === true;
@@ -88,10 +116,6 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
     [managesAcrossOrganizations, user],
   );
   const canViewSocialOrganizations = organizations.length > 0;
-  const canCreate =
-    presentationUser !== null && hasPresentationPermission(presentationUser, 'knowledge.create');
-  const canPublish =
-    presentationUser !== null && hasPresentationPermission(presentationUser, 'knowledge.publish');
   const [audience, setAudience] = useState<'general' | 'social_org'>('general');
   const [organizationId, setOrganizationId] = useState<string>(() => organizations[0]?.id ?? '');
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
@@ -109,6 +133,23 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
   const [summary, setSummary] = useState('');
   const [maintainedAt, setMaintainedAt] = useState('');
   const [maintainerUid, setMaintainerUid] = useState('');
+  const writableOrganizations = useMemo(
+    () =>
+      organizations.filter((organization) =>
+        permitted(user, 'knowledge.create', { type: 'social_organization', id: organization.id }),
+      ),
+    [organizations, user],
+  );
+  const selectedScope = useMemo<ScopeRef | null>(
+    () =>
+      audience === 'social_org'
+        ? organizationId
+          ? { type: 'social_organization', id: organizationId }
+          : null
+        : { type: 'public', id: '*' },
+    [audience, organizationId],
+  );
+  const canCreate = selectedScope !== null && permitted(user, 'knowledge.create', selectedScope);
 
   const loadEntries = useCallback(async () => {
     setState('loading');
@@ -123,10 +164,12 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
     if (!canViewSocialOrganizations && audience === 'social_org') setAudience('general');
   }, [audience, canViewSocialOrganizations]);
   useEffect(() => {
-    if (!organizations.some((organization) => organization.id === organizationId)) {
-      setOrganizationId(organizations[0]?.id ?? '');
+    const availableOrganizations =
+      audience === 'social_org' ? writableOrganizations : organizations;
+    if (!availableOrganizations.some((organization) => organization.id === organizationId)) {
+      setOrganizationId(availableOrganizations[0]?.id ?? '');
     }
-  }, [organizationId, organizations]);
+  }, [audience, organizationId, organizations, writableOrganizations]);
   useEffect(() => {
     void loadEntries();
   }, [loadEntries]);
@@ -143,7 +186,9 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
     setSummary(entry === 'create' ? '' : (entry.summary ?? ''));
     setMaintainedAt(entry === 'create' ? '' : (entry.maintainedAt ?? ''));
     setMaintainerUid(entry === 'create' ? '' : (entry.maintainerUid ?? ''));
-    if (entry === 'create') setOrganizationId(organizations[0]?.id ?? '');
+    if (entry === 'create' && audience === 'social_org') {
+      setOrganizationId(writableOrganizations[0]?.id ?? '');
+    }
   }
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -167,7 +212,7 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
         maintainedAt: maintainedAt.trim() || null,
         maintainerUid: maintainerUid.trim() || null,
       };
-      const socialOrganizationId = organizationId || organizations[0]?.id;
+      const socialOrganizationId = organizationId || writableOrganizations[0]?.id;
       await api.request<KnowledgeEntry>('/knowledge/entries', {
         method: creating ? 'POST' : 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -311,7 +356,15 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
                 </span>
               ))}
             </p>
-            {canCreate && entry.status !== 'archived' ? (
+            {entry.maintainedAt ? (
+              <p className="record-meta">维护于 {entry.maintainedAt.slice(0, 10)}</p>
+            ) : null}
+            {entry.maintainerUid ? (
+              <p className="record-meta">维护人：{entry.maintainerUid}</p>
+            ) : null}
+            {permitted(user, 'knowledge.create', entry.scope) &&
+            entry.status !== 'archived' &&
+            (entry.status !== 'published' || permitted(user, 'knowledge.publish', entry.scope)) ? (
               <button
                 type="button"
                 disabled={pending}
@@ -321,7 +374,7 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
                 编辑
               </button>
             ) : null}
-            {canPublish && entry.status === 'draft' ? (
+            {permitted(user, 'knowledge.publish', entry.scope) && entry.status === 'draft' ? (
               <button
                 type="button"
                 disabled={pending}
@@ -331,7 +384,7 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
                 发布
               </button>
             ) : null}
-            {canPublish && entry.status === 'published' ? (
+            {permitted(user, 'knowledge.publish', entry.scope) && entry.status === 'published' ? (
               <>
                 <button
                   type="button"
@@ -371,14 +424,16 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
               ))}
             </select>
           </label>
-          {drawerEntry === 'create' && audience === 'social_org' && organizations.length > 1 ? (
+          {drawerEntry === 'create' &&
+          audience === 'social_org' &&
+          writableOrganizations.length > 1 ? (
             <label>
               所属社工组织
               <select
                 value={organizationId}
                 onChange={(event) => setOrganizationId(event.target.value)}
               >
-                {organizations.map((organization) => (
+                {writableOrganizations.map((organization) => (
                   <option key={organization.id} value={organization.id}>
                     {organization.name}
                   </option>

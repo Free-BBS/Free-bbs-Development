@@ -100,6 +100,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
   const [clubs, setClubs] = useState<ClubRecord[]>([]);
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [memberships, setMemberships] = useState<Record<string, MembershipRecord[]>>({});
+  const [membershipUnavailable, setMembershipUnavailable] = useState<Record<string, boolean>>({});
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
   const [loadError, setLoadError] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -126,19 +127,30 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
             const canRead =
               permitted(user, 'clubs.update', 'club', club.scope) ||
               permitted(user, 'clubs.join', 'club_membership', { type: 'club', id: club.id });
-            return [
-              club.id,
-              canRead
-                ? await activeClient.request<MembershipRecord[]>(
-                    `/interest-groups/${encodeURIComponent(club.id)}/memberships`,
-                  )
-                : [],
-            ] as const;
+            if (!canRead) return [club.id, [] as MembershipRecord[], false] as const;
+            try {
+              return [
+                club.id,
+                await activeClient.request<MembershipRecord[]>(
+                  `/interest-groups/${encodeURIComponent(club.id)}/memberships`,
+                ),
+                false,
+              ] as const;
+            } catch {
+              return [club.id, [] as MembershipRecord[], true] as const;
+            }
           }),
         );
         setClubs(loaded);
         setActivities(loadedActivities.filter((activity) => activity.status === 'published'));
-        setMemberships(Object.fromEntries(loadedMemberships));
+        setMemberships(
+          Object.fromEntries(loadedMemberships.map(([clubId, rows]) => [clubId, rows])),
+        );
+        setMembershipUnavailable(
+          Object.fromEntries(
+            loadedMemberships.map(([clubId, , unavailable]) => [clubId, unavailable]),
+          ),
+        );
         setState('ready');
       } catch (error) {
         setLoadError(errorMessage(error));
@@ -220,6 +232,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     }
   }
   async function transition(club: ClubRecord, to: 'active' | 'archived') {
+    if (busyClubId === club.id) return;
     const label = to === 'archived' ? '归档' : club.status === 'archived' ? '恢复' : '启用';
     if (!globalThis.confirm(`确认${label}“${club.name}”吗？`)) return;
     await runAction(club, `已${label}${club.name}`, () =>
@@ -231,6 +244,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     );
   }
   async function join(club: ClubRecord) {
+    if (busyClubId === club.id) return;
     await runAction(club, `已提交${club.name}加入申请`, () =>
       activeClient.request(`/interest-groups/${encodeURIComponent(club.id)}/memberships`, {
         method: 'POST',
@@ -240,6 +254,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     );
   }
   async function leave(club: ClubRecord, pending: boolean) {
+    if (busyClubId === club.id) return;
     const action = pending ? '撤回申请' : '退出趣缘群体';
     if (!globalThis.confirm(`确认${action}“${club.name}”吗？`)) return;
     await runAction(club, pending ? '申请已撤回' : `已退出${club.name}`, () =>
@@ -253,6 +268,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     membership: MembershipRecord,
     status: 'active' | 'rejected',
   ) {
+    if (busyClubId === club.id) return;
     if (status === 'rejected' && !globalThis.confirm(`确认拒绝 ${membership.memberUid} 的申请吗？`))
       return;
     await runAction(club, status === 'active' ? '会员申请已批准' : '会员申请已拒绝', () =>
@@ -267,6 +283,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     );
   }
   async function updateSupport(club: ClubRecord, status: 'requested' | 'confirmed') {
+    if (busyClubId === club.id) return;
     await runAction(club, status === 'requested' ? '技术支持申请已提交' : '技术支持已确认', () =>
       activeClient.request(`/interest-groups/${encodeURIComponent(club.id)}/technical-support`, {
         method: 'PATCH',
@@ -300,6 +317,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
         getKey={(club) => club.id}
         renderRecord={(club) => {
           const rows = memberships[club.id] ?? [];
+          const membershipIsUnavailable = membershipUnavailable[club.id] === true;
           const own = rows.find((row) => row.memberUid === user?.uid);
           const canMaintain = permitted(user, 'clubs.update', 'club', club.scope);
           const canSupport = permitted(user, 'clubs.technical_support', 'club', club.scope);
@@ -365,6 +383,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                   {club.status === 'active' ? (
                     <button
                       type="button"
+                      disabled={busyClubId === club.id}
                       aria-label={`归档${club.name}`}
                       onClick={() => void transition(club, 'archived')}
                     >
@@ -373,6 +392,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                   ) : (
                     <button
                       type="button"
+                      disabled={busyClubId === club.id}
                       aria-label={`${club.status === 'archived' ? '恢复' : '启用'}${club.name}`}
                       onClick={() => void transition(club, 'active')}
                     >
@@ -383,8 +403,10 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
               ) : null}
               {canJoin ? (
                 <section aria-label={`${club.name}会员状态`}>
-                  {own ? <p>{membershipLabels[own.status]}</p> : null}
-                  {club.status === 'active' &&
+                  {membershipIsUnavailable ? <p>会员状态暂不可用</p> : null}
+                  {!membershipIsUnavailable && own ? <p>{membershipLabels[own.status]}</p> : null}
+                  {!membershipIsUnavailable &&
+                  club.status === 'active' &&
                   (!own || own.status === 'left' || own.status === 'rejected') ? (
                     <button
                       type="button"
@@ -395,18 +417,20 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                       {own ? '重新申请' : '申请加入'}
                     </button>
                   ) : null}
-                  {own?.status === 'pending' ? (
+                  {!membershipIsUnavailable && own?.status === 'pending' ? (
                     <button
                       type="button"
+                      disabled={busyClubId === club.id}
                       aria-label={`撤回${club.name}申请`}
                       onClick={() => void leave(club, true)}
                     >
                       撤回申请
                     </button>
                   ) : null}
-                  {own?.status === 'active' ? (
+                  {!membershipIsUnavailable && own?.status === 'active' ? (
                     <button
                       type="button"
+                      disabled={busyClubId === club.id}
                       aria-label={`退出${club.name}`}
                       onClick={() => void leave(club, false)}
                     >
@@ -418,7 +442,9 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
               {canMaintain ? (
                 <section aria-label={`${club.name}会员队列`}>
                   <h4>会员申请与历史</h4>
-                  {rows.length === 0 ? (
+                  {membershipIsUnavailable ? (
+                    <p>会员状态暂不可用</p>
+                  ) : rows.length === 0 ? (
                     <p>暂无会员记录</p>
                   ) : (
                     <ul>
@@ -429,6 +455,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                             <>
                               <button
                                 type="button"
+                                disabled={busyClubId === club.id}
                                 aria-label={`批准 ${membership.memberUid}`}
                                 onClick={() => void decideMembership(club, membership, 'active')}
                               >
@@ -436,6 +463,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                               </button>
                               <button
                                 type="button"
+                                disabled={busyClubId === club.id}
                                 aria-label={`拒绝 ${membership.memberUid}`}
                                 onClick={() => void decideMembership(club, membership, 'rejected')}
                               >
@@ -462,6 +490,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                   <label>
                     支持说明
                     <input
+                      disabled={busyClubId === club.id}
                       value={supportNotes[club.id] ?? club.technicalSupportNote ?? ''}
                       onChange={(event) =>
                         setSupportNotes((current) => ({
@@ -474,6 +503,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                   {club.technicalSupportStatus === 'not_requested' ? (
                     <button
                       type="button"
+                      disabled={busyClubId === club.id}
                       aria-label={`申请${club.name}技术支持`}
                       onClick={() => void updateSupport(club, 'requested')}
                     >
@@ -482,6 +512,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
                   ) : club.technicalSupportStatus === 'requested' ? (
                     <button
                       type="button"
+                      disabled={busyClubId === club.id}
                       aria-label={`确认${club.name}技术支持`}
                       onClick={() => void updateSupport(club, 'confirmed')}
                     >

@@ -48,6 +48,8 @@ describe('KnowledgePage', () => {
     await screen.findByText('活动复盘模板');
     expect(screen.getByText('活动结束后的经验整理。')).toBeInTheDocument();
     expect(screen.getByText('交接')).toBeInTheDocument();
+    expect(screen.getByText('维护于 2026-09-01')).toBeInTheDocument();
+    expect(screen.getByText('维护人：demo-admin')).toBeInTheDocument();
     const search = screen.getByRole('search', { name: '搜索经验库' });
     await user.type(within(search).getByLabelText('搜索'), '记录目标');
     expect(screen.getByText('活动复盘模板')).toBeInTheDocument();
