@@ -108,17 +108,24 @@ const searchFields: Record<CollectionName, string[]> = {
   modules: ['moduleId', 'name', 'description'],
   moduleOwners: ['moduleId', 'ownerType', 'ownerId'],
   auditLogs: ['actorUid', 'action', 'resourceType', 'resourceId'],
-  knowledge: ['title', 'body'],
+  knowledge: ['title', 'body', 'category', 'summary', 'tags'],
   announcements: ['title', 'body'],
   consultations: ['title', 'body', 'requesterUid', 'assigneeUid', 'reply'],
   proposals: ['title', 'problemDescription', 'proposedSolution', 'category', 'submitterUid'],
-  clubs: ['name', 'description', 'technicalSupportNote'],
+  clubs: [
+    'name',
+    'description',
+    'technicalSupportNote',
+    'category',
+    'contactName',
+    'publicContact',
+  ],
   clubMemberships: ['clubId', 'memberUid'],
-  activities: ['title', 'description', 'technicalSupportNote'],
+  activities: ['title', 'description', 'technicalSupportNote', 'location', 'contact'],
   activityMilestones: ['activityId', 'title', 'type', 'description'],
   competitionFixtures: ['activityId', 'round', 'participantA', 'participantB', 'location'],
   activityRegistrations: ['activityId', 'participantUid'],
-  sportsTeams: ['name', 'description'],
+  sportsTeams: ['name', 'description', 'season', 'trainingSchedule'],
   sportsTeamMembers: ['teamId', 'memberUid'],
   sportsCheckins: ['teamId', 'memberUid'],
   liaisonResources: ['name', 'description', 'category'],
@@ -128,11 +135,27 @@ const searchFields: Record<CollectionName, string[]> = {
 function collectionDefaults(collection: CollectionName): Record<string, unknown> {
   switch (collection) {
     case 'knowledge':
-      return { audience: 'general', organizationId: null };
+      return {
+        audience: 'general',
+        organizationId: null,
+        category: 'general',
+        tags: [],
+        summary: '',
+        maintainedAt: null,
+        maintainerUid: null,
+      };
+    case 'consultations':
+    case 'proposals':
+      return { dueAt: null };
+    case 'sportsTeams':
+      return { season: '', trainingSchedule: '' };
     case 'clubs':
-      return { organizationId: null };
+      return { organizationId: null, category: 'general', contactName: '', publicContact: '' };
     case 'activities':
       return {
+        registrationDeadline: null,
+        capacity: null,
+        contact: '',
         endsAt: null,
         location: '',
         organizationId: null,
@@ -152,7 +175,17 @@ function collectionDefaults(collection: CollectionName): Record<string, unknown>
 
 function normalizedValues<T extends object>(value: T): T {
   const result = structuredClone(value) as Record<string, unknown>;
-  for (const key of ['expiresAt', 'startsAt', 'endsAt', 'occursAt', 'scheduledAt', 'reviewedAt']) {
+  for (const key of [
+    'expiresAt',
+    'startsAt',
+    'endsAt',
+    'occursAt',
+    'scheduledAt',
+    'reviewedAt',
+    'maintainedAt',
+    'dueAt',
+    'registrationDeadline',
+  ]) {
     if (!Object.hasOwn(result, key) || result[key] === null || result[key] === undefined) continue;
     const encoded = encodeUtcDateTime(result[key] as string);
     result[key] = encoded?.toISOString() ?? null;
@@ -463,6 +496,11 @@ function createDemoState(): MemoryState {
 
   state.knowledge = [
     stored('knowledge-workflow', {
+      category: '活动指南',
+      tags: ['十月预告', '活动流程'],
+      summary: '十月活动立项、审批和复盘速查。',
+      maintainedAt: '2026-10-01T00:00:00.000Z',
+      maintainerUid: 'demo-admin',
       type: 'workflow',
       title: '活动立项与复盘流程',
       body: '从立项、审批到复盘的标准步骤。',
@@ -473,6 +511,11 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('knowledge-faq', {
+      category: '部门交接',
+      tags: ['十月预告', '交接'],
+      summary: '秋季部门账号、资料与联系人交接说明。',
+      maintainedAt: '2026-10-01T00:00:00.000Z',
+      maintainerUid: 'demo-admin',
       type: 'faq',
       title: '部门交接常见问题',
       body: '集中说明账号、资料和联系人交接。',
@@ -483,6 +526,11 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('knowledge-sports-handover', {
+      category: '代表队管理',
+      tags: ['十月预告', '代表队'],
+      summary: '秋季代表队训练、招募和赛事交接清单。',
+      maintainedAt: '2026-10-01T00:00:00.000Z',
+      maintainerUid: 'demo-sports-lead',
       type: 'workflow',
       title: '体育中心代表队交接清单',
       body: '整理代表队联系人、训练安排、报名节点、常见问题与年度复盘。',
@@ -511,6 +559,7 @@ function createDemoState(): MemoryState {
   ];
   state.consultations = [
     stored('consultation-venue', {
+      dueAt: '2026-10-08T10:00:00.000Z',
       title: '活动场地申请',
       body: '请问教学楼公共空间如何申请？',
       requesterUid: 'demo-student',
@@ -521,6 +570,7 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('consultation-rights', {
+      dueAt: '2026-10-10T10:00:00.000Z',
       title: '校园权益建议',
       body: '希望延长公共讨论空间开放时间。',
       requesterUid: 'demo-student',
@@ -533,6 +583,7 @@ function createDemoState(): MemoryState {
   ];
   state.proposals = [
     stored('proposal-night-lighting', {
+      dueAt: '2026-10-15T10:00:00.000Z',
       title: '校园夜间照明优化',
       problemDescription: '部分公共活动区域夜间照明不足，影响同学通行与活动。',
       proposedSolution: '梳理重点点位并与相关部门共同推进照明巡检和补充。',
@@ -548,6 +599,9 @@ function createDemoState(): MemoryState {
   ];
   state.clubs = [
     stored('club-music', {
+      category: '文艺交流',
+      contactName: '音乐俱乐部联络员',
+      publicContact: '每周五学生活动中心排练室',
       name: '校园音乐俱乐部',
       description: '排练、分享与小型演出。',
       organizationId: 'liaison_center',
@@ -558,6 +612,9 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('club-running', {
+      category: '体育户外',
+      contactName: '跑团联络员',
+      publicContact: '每周三东大操场集合点',
       name: '自由跑团',
       description: '每周轻松跑与训练交流。',
       organizationId: 'liaison_center',
@@ -586,6 +643,9 @@ function createDemoState(): MemoryState {
   ];
   state.activities = [
     stored('activity-orientation', {
+      registrationDeadline: '2026-09-04T10:00:00.000Z',
+      capacity: 120,
+      contact: '联络中心活动咨询台',
       title: '新生社群见面会',
       description: '一次认识各趣缘群体的开放活动。',
       clubId: null,
@@ -601,6 +661,9 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('activity-night-run', {
+      registrationDeadline: '2026-09-11T10:00:00.000Z',
+      capacity: 60,
+      contact: '跑团联络员（东大操场集合点）',
       title: '校园夜跑',
       description: '五公里轻松跑。',
       clubId: 'club-running',
@@ -616,6 +679,9 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('activity-ma-john-cup', {
+      registrationDeadline: '2026-10-08T10:00:00.000Z',
+      capacity: 240,
+      contact: '体育中心赛事咨询台',
       title: '马约翰杯',
       description: '学院代表队参加的常设综合体育赛事，集中展示赛程与比赛进展。',
       clubId: null,
@@ -713,6 +779,8 @@ function createDemoState(): MemoryState {
   ];
   state.sportsTeams = [
     stored('team-basketball', {
+      season: '2026秋季',
+      trainingSchedule: '每周二、四 18:00–20:00，篮球馆',
       name: '院篮球队',
       description: '学院篮球代表队。',
       status: 'active',
@@ -720,6 +788,8 @@ function createDemoState(): MemoryState {
       scope: { type: 'sports_team', id: 'team-basketball' },
     }),
     stored('team-badminton', {
+      season: '2026秋季',
+      trainingSchedule: '每周三 18:00–20:00，羽毛球馆',
       name: '院羽毛球队',
       description: '学院羽毛球代表队。',
       status: 'active',
@@ -857,6 +927,18 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       .filter((record) => !filters.status || record.status === filters.status)
       .filter((record) => !filters.scopeType || record.scope.type === filters.scopeType)
       .filter((record) => !filters.scopeId || record.scope.id === filters.scopeId)
+      .filter((record) => {
+        const fields = record as unknown as Record<string, unknown>;
+        return (
+          ['category', 'season', 'organizationId', 'standingActivity'].every(
+            (key) =>
+              filters[key as keyof ListFilters] === undefined ||
+              fields[key] === filters[key as keyof ListFilters],
+          ) &&
+          (filters.tag === undefined ||
+            (Array.isArray(fields.tags) && fields.tags.includes(filters.tag)))
+        );
+      })
       .filter((record) => {
         if (!query) return true;
         const searchable = record as unknown as Record<string, unknown>;

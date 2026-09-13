@@ -18,11 +18,13 @@ import { archiveTagAssignment, createTagAssignment } from '../admin/assignment-s
 
 export type SportsTeamStatus = 'draft' | 'active' | 'archived';
 export interface SportsTeamInput {
+  season?: string;
+  trainingSchedule?: string;
   name: string;
   description: string;
   status: SportsTeamStatus;
 }
-export type SportsTeamPatch = Partial<Pick<SportsTeamInput, 'name' | 'description'>>;
+export type SportsTeamPatch = Partial<Omit<SportsTeamInput, 'status'>>;
 export interface SportsCheckinInput {
   memberUid: string;
   checkinDate: string;

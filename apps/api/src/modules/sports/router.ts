@@ -8,6 +8,7 @@ import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import { encodeDateOnly } from '../../core/database/date-codec.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { teamReadabilitySchema } from '../../core/validation/content-fields.js';
 import { RosterCsvError } from './csv-roster.js';
 import { RosterImportService } from './roster-import-service.js';
 import { SportsService } from './service.js';
@@ -27,6 +28,7 @@ const identifier = z.string().trim().min(1).max(128);
 const teamStatus = z.enum(['draft', 'active', 'archived']);
 const teamQuerySchema = z
   .object({
+    season: z.string().trim().min(1).max(80).optional(),
     status: teamStatus.optional(),
     scopeType: identifier.regex(/^[a-z][a-z0-9_]*$/).optional(),
     scopeId: identifier.optional(),
@@ -36,6 +38,7 @@ const teamQuerySchema = z
   .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
 const createTeamSchema = z
   .object({
+    ...teamReadabilitySchema.shape,
     name: z.string().trim().min(1).max(200),
     description: z.string().trim().min(1).max(20_000),
     status: z.literal('draft').default('draft'),
@@ -43,12 +46,19 @@ const createTeamSchema = z
   .strict();
 const patchTeamSchema = z
   .object({
+    ...teamReadabilitySchema.partial().shape,
     id: identifier,
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().min(1).max(20_000).optional(),
   })
   .strict()
-  .refine((value) => value.name !== undefined || value.description !== undefined);
+  .refine(
+    (value) =>
+      value.name !== undefined ||
+      value.description !== undefined ||
+      value.season !== undefined ||
+      value.trainingSchedule !== undefined,
+  );
 const teamRouteSchema = z.object({ teamId: identifier }).strict();
 const memberRouteSchema = z.object({ teamId: identifier, memberUid: identifier }).strict();
 const transitionSchema = z.object({ to: teamStatus }).strict();

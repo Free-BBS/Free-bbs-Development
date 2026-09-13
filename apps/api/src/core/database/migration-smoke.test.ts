@@ -18,6 +18,7 @@ describe('database migrations', () => {
       '005_business_workflows.sql',
       '006_domain_reference_integrity.sql',
       '007_platform_content_update.sql',
+      '008_module_readability_fields.sql',
     ]);
 
     const sql = (await Promise.all(migrations.map(({ path }) => readFile(path, 'utf8')))).join(

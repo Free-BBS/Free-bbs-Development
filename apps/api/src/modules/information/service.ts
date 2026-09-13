@@ -42,16 +42,19 @@ export interface AnnouncementPatch {
 }
 
 export interface ConsultationInput {
+  dueAt?: string | null;
   title: string;
   body: string;
 }
 
 export interface ConsultationPatch {
+  dueAt?: string | null;
   title?: string;
   body?: string;
 }
 
 export interface ConsultationHandlingPatch {
+  dueAt?: string | null;
   assigneeUid?: string | null;
   reply?: string | null;
 }

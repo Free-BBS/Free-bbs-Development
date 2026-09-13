@@ -19,6 +19,7 @@ export const PROPOSAL_STATUSES = [
 export type ProposalStatus = (typeof PROPOSAL_STATUSES)[number];
 
 export interface ProposalInput {
+  dueAt?: string | null;
   title: string;
   problemDescription: string;
   proposedSolution: string;
@@ -26,6 +27,7 @@ export interface ProposalInput {
 }
 
 export interface ProposalMaintenancePatch {
+  dueAt?: string | null;
   category?: string;
   status?: ProposalStatus;
   assigneeUid?: string | null;
@@ -34,6 +36,7 @@ export interface ProposalMaintenancePatch {
 }
 
 export interface PublicProposal {
+  dueAt: string | null;
   id: string;
   title: string;
   problemDescription: string;
@@ -74,6 +77,7 @@ function managesProposals(actor: AuthorizationContext): boolean {
 
 export function toPublicProposal(record: ProposalRecord): PublicProposal {
   return {
+    dueAt: record.dueAt,
     id: record.id,
     title: record.title,
     problemDescription: record.problemDescription,

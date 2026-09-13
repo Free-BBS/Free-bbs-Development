@@ -63,11 +63,11 @@ VALUES
   ('module-admin', 'admin', '权限与模块管理', '统一管理权限、标签和模块。', TRUE, 'enabled', 'demo-admin', 'public', '*', NOW(3), NOW(3));
 
 INSERT INTO knowledge_entries
-  (id, entry_type, title, body, audience, organization_id, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+  (id, entry_type, title, body, audience, organization_id, status, owner_uid, scope_type, scope_id, created_at, updated_at, category, tags, summary, maintained_at, maintainer_uid)
 VALUES
-  ('knowledge-workflow', 'workflow', '活动立项与复盘流程', '从立项、审批到复盘的标准步骤。', 'general', NULL, 'published', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
-  ('knowledge-faq', 'faq', '部门交接常见问题', '集中说明账号、资料和联系人交接。', 'general', NULL, 'published', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
-  ('knowledge-sports-handover', 'workflow', '体育中心代表队交接清单', '整理代表队联系人、训练安排、报名节点、常见问题与年度复盘。', 'social_org', 'sports_center', 'published', 'demo-sports-lead', 'social_organization', 'sports_center', NOW(3), NOW(3));
+  ('knowledge-workflow', 'workflow', '活动立项与复盘流程', '从立项、审批到复盘的标准步骤。', 'general', NULL, 'published', 'demo-admin', 'public', '*', NOW(3), NOW(3), '活动指南', JSON_ARRAY('十月预告', '活动流程'), '十月活动立项、审批和复盘速查。', '2026-10-01 00:00:00.000', 'demo-admin'),
+  ('knowledge-faq', 'faq', '部门交接常见问题', '集中说明账号、资料和联系人交接。', 'general', NULL, 'published', 'demo-admin', 'public', '*', NOW(3), NOW(3), '部门交接', JSON_ARRAY('十月预告', '交接'), '秋季部门账号、资料与联系人交接说明。', '2026-10-01 00:00:00.000', 'demo-admin'),
+  ('knowledge-sports-handover', 'workflow', '体育中心代表队交接清单', '整理代表队联系人、训练安排、报名节点、常见问题与年度复盘。', 'social_org', 'sports_center', 'published', 'demo-sports-lead', 'social_organization', 'sports_center', NOW(3), NOW(3), '代表队管理', JSON_ARRAY('十月预告', '代表队'), '秋季代表队训练、招募和赛事交接清单。', '2026-10-01 00:00:00.000', 'demo-sports-lead');
 
 INSERT INTO announcements
   (id, title, body, status, owner_uid, scope_type, scope_id, created_at, updated_at)
@@ -76,21 +76,21 @@ VALUES
   ('announcement-consultation', '权益咨询窗口更新时间', '工作日咨询将在两个工作日内完成分流。', 'published', 'demo-rights-member', 'public', '*', NOW(3), NOW(3));
 
 INSERT INTO consultations
-  (id, title, body, requester_uid, assignee_uid, reply, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+  (id, title, body, requester_uid, assignee_uid, reply, status, owner_uid, scope_type, scope_id, created_at, updated_at, due_at)
 VALUES
-  ('consultation-venue', '活动场地申请', '请问教学楼公共空间如何申请？', 'demo-student', 'demo-rights-member', '请填写场地预约表并等待管理员确认。', 'in_progress', 'demo-student', 'public', '*', NOW(3), NOW(3)),
-  ('consultation-rights', '校园权益建议', '希望延长公共讨论空间开放时间。', 'demo-student', 'demo-rights-member', NULL, 'in_progress', 'demo-student', 'public', '*', NOW(3), NOW(3));
+  ('consultation-venue', '活动场地申请', '请问教学楼公共空间如何申请？', 'demo-student', 'demo-rights-member', '请填写场地预约表并等待管理员确认。', 'in_progress', 'demo-student', 'public', '*', NOW(3), NOW(3), '2026-10-08 10:00:00.000'),
+  ('consultation-rights', '校园权益建议', '希望延长公共讨论空间开放时间。', 'demo-student', 'demo-rights-member', NULL, 'in_progress', 'demo-student', 'public', '*', NOW(3), NOW(3), '2026-10-10 10:00:00.000');
 
 INSERT INTO proposals
-  (id, title, problem_description, proposed_solution, category, submitter_uid, assignee_uid, public_progress, internal_note, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+  (id, title, problem_description, proposed_solution, category, submitter_uid, assignee_uid, public_progress, internal_note, status, owner_uid, scope_type, scope_id, created_at, updated_at, due_at)
 VALUES
-  ('proposal-night-lighting', '校园夜间照明优化', '部分公共活动区域夜间照明不足，影响同学通行与活动。', '梳理重点点位并与相关部门共同推进照明巡检和补充。', '校园空间', 'demo-student', 'demo-rights-member', '已收集首批点位，正在核实现场情况。', '下一步联系物业与相关场馆负责人。', 'reviewing', 'demo-student', 'public', '*', NOW(3), NOW(3));
+  ('proposal-night-lighting', '校园夜间照明优化', '部分公共活动区域夜间照明不足，影响同学通行与活动。', '梳理重点点位并与相关部门共同推进照明巡检和补充。', '校园空间', 'demo-student', 'demo-rights-member', '已收集首批点位，正在核实现场情况。', '下一步联系物业与相关场馆负责人。', 'reviewing', 'demo-student', 'public', '*', NOW(3), NOW(3), '2026-10-15 10:00:00.000');
 
 INSERT INTO clubs
-  (id, name, description, organization_id, technical_support_status, technical_support_note, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+  (id, name, description, organization_id, technical_support_status, technical_support_note, status, owner_uid, scope_type, scope_id, created_at, updated_at, category, contact_name, public_contact)
 VALUES
-  ('club-music', '校园音乐俱乐部', '排练、分享与小型演出。', 'liaison_center', 'requested', '需要演出音响调试支持。', 'active', 'demo-liaison-member', 'public', '*', NOW(3), NOW(3)),
-  ('club-running', '自由跑团', '每周轻松跑与训练交流。', 'liaison_center', 'not_requested', NULL, 'active', 'demo-liaison-member', 'public', '*', NOW(3), NOW(3));
+  ('club-music', '校园音乐俱乐部', '排练、分享与小型演出。', 'liaison_center', 'requested', '需要演出音响调试支持。', 'active', 'demo-liaison-member', 'public', '*', NOW(3), NOW(3), '文艺交流', '音乐俱乐部联络员', '每周五学生活动中心排练室'),
+  ('club-running', '自由跑团', '每周轻松跑与训练交流。', 'liaison_center', 'not_requested', NULL, 'active', 'demo-liaison-member', 'public', '*', NOW(3), NOW(3), '体育户外', '跑团联络员', '每周三东大操场集合点');
 
 INSERT INTO club_memberships
   (id, club_id, member_uid, status, owner_uid, scope_type, scope_id, created_at, updated_at)
@@ -99,11 +99,11 @@ VALUES
   ('membership-running', 'club-running', 'demo-captain', 'active', 'demo-captain', 'club', 'club-running', NOW(3), NOW(3));
 
 INSERT INTO activities
-  (id, title, description, club_id, starts_at, ends_at, location, organization_id, standing_activity, technical_support_status, technical_support_note, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+  (id, title, description, club_id, starts_at, ends_at, location, organization_id, standing_activity, technical_support_status, technical_support_note, status, owner_uid, scope_type, scope_id, created_at, updated_at, registration_deadline, capacity, contact)
 VALUES
-  ('activity-orientation', '新生趣缘群体见面会', '一次认识各趣缘群体的开放活动。', NULL, '2026-09-05 10:00:00.000', '2026-09-05 12:00:00.000', '中央主楼大厅', 'liaison_center', FALSE, 'requested', '需要现场网络与投影支持。', 'published', 'demo-liaison-member', 'public', '*', NOW(3), NOW(3)),
-  ('activity-night-run', '校园夜跑', '五公里轻松跑。', 'club-running', '2026-09-12 19:00:00.000', '2026-09-12 21:00:00.000', '东大操场', 'sports_center', FALSE, 'confirmed', '路线签到设备已确认。', 'published', 'demo-sports-lead', 'public', '*', NOW(3), NOW(3)),
-  ('activity-ma-john-cup', '马约翰杯', '学院代表队参加的常设综合体育赛事，集中展示赛程与比赛进展。', NULL, '2026-10-10 08:00:00.000', '2026-11-15 10:00:00.000', '清华大学各体育场馆', 'sports_center', TRUE, 'not_requested', NULL, 'published', 'demo-sports-lead', 'public', '*', NOW(3), NOW(3));
+  ('activity-orientation', '新生趣缘群体见面会', '一次认识各趣缘群体的开放活动。', NULL, '2026-09-05 10:00:00.000', '2026-09-05 12:00:00.000', '中央主楼大厅', 'liaison_center', FALSE, 'requested', '需要现场网络与投影支持。', 'published', 'demo-liaison-member', 'public', '*', NOW(3), NOW(3), '2026-09-04 10:00:00.000', 120, '联络中心活动咨询台'),
+  ('activity-night-run', '校园夜跑', '五公里轻松跑。', 'club-running', '2026-09-12 19:00:00.000', '2026-09-12 21:00:00.000', '东大操场', 'sports_center', FALSE, 'confirmed', '路线签到设备已确认。', 'published', 'demo-sports-lead', 'public', '*', NOW(3), NOW(3), '2026-09-11 10:00:00.000', 60, '跑团联络员（东大操场集合点）'),
+  ('activity-ma-john-cup', '马约翰杯', '学院代表队参加的常设综合体育赛事，集中展示赛程与比赛进展。', NULL, '2026-10-10 08:00:00.000', '2026-11-15 10:00:00.000', '清华大学各体育场馆', 'sports_center', TRUE, 'not_requested', NULL, 'published', 'demo-sports-lead', 'public', '*', NOW(3), NOW(3), '2026-10-08 10:00:00.000', 240, '体育中心赛事咨询台');
 
 INSERT INTO activity_milestones
   (id, activity_id, occurs_at, title, milestone_type, description, completed, display_order, status, owner_uid, scope_type, scope_id, created_at, updated_at)
@@ -125,10 +125,10 @@ VALUES
   ('registration-night-run', 'activity-night-run', 'demo-captain', 'registered', 'demo-captain', 'activity', 'activity-night-run', NOW(3), NOW(3));
 
 INSERT INTO sports_teams
-  (id, name, description, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+  (id, name, description, status, owner_uid, scope_type, scope_id, created_at, updated_at, season, training_schedule)
 VALUES
-  ('team-basketball', '院篮球队', '学院篮球代表队。', 'active', 'demo-sports-lead', 'sports_team', 'team-basketball', NOW(3), NOW(3)),
-  ('team-badminton', '院羽毛球队', '学院羽毛球代表队。', 'active', 'demo-sports-lead', 'sports_team', 'team-badminton', NOW(3), NOW(3));
+  ('team-basketball', '院篮球队', '学院篮球代表队。', 'active', 'demo-sports-lead', 'sports_team', 'team-basketball', NOW(3), NOW(3), '2026秋季', '每周二、四 18:00–20:00，篮球馆'),
+  ('team-badminton', '院羽毛球队', '学院羽毛球代表队。', 'active', 'demo-sports-lead', 'sports_team', 'team-badminton', NOW(3), NOW(3), '2026秋季', '每周三 18:00–20:00，羽毛球馆');
 
 INSERT INTO sports_team_members
   (id, team_id, member_uid, status, owner_uid, scope_type, scope_id, created_at, updated_at)

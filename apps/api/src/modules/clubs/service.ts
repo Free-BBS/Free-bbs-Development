@@ -15,6 +15,9 @@ import { canTransition } from '../../core/workflow/state-machine.js';
 
 export type ClubStatus = 'draft' | 'active' | 'archived';
 export interface ClubInput {
+  category?: string;
+  contactName?: string;
+  publicContact?: string;
   name: string;
   description: string;
   status: ClubStatus;

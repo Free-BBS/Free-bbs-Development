@@ -95,6 +95,15 @@ const field = (
 
 const booleanField = (key: string, column: string) =>
   field(key, column, { encode: (value) => (value ? 1 : 0), decode: (value) => Boolean(value) });
+const defaultedField = (key: string, column: string, fallback: unknown) =>
+  field(key, column, {
+    encode: (value) => value ?? fallback,
+    decode: (value) => value ?? fallback,
+  });
+const tagsField = field('tags', 'tags', {
+  encode: (value) => JSON.stringify(value ?? []),
+  decode: (value) => (typeof value === 'string' ? (JSON.parse(value) as string[]) : (value ?? [])),
+});
 const utcDateTimeField = (key: string, column: string) =>
   field(key, column, {
     encode: (value) => encodeUtcDateTime(value as string | Date | null | undefined),
@@ -232,6 +241,11 @@ const definitions = {
   knowledge: {
     table: 'knowledge_entries',
     fields: [
+      defaultedField('category', 'category', 'general'),
+      tagsField,
+      defaultedField('summary', 'summary', ''),
+      utcDateTimeField('maintainedAt', 'maintained_at'),
+      defaultedField('maintainerUid', 'maintainer_uid', null),
       field('type', 'entry_type'),
       field('title', 'title'),
       field('body', 'body'),
@@ -241,7 +255,7 @@ const definitions = {
       }),
       field('organizationId', 'organization_id'),
     ],
-    searchColumns: ['title', 'body'],
+    searchColumns: ['title', 'body', 'category', 'summary', 'tags'],
   },
   announcements: {
     table: 'announcements',
@@ -251,6 +265,7 @@ const definitions = {
   consultations: {
     table: 'consultations',
     fields: [
+      utcDateTimeField('dueAt', 'due_at'),
       field('title', 'title'),
       field('body', 'body'),
       field('requesterUid', 'requester_uid'),
@@ -262,6 +277,7 @@ const definitions = {
   proposals: {
     table: 'proposals',
     fields: [
+      utcDateTimeField('dueAt', 'due_at'),
       field('title', 'title'),
       field('problemDescription', 'problem_description'),
       field('proposedSolution', 'proposed_solution'),
@@ -282,13 +298,23 @@ const definitions = {
   clubs: {
     table: 'clubs',
     fields: [
+      defaultedField('category', 'category', 'general'),
+      defaultedField('contactName', 'contact_name', ''),
+      defaultedField('publicContact', 'public_contact', ''),
       field('name', 'name'),
       field('description', 'description'),
       field('technicalSupportStatus', 'technical_support_status'),
       field('technicalSupportNote', 'technical_support_note'),
       field('organizationId', 'organization_id'),
     ],
-    searchColumns: ['name', 'description', 'technical_support_note'],
+    searchColumns: [
+      'name',
+      'description',
+      'technical_support_note',
+      'category',
+      'contact_name',
+      'public_contact',
+    ],
   },
   clubMemberships: {
     table: 'club_memberships',
@@ -299,6 +325,9 @@ const definitions = {
   activities: {
     table: 'activities',
     fields: [
+      utcDateTimeField('registrationDeadline', 'registration_deadline'),
+      defaultedField('capacity', 'capacity', null),
+      defaultedField('contact', 'contact', ''),
       field('title', 'title'),
       field('description', 'description'),
       field('clubId', 'club_id'),
@@ -313,7 +342,7 @@ const definitions = {
       field('technicalSupportStatus', 'technical_support_status'),
       field('technicalSupportNote', 'technical_support_note'),
     ],
-    searchColumns: ['title', 'description', 'technical_support_note'],
+    searchColumns: ['title', 'description', 'technical_support_note', 'location', 'contact'],
   },
   activityMilestones: {
     table: 'activity_milestones',
@@ -349,8 +378,13 @@ const definitions = {
   },
   sportsTeams: {
     table: 'sports_teams',
-    fields: [field('name', 'name'), field('description', 'description')],
-    searchColumns: ['name', 'description'],
+    fields: [
+      field('name', 'name'),
+      field('description', 'description'),
+      defaultedField('season', 'season', ''),
+      defaultedField('trainingSchedule', 'training_schedule', ''),
+    ],
+    searchColumns: ['name', 'description', 'season', 'training_schedule'],
   },
   sportsTeamMembers: {
     table: 'sports_team_members',
@@ -418,6 +452,22 @@ function buildWhere(
 ): { where: string; values: SqlValue[] } {
   const clauses: string[] = [];
   const values: SqlValue[] = [];
+  for (const key of ['category', 'season', 'organizationId', 'standingActivity'] as const) {
+    if (filters[key] === undefined) continue;
+    const mapped = definition.fields.find((candidate) => candidate.key === key);
+    if (!mapped) {
+      clauses.push('1 = 0');
+      continue;
+    }
+    clauses.push(`${mapped.column} = ?`);
+    values.push(filters[key]!);
+  }
+  if (filters.tag !== undefined) {
+    if (definition.fields.some(({ key }) => key === 'tags')) {
+      clauses.push('JSON_CONTAINS(tags, ?)');
+      values.push(JSON.stringify(filters.tag));
+    } else clauses.push('1 = 0');
+  }
   if (filters.status) {
     clauses.push('status = ?');
     values.push(filters.status);

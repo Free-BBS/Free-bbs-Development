@@ -15,10 +15,36 @@ export interface StoredRecord {
   updatedAt: string;
 }
 
-export type NewRecord<T extends StoredRecord> = Omit<T, 'id' | 'createdAt' | 'updatedAt'>;
+type DefaultedContentKeys<T> = Extract<
+  keyof T,
+  | 'tags'
+  | 'summary'
+  | 'maintainedAt'
+  | 'maintainerUid'
+  | 'dueAt'
+  | 'contactName'
+  | 'publicContact'
+  | 'registrationDeadline'
+  | 'capacity'
+  | 'contact'
+  | 'season'
+  | 'trainingSchedule'
+  | (T extends KnowledgeEntryRecord | ClubRecord ? 'category' : never)
+>;
+export type NewRecord<T extends StoredRecord> = Pick<
+  StoredRecord,
+  'status' | 'ownerUid' | 'scope'
+> &
+  Omit<T, 'id' | 'createdAt' | 'updatedAt' | DefaultedContentKeys<T>> &
+  Partial<Pick<T, DefaultedContentKeys<T>>>;
 export type RecordPatch<T extends StoredRecord> = Partial<NewRecord<T>>;
 
 export interface ListFilters {
+  category?: string;
+  tag?: string;
+  season?: string;
+  organizationId?: string;
+  standingActivity?: boolean;
   status?: string;
   scopeType?: string;
   scopeId?: string;
@@ -129,6 +155,11 @@ export interface AuditLogRecord extends StoredRecord {
 }
 
 export interface KnowledgeEntryRecord extends StoredRecord {
+  category: string;
+  tags: string[];
+  summary: string;
+  maintainedAt: string | null;
+  maintainerUid: string | null;
   type: 'workflow' | 'faq' | 'contact' | 'retrospective' | 'notice';
   title: string;
   body: string;
@@ -142,6 +173,7 @@ export interface AnnouncementRecord extends StoredRecord {
 }
 
 export interface ConsultationRecord extends StoredRecord {
+  dueAt: string | null;
   title: string;
   body: string;
   requesterUid: string;
@@ -150,6 +182,7 @@ export interface ConsultationRecord extends StoredRecord {
 }
 
 export interface ProposalRecord extends StoredRecord {
+  dueAt: string | null;
   title: string;
   problemDescription: string;
   proposedSolution: string;
@@ -163,6 +196,9 @@ export interface ProposalRecord extends StoredRecord {
 export type TechnicalSupportStatus = 'not_requested' | 'requested' | 'confirmed';
 
 export interface ClubRecord extends StoredRecord {
+  category: string;
+  contactName: string;
+  publicContact: string;
   name: string;
   description: string;
   organizationId?: SocialOrganizationId | null;
@@ -176,6 +212,9 @@ export interface ClubMembershipRecord extends StoredRecord {
 }
 
 export interface ActivityRecord extends StoredRecord {
+  registrationDeadline: string | null;
+  capacity: number | null;
+  contact: string;
   title: string;
   description: string;
   clubId?: string | null;
@@ -214,6 +253,8 @@ export interface ActivityRegistrationRecord extends StoredRecord {
 }
 
 export interface SportsTeamRecord extends StoredRecord {
+  season: string;
+  trainingSchedule: string;
   name: string;
   description: string;
 }

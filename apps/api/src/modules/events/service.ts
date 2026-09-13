@@ -23,6 +23,9 @@ import {
 export type ActivityStatus =
   'draft' | 'pending' | 'approved' | 'rejected' | 'published' | 'finished' | 'archived';
 export interface ActivityInput {
+  registrationDeadline?: string | null;
+  capacity?: number | null;
+  contact?: string;
   title: string;
   description: string;
   clubId: string | null;

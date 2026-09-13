@@ -20,6 +20,11 @@ export type KnowledgeEntryType = KnowledgeEntryRecord['type'];
 export type KnowledgeEntryStatus = 'draft' | 'published' | 'archived';
 
 export interface KnowledgeEntryInput {
+  category?: string;
+  tags?: string[];
+  summary?: string;
+  maintainedAt?: string | null;
+  maintainerUid?: string | null;
   type: KnowledgeEntryType;
   title: string;
   body: string;
@@ -54,6 +59,9 @@ type TransitionResult =
 
 function repositoryFilters(filters: KnowledgeEntryFilters): ListFilters {
   return {
+    category: filters.category,
+    tag: filters.tag,
+    organizationId: filters.organizationId,
     status: filters.status,
     scopeType: filters.scopeType,
     scopeId: filters.scopeId,

@@ -11,6 +11,10 @@ import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import {
+  contentCategory,
+  knowledgeReadabilitySchema,
+} from '../../core/validation/content-fields.js';
 import { KnowledgeService } from './service.js';
 
 import type { Request, Response } from 'express';
@@ -41,6 +45,9 @@ const scope = z
   .strict();
 const querySchema = z
   .object({
+    category: contentCategory.optional(),
+    tag: contentCategory.optional(),
+    organizationId: organizationId.optional(),
     status: status.optional(),
     type: type.optional(),
     audience: audience.default('general'),
@@ -52,6 +59,7 @@ const querySchema = z
   .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
 const createSchema = z
   .object({
+    ...knowledgeReadabilitySchema.shape,
     type,
     title,
     body,
@@ -63,6 +71,7 @@ const createSchema = z
   .strict();
 const patchSchema = z
   .object({
+    ...knowledgeReadabilitySchema.partial().shape,
     id: identifier,
     type: type.optional(),
     title: title.optional(),
@@ -72,6 +81,11 @@ const patchSchema = z
   .strict()
   .refine(
     (value) =>
+      value.category !== undefined ||
+      value.tags !== undefined ||
+      value.summary !== undefined ||
+      value.maintainedAt !== undefined ||
+      value.maintainerUid !== undefined ||
       value.type !== undefined ||
       value.title !== undefined ||
       value.body !== undefined ||
