@@ -1,6 +1,7 @@
 import { recordAuditEvent } from '../../core/audit/audit-service.js';
 import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
+import type { ScopeRef } from '@freebbs-development/contracts';
 import type {
   DevelopmentStore,
   LiaisonOutcomeRecord,
@@ -77,9 +78,21 @@ function permitted(
   actor: AuthorizationContext,
   action: string,
   resource: 'liaison_problem' | 'liaison_outcome',
-  problem: LiaisonProblemRecord,
+  scope: ScopeRef,
 ): boolean {
-  return authorize(actor, { action, resource, scope: problem.scope }).allowed;
+  return authorize(actor, { action, resource, scope }).allowed;
+}
+
+function problemScope(problemId: string): ScopeRef {
+  return { type: 'liaison_problem', id: problemId };
+}
+
+function teamScope(teamId: string): ScopeRef {
+  return { type: 'liaison_team', id: teamId };
+}
+
+function outcomeScope(outcomeId: string): ScopeRef {
+  return { type: 'liaison_outcome', id: outcomeId };
 }
 
 function problemNotFound(): HttpError {
@@ -94,25 +107,56 @@ function outcomeNotFound(): HttpError {
   return new HttpError(404, 'liaison_outcome_not_found', 'Liaison outcome not found');
 }
 
+function problemNotOpen(): HttpError {
+  return new HttpError(409, 'liaison_problem_not_open', 'Liaison problem is not open');
+}
+
+function problemNotAcceptingOutcomes(): HttpError {
+  return new HttpError(
+    409,
+    'problem_not_accepting_outcomes',
+    'Liaison problem is not accepting outcomes',
+  );
+}
+
+function teamInactive(): HttpError {
+  return new HttpError(409, 'liaison_team_inactive', 'Liaison team is inactive');
+}
+
+function membershipNotPending(): HttpError {
+  return new HttpError(409, 'team_membership_not_pending', 'Team membership is not pending');
+}
+
+function outcomeNotSubmitted(): HttpError {
+  return new HttpError(409, 'liaison_outcome_not_submitted', 'Liaison outcome is not submitted');
+}
+
+async function actorIsActive(store: DevelopmentStore, uid: string): Promise<boolean> {
+  return (await store.subjects.listForUpdate({ query: uid })).some(
+    (subject) => subject.uid === uid && subject.status === 'active',
+  );
+}
+
 function hasMaintenanceAccess(actor: AuthorizationContext, problem: LiaisonProblemRecord): boolean {
-  return permitted(actor, 'liaison.problem.update', 'liaison_problem', problem);
+  return permitted(actor, 'liaison.problem.update', 'liaison_problem', problemScope(problem.id));
 }
 
 function hasSensitiveAccess(actor: AuthorizationContext, problem: LiaisonProblemRecord): boolean {
   return (
     problem.ownerUid === actor.uid ||
     hasMaintenanceAccess(actor, problem) ||
-    permitted(actor, 'liaison.problem.review', 'liaison_problem', problem)
+    permitted(actor, 'liaison.problem.review', 'liaison_problem', problemScope(problem.id))
   );
 }
 
 function canSee(actor: AuthorizationContext, problem: LiaisonProblemRecord): boolean {
-  if (!permitted(actor, 'liaison.problem.read', 'liaison_problem', problem)) return false;
+  if (!permitted(actor, 'liaison.problem.read', 'liaison_problem', problemScope(problem.id)))
+    return false;
   if (publicStatuses.has(problem.status)) return true;
   if (problem.ownerUid === actor.uid || hasMaintenanceAccess(actor, problem)) return true;
   return (
     problem.status === 'pending_review' &&
-    permitted(actor, 'liaison.problem.review', 'liaison_problem', problem)
+    permitted(actor, 'liaison.problem.review', 'liaison_problem', problemScope(problem.id))
   );
 }
 
@@ -140,20 +184,38 @@ export class LiaisonProblemService {
   ): Promise<Page<ProblemProjection>> {
     const page = input.page ?? 1;
     const pageSize = input.pageSize ?? 20;
-    const records = await this.store.liaisonProblems.list({
+    const filters = {
       ...(input.query === undefined ? {} : { query: input.query }),
       ...(input.status === undefined ? {} : { status: input.status }),
       ...(input.tag === undefined ? {} : { tag: input.tag }),
-    });
-    const visible = records
-      .filter((problem) => canSee(actor, problem))
-      .map((problem) => project(actor, problem));
-    const offset = (page - 1) * pageSize;
+    };
+    const firstVisibleIndex = (page - 1) * pageSize;
+    const lastVisibleIndex = firstVisibleIndex + pageSize;
+    const items: ProblemProjection[] = [];
+    let visibleTotal = 0;
+    let storagePage = 1;
+    const storagePageSize = 100;
+    let storageTotal = 0;
+    do {
+      const records = await this.store.liaisonProblems.page(filters, {
+        page: storagePage,
+        pageSize: storagePageSize,
+      });
+      storageTotal = records.total;
+      for (const problem of records.items) {
+        if (!canSee(actor, problem)) continue;
+        if (visibleTotal >= firstVisibleIndex && visibleTotal < lastVisibleIndex) {
+          items.push(project(actor, problem));
+        }
+        visibleTotal += 1;
+      }
+      storagePage += 1;
+    } while ((storagePage - 1) * storagePageSize < storageTotal);
     return {
-      items: visible.slice(offset, offset + pageSize),
+      items,
       page,
       pageSize,
-      total: visible.length,
+      total: visibleTotal,
     };
   }
 
@@ -167,16 +229,17 @@ export class LiaisonProblemService {
     actor: AuthorizationContext,
     input: ProblemCreateInput,
   ): Promise<LiaisonProblemRecord> {
-    if (
-      !authorize(actor, {
-        action: 'liaison.problem.create',
-        resource: 'liaison_problem',
-        scope: publicScope,
-      }).allowed
-    ) {
-      throw new HttpError(403, 'forbidden', 'Liaison problem create permission is required');
-    }
     return this.store.transaction(async (store) => {
+      if (
+        !(await actorIsActive(store, actor.uid)) ||
+        !authorize(actor, {
+          action: 'liaison.problem.create',
+          resource: 'liaison_problem',
+          scope: publicScope,
+        }).allowed
+      ) {
+        throw new HttpError(403, 'forbidden', 'Liaison problem create permission is required');
+      }
       const created = await store.liaisonProblems.create({
         ...input,
         startsAt: normalizeTime(input.startsAt),
@@ -207,7 +270,12 @@ export class LiaisonProblemService {
   ): Promise<LiaisonProblemRecord> {
     return this.store.transaction(async (store) => {
       const current = await store.liaisonProblems.getForUpdate(id);
-      if (current === null || !hasMaintenanceAccess(actor, current)) throw problemNotFound();
+      if (
+        current === null ||
+        !(await actorIsActive(store, actor.uid)) ||
+        !hasMaintenanceAccess(actor, current)
+      )
+        throw problemNotFound();
       const normalized = {
         ...patch,
         ...(patch.startsAt === undefined ? {} : { startsAt: normalizeTime(patch.startsAt) }),
@@ -233,17 +301,20 @@ export class LiaisonProblemService {
   ): Promise<LiaisonProblemRecord> {
     return this.store.transaction(async (store) => {
       const current = await store.liaisonProblems.getForUpdate(id);
-      if (current === null) throw problemNotFound();
+      if (current === null || !(await actorIsActive(store, actor.uid))) throw problemNotFound();
       const from = current.status;
       if (from === 'pending_review' && (to === 'open' || to === 'rejected')) {
-        if (!permitted(actor, 'liaison.problem.review', 'liaison_problem', current)) {
+        if (
+          !permitted(actor, 'liaison.problem.review', 'liaison_problem', problemScope(current.id))
+        ) {
           throw problemNotFound();
         }
         throw new HttpError(409, 'review_endpoint_required', 'Use the review endpoint');
       }
       const action =
         to === 'pending_review' ? 'liaison.problem.submit_review' : 'liaison.problem.update';
-      if (!permitted(actor, action, 'liaison_problem', current)) throw problemNotFound();
+      if (!permitted(actor, action, 'liaison_problem', problemScope(current.id)))
+        throw problemNotFound();
       if (!canTransition(PROBLEM_TRANSITIONS, from, to)) {
         throw new HttpError(
           409,
@@ -274,7 +345,8 @@ export class LiaisonProblemService {
       const current = await store.liaisonProblems.getForUpdate(id);
       if (
         current === null ||
-        !permitted(actor, 'liaison.problem.review', 'liaison_problem', current)
+        !(await actorIsActive(store, actor.uid)) ||
+        !permitted(actor, 'liaison.problem.review', 'liaison_problem', problemScope(current.id))
       ) {
         throw problemNotFound();
       }
@@ -329,11 +401,11 @@ export class LiaisonProblemService {
       const problem = await store.liaisonProblems.getForUpdate(problemId);
       if (
         problem === null ||
-        problem.status !== 'open' ||
-        !permitted(actor, 'liaison.problem.join', 'liaison_problem', problem)
-      ) {
+        !(await actorIsActive(store, actor.uid)) ||
+        !permitted(actor, 'liaison.problem.join', 'liaison_problem', problemScope(problemId))
+      )
         throw problemNotFound();
-      }
+      if (problem.status !== 'open') throw problemNotOpen();
       const team = await store.liaisonTeams.create({
         problemId,
         ...input,
@@ -370,15 +442,17 @@ export class LiaisonProblemService {
   ): Promise<LiaisonTeamMemberRecord> {
     return this.store.transaction(async (store) => {
       const problem = await store.liaisonProblems.getForUpdate(problemId);
+      const team = await store.liaisonTeams.getForUpdate(teamId);
       if (
         problem === null ||
-        problem.status !== 'open' ||
-        !permitted(actor, 'liaison.problem.join', 'liaison_problem', problem)
+        team === null ||
+        team.problemId !== problemId ||
+        !(await actorIsActive(store, actor.uid)) ||
+        !permitted(actor, 'liaison.problem.join', 'liaison_problem', teamScope(teamId))
       )
-        throw problemNotFound();
-      const team = await store.liaisonTeams.getForUpdate(teamId);
-      if (team === null || team.problemId !== problemId || team.status !== 'active')
         throw teamNotFound();
+      if (problem.status !== 'open') throw problemNotOpen();
+      if (team.status !== 'active') throw teamInactive();
       const existing = (await store.liaisonTeamMembers.listForUpdate({ query: problemId })).find(
         (member) =>
           member.problemId === problemId &&
@@ -422,10 +496,14 @@ export class LiaisonProblemService {
         problem === null ||
         team === null ||
         team.problemId !== problemId ||
-        team.maintainerUid !== actor.uid
+        team.maintainerUid !== actor.uid ||
+        !(await actorIsActive(store, actor.uid)) ||
+        !permitted(actor, 'liaison.problem.join', 'liaison_problem', teamScope(teamId))
       ) {
         throw teamNotFound();
       }
+      if (problem.status !== 'open') throw problemNotOpen();
+      if (team.status !== 'active') throw teamInactive();
       const membership = (await store.liaisonTeamMembers.listForUpdate({ query: problemId })).find(
         (candidate) =>
           candidate.problemId === problemId &&
@@ -433,9 +511,7 @@ export class LiaisonProblemService {
           candidate.memberUid === memberUid,
       );
       if (membership === undefined) throw teamNotFound();
-      if (membership.status === 'active') {
-        throw new HttpError(409, 'team_membership_exists', 'Team membership is already active');
-      }
+      if (membership.status !== 'pending') throw membershipNotPending();
       const updated = await store.liaisonTeamMembers.update(membership.id, { status: 'active' });
       if (updated === null) throw teamNotFound();
       await recordAuditEvent(store, {
@@ -469,17 +545,20 @@ export class LiaisonProblemService {
   ): Promise<LiaisonPostRecord> {
     return this.store.transaction(async (store) => {
       const problem = await store.liaisonProblems.getForUpdate(problemId);
-      if (
-        problem === null ||
-        problem.status !== 'open' ||
-        !permitted(actor, 'liaison.problem.post', 'liaison_problem', problem)
-      )
-        throw problemNotFound();
+      if (problem === null || !(await actorIsActive(store, actor.uid))) throw problemNotFound();
       if (input.kind === 'progress' && input.teamId === null) {
         throw new HttpError(400, 'team_required', 'Progress posts require a team');
       }
       if (input.teamId !== null) {
         const team = await store.liaisonTeams.getForUpdate(input.teamId);
+        if (
+          team === null ||
+          team.problemId !== problemId ||
+          !permitted(actor, 'liaison.problem.post', 'liaison_problem', teamScope(input.teamId))
+        )
+          throw teamNotFound();
+        if (problem.status !== 'open') throw problemNotOpen();
+        if (team.status !== 'active') throw teamInactive();
         const membership = (
           await store.liaisonTeamMembers.listForUpdate({ query: problemId })
         ).find(
@@ -489,8 +568,13 @@ export class LiaisonProblemService {
             candidate.memberUid === actor.uid &&
             candidate.status === 'active',
         );
-        if (team === null || team.problemId !== problemId || membership === undefined)
-          throw teamNotFound();
+        if (membership === undefined) throw teamNotFound();
+      } else if (
+        !permitted(actor, 'liaison.problem.post', 'liaison_problem', problemScope(problemId))
+      ) {
+        throw problemNotFound();
+      } else if (problem.status !== 'open') {
+        throw problemNotOpen();
       }
       const post = await store.liaisonPosts.create({
         problemId,
@@ -530,13 +614,23 @@ export class LiaisonProblemService {
   ): Promise<LiaisonOutcomeRecord> {
     return this.store.transaction(async (store) => {
       const problem = await store.liaisonProblems.getForUpdate(problemId);
+      const team = await store.liaisonTeams.getForUpdate(input.teamId);
       if (
         problem === null ||
-        (problem.status !== 'open' && problem.status !== 'paused') ||
-        !permitted(actor, 'liaison.problem.outcome.submit', 'liaison_outcome', problem)
+        team === null ||
+        team.problemId !== problemId ||
+        !(await actorIsActive(store, actor.uid)) ||
+        !permitted(
+          actor,
+          'liaison.problem.outcome.submit',
+          'liaison_outcome',
+          teamScope(input.teamId),
+        )
       )
-        throw problemNotFound();
-      const team = await store.liaisonTeams.getForUpdate(input.teamId);
+        throw teamNotFound();
+      if (problem.status !== 'open' && problem.status !== 'paused')
+        throw problemNotAcceptingOutcomes();
+      if (team.status !== 'active') throw teamInactive();
       const member = (await store.liaisonTeamMembers.listForUpdate({ query: problemId })).find(
         (candidate) =>
           candidate.problemId === problemId &&
@@ -544,8 +638,7 @@ export class LiaisonProblemService {
           candidate.memberUid === actor.uid &&
           candidate.status === 'active',
       );
-      if (team === null || team.problemId !== problemId || member === undefined)
-        throw teamNotFound();
+      if (member === undefined) throw teamNotFound();
       const versions = (await store.liaisonOutcomes.listForUpdate({ query: problemId }))
         .filter((outcome) => outcome.problemId === problemId && outcome.teamId === input.teamId)
         .map(({ version }) => version);
@@ -579,16 +672,28 @@ export class LiaisonProblemService {
   ): Promise<LiaisonOutcomeRecord> {
     return this.store.transaction(async (store) => {
       const problem = await store.liaisonProblems.getForUpdate(problemId);
-      if (
-        problem === null ||
-        !permitted(actor, 'liaison.problem.outcome.manage', 'liaison_outcome', problem)
-      )
-        throw problemNotFound();
       const outcome = await store.liaisonOutcomes.getForUpdate(outcomeId);
       if (outcome === null || outcome.problemId !== problemId) throw outcomeNotFound();
+      const team = await store.liaisonTeams.getForUpdate(outcome.teamId);
+      if (
+        problem === null ||
+        team === null ||
+        team.problemId !== problemId ||
+        !(await actorIsActive(store, actor.uid)) ||
+        !permitted(
+          actor,
+          'liaison.problem.outcome.manage',
+          'liaison_outcome',
+          outcomeScope(outcomeId),
+        )
+      )
+        throw outcomeNotFound();
+      if (!publicStatuses.has(problem.status)) throw problemNotAcceptingOutcomes();
+      if (team.status !== 'active') throw teamInactive();
       if (outcome.status === 'adopted' || outcome.adoptedAt !== null) {
         throw new HttpError(409, 'outcome_already_adopted', 'Outcome is already adopted');
       }
+      if (outcome.status !== 'submitted') throw outcomeNotSubmitted();
       const adoptedAt = this.now().toISOString();
       const updated = await store.liaisonOutcomes.update(outcomeId, {
         status: 'adopted',

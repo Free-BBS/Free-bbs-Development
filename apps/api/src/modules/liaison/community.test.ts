@@ -57,4 +57,40 @@ describe('liaison problem community', () => {
       ),
     ).toHaveLength(2);
   });
+
+  it('does not let an inactive team maintainer confirm a pending member', async () => {
+    const store = createMemoryStore();
+    const app = createApp({
+      store,
+      databaseMode: 'memory',
+      authMode: 'demo',
+      authClient: new DemoAuthClient(['demo-student', 'demo-captain']),
+    });
+    const problemId = 'liaison-problem-lab-energy';
+    const team = await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/teams`)
+      .set('X-Demo-User', 'demo-student')
+      .send({ name: 'Subject-state team', proposal: 'Confirm only while authorized.' })
+      .expect(201);
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/teams/${team.body.data.id}/members`)
+      .set('X-Demo-User', 'demo-captain')
+      .send({ action: 'request' })
+      .expect(201);
+    const maintainerSubject = (await store.subjects.list({ query: 'demo-student' })).find(
+      ({ uid }) => uid === 'demo-student',
+    );
+    expect(maintainerSubject).toBeDefined();
+    await store.subjects.update(maintainerSubject!.id, { status: 'inactive' });
+
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/teams/${team.body.data.id}/members`)
+      .set('X-Demo-User', 'demo-student')
+      .send({ action: 'confirm', memberUid: 'demo-captain' })
+      .expect(404);
+    const membership = (await store.liaisonTeamMembers.list({ query: problemId })).find(
+      ({ teamId, memberUid }) => teamId === team.body.data.id && memberUid === 'demo-captain',
+    );
+    expect(membership).toMatchObject({ status: 'pending' });
+  });
 });

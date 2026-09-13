@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import {
@@ -7,7 +7,11 @@ import {
   ROLE_PERMISSION_CATALOG,
 } from '../../core/authorization/permission-catalog.js';
 import { createMemoryStore } from '../../core/database/memory-store.js';
-import type { DevelopmentStore } from '../../core/database/types.js';
+import type {
+  DevelopmentStore,
+  LiaisonProblemRecord,
+  RecordRepository,
+} from '../../core/database/types.js';
 import { LiaisonProblemService } from './problem-service.js';
 
 const publicScope = { type: 'public', id: '*' } as const;
@@ -26,6 +30,39 @@ function actor(uid: string, actions: readonly string[]): AuthorizationContext {
       resource: action.includes('.outcome.') ? 'liaison_outcome' : 'liaison_problem',
       effect: 'allow' as const,
     })),
+  };
+}
+
+function withDeny(
+  context: AuthorizationContext,
+  action: string,
+  resource: 'liaison_problem' | 'liaison_outcome',
+  scope: { type: string; id: string },
+): AuthorizationContext {
+  return {
+    ...context,
+    policies: [
+      ...(context.policies ?? []),
+      { id: `deny-${action}-${scope.type}-${scope.id}`, action, resource, effect: 'deny', scope },
+    ],
+  };
+}
+
+function repositoryWithoutList(
+  repository: RecordRepository<LiaisonProblemRecord>,
+  page: RecordRepository<LiaisonProblemRecord>['page'],
+): RecordRepository<LiaisonProblemRecord> {
+  return {
+    create: repository.create.bind(repository),
+    get: repository.get.bind(repository),
+    getForUpdate: repository.getForUpdate.bind(repository),
+    listForUpdate: repository.listForUpdate.bind(repository),
+    list: vi.fn(async () => {
+      throw new Error('list must not be used for API pagination');
+    }),
+    page,
+    update: repository.update.bind(repository),
+    delete: repository.delete.bind(repository),
   };
 }
 
@@ -213,6 +250,65 @@ describe('liaison problem service', () => {
     expect(ownerView).toMatchObject({ internalContactNote: 'private-person@example.test' });
   });
 
+  it('honors an exact problem deny instead of authorizing against the public storage scope', async () => {
+    const store = createMemoryStore();
+    const problem = await draft(store, 'demo-admin');
+    await store.liaisonProblems.update(problem.id, { status: 'open' });
+    const denied = withDeny(student, 'liaison.problem.read', 'liaison_problem', {
+      type: 'liaison_problem',
+      id: problem.id,
+    });
+
+    await expect(new LiaisonProblemService(store).get(denied, problem.id)).rejects.toMatchObject({
+      status: 404,
+      code: 'liaison_problem_not_found',
+    });
+  });
+
+  it('pushes authorized list pagination into the repository and preserves the visible total', async () => {
+    const base = createMemoryStore();
+    const repositoryPage = vi.fn(base.liaisonProblems.page.bind(base.liaisonProblems));
+    const store: DevelopmentStore = {
+      ...base,
+      liaisonProblems: repositoryWithoutList(base.liaisonProblems, repositoryPage),
+    };
+    const service = new LiaisonProblemService(store);
+
+    const first = await service.list(student, { page: 1, pageSize: 1 });
+    const second = await service.list(student, { page: 2, pageSize: 1 });
+
+    expect(repositoryPage).toHaveBeenCalled();
+    expect(first).toMatchObject({ page: 1, pageSize: 1, total: 2 });
+    expect(second).toMatchObject({ page: 2, pageSize: 1, total: 2 });
+    expect(first.items).toHaveLength(1);
+    expect(second.items).toHaveLength(1);
+    expect(first.items[0]?.id).not.toBe(second.items[0]?.id);
+  });
+
+  it('keeps maintainer-only records in repository-backed pagination totals', async () => {
+    const base = createMemoryStore();
+    const privateDraft = await draft(base, 'demo-admin');
+    const repositoryPage = vi.fn(base.liaisonProblems.page.bind(base.liaisonProblems));
+    const store: DevelopmentStore = {
+      ...base,
+      liaisonProblems: repositoryWithoutList(base.liaisonProblems, repositoryPage),
+    };
+
+    const result = await new LiaisonProblemService(store).list(maintainer, {
+      page: 2,
+      pageSize: 2,
+    });
+
+    expect(result).toMatchObject({ page: 2, pageSize: 2, total: 3 });
+    expect(result.items).toHaveLength(1);
+    expect([
+      ...result.items.map(({ id }) => id),
+      ...(
+        await new LiaisonProblemService(store).list(maintainer, { page: 1, pageSize: 2 })
+      ).items.map(({ id }) => id),
+    ]).toContain(privateDraft.id);
+  });
+
   it('returns stable conflicts for duplicate membership and repeated adoption while keeping the problem open', async () => {
     const store = createMemoryStore();
     const problem = await draft(store);
@@ -280,6 +376,167 @@ describe('liaison problem service', () => {
     expect(outcomes.map(({ version }) => version).sort()).toEqual([1, 2]);
   });
 
+  it('applies exact problem, team, and outcome denies after locking the target records', async () => {
+    const store = createMemoryStore();
+    const problem = await draft(store);
+    await store.liaisonProblems.update(problem.id, { status: 'open' });
+    const service = new LiaisonProblemService(store);
+    const team = await service.createTeam(student, problem.id, {
+      name: 'Scoped team',
+      proposal: 'Test scoped authorization.',
+    });
+    const captain = actor('demo-captain', [
+      'liaison.problem.read',
+      'liaison.problem.join',
+      'liaison.problem.post',
+      'liaison.problem.outcome.submit',
+    ]);
+
+    await expect(
+      service.createTeam(
+        withDeny(captain, 'liaison.problem.join', 'liaison_problem', {
+          type: 'liaison_problem',
+          id: problem.id,
+        }),
+        problem.id,
+        { name: 'Denied team', proposal: 'Must not be created.' },
+      ),
+    ).rejects.toMatchObject({ status: 404, code: 'liaison_problem_not_found' });
+
+    const teamDenied = withDeny(captain, 'liaison.problem.join', 'liaison_problem', {
+      type: 'liaison_team',
+      id: team.id,
+    });
+    await expect(service.requestMembership(teamDenied, problem.id, team.id)).rejects.toMatchObject({
+      status: 404,
+      code: 'liaison_team_not_found',
+    });
+    await service.requestMembership(captain, problem.id, team.id);
+    await service.confirmMembership(student, problem.id, team.id, captain.uid);
+
+    const postDenied = withDeny(captain, 'liaison.problem.post', 'liaison_problem', {
+      type: 'liaison_team',
+      id: team.id,
+    });
+    await expect(
+      service.createPost(postDenied, problem.id, {
+        teamId: team.id,
+        kind: 'discussion',
+        body: 'Must not be posted.',
+      }),
+    ).rejects.toMatchObject({ status: 404, code: 'liaison_team_not_found' });
+
+    const submissionDenied = withDeny(
+      captain,
+      'liaison.problem.outcome.submit',
+      'liaison_outcome',
+      { type: 'liaison_team', id: team.id },
+    );
+    await expect(
+      service.submitOutcome(submissionDenied, problem.id, {
+        teamId: team.id,
+        title: 'Denied outcome',
+        description: 'Must not be submitted.',
+        linkUrl: null,
+        attachmentRef: null,
+      }),
+    ).rejects.toMatchObject({ status: 404, code: 'liaison_team_not_found' });
+
+    const outcome = await service.submitOutcome(student, problem.id, {
+      teamId: team.id,
+      title: 'Scoped outcome',
+      description: 'Used to test exact outcome deny.',
+      linkUrl: null,
+      attachmentRef: null,
+    });
+    const adoptionDenied = withDeny(
+      maintainer,
+      'liaison.problem.outcome.manage',
+      'liaison_outcome',
+      { type: 'liaison_outcome', id: outcome.id },
+    );
+    await expect(
+      service.adoptOutcome(adoptionDenied, problem.id, outcome.id),
+    ).rejects.toMatchObject({ status: 404, code: 'liaison_outcome_not_found' });
+  });
+
+  it('requires a current allow policy even when the actor UID is the team maintainer', async () => {
+    const store = createMemoryStore();
+    const problem = await draft(store);
+    await store.liaisonProblems.update(problem.id, { status: 'open' });
+    const service = new LiaisonProblemService(store);
+    const team = await service.createTeam(student, problem.id, {
+      name: 'Maintained team',
+      proposal: 'Permission-gated confirmations.',
+    });
+    const captain = actor('demo-captain', ['liaison.problem.join', 'liaison.problem.post']);
+    await service.requestMembership(captain, problem.id, team.id);
+
+    await expect(
+      service.confirmMembership(actor(student.uid, []), problem.id, team.id, captain.uid),
+    ).rejects.toMatchObject({ status: 404, code: 'liaison_team_not_found' });
+    await expect(
+      service.confirmMembership(
+        withDeny(student, 'liaison.problem.join', 'liaison_problem', {
+          type: 'liaison_team',
+          id: team.id,
+        }),
+        problem.id,
+        team.id,
+        captain.uid,
+      ),
+    ).rejects.toMatchObject({ status: 404, code: 'liaison_team_not_found' });
+  });
+
+  it('authorizes a post before revealing that the problem is paused', async () => {
+    const store = createMemoryStore();
+    const problem = await draft(store);
+    await store.liaisonProblems.update(problem.id, { status: 'paused' });
+
+    await expect(
+      new LiaisonProblemService(store).createPost(actor('demo-captain', []), problem.id, {
+        teamId: null,
+        kind: 'discussion',
+        body: 'Must not reveal state.',
+      }),
+    ).rejects.toMatchObject({ status: 404, code: 'liaison_problem_not_found' });
+  });
+
+  it('does not confirm inactive teams or non-pending historical memberships', async () => {
+    const store = createMemoryStore();
+    const problem = await draft(store);
+    await store.liaisonProblems.update(problem.id, { status: 'open' });
+    const service = new LiaisonProblemService(store);
+    const team = await service.createTeam(student, problem.id, {
+      name: 'Historical team',
+      proposal: 'State checks.',
+    });
+    const captain = actor('demo-captain', ['liaison.problem.join', 'liaison.problem.post']);
+    const membership = await service.requestMembership(captain, problem.id, team.id);
+    await store.liaisonTeams.update(team.id, { status: 'inactive' });
+
+    await expect(
+      service.confirmMembership(student, problem.id, team.id, captain.uid),
+    ).rejects.toMatchObject({ status: 409, code: 'liaison_team_inactive' });
+    await expect(service.requestMembership(captain, problem.id, team.id)).rejects.toMatchObject({
+      status: 409,
+      code: 'liaison_team_inactive',
+    });
+    await expect(
+      service.createPost(captain, problem.id, {
+        teamId: team.id,
+        kind: 'discussion',
+        body: 'Inactive team post.',
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'liaison_team_inactive' });
+    await store.liaisonTeams.update(team.id, { status: 'active' });
+    await store.liaisonTeamMembers.update(membership.id, { status: 'inactive' });
+    await expect(
+      service.confirmMembership(student, problem.id, team.id, captain.uid),
+    ).rejects.toMatchObject({ status: 409, code: 'team_membership_not_pending' });
+    expect(await store.liaisonTeamMembers.get(membership.id)).toMatchObject({ status: 'inactive' });
+  });
+
   it('stops accepting new outcomes after the liaison maintainer closes a problem', async () => {
     const store = createMemoryStore();
     const problem = await draft(store);
@@ -292,6 +549,13 @@ describe('liaison problem service', () => {
     await store.liaisonProblems.update(problem.id, { status: 'closed' });
 
     await expect(
+      service.createTeam(student, problem.id, {
+        name: 'Late team',
+        proposal: 'Must not start after close.',
+      }),
+    ).rejects.toMatchObject({ status: 409, code: 'liaison_problem_not_open' });
+
+    await expect(
       service.submitOutcome(student, problem.id, {
         teamId: team.id,
         title: 'Late result',
@@ -299,6 +563,31 @@ describe('liaison problem service', () => {
         linkUrl: null,
         attachmentRef: null,
       }),
-    ).rejects.toMatchObject({ status: 404, code: 'liaison_problem_not_found' });
+    ).rejects.toMatchObject({ status: 409, code: 'problem_not_accepting_outcomes' });
+  });
+
+  it('does not adopt an inactive historical outcome', async () => {
+    const store = createMemoryStore();
+    const problem = await draft(store);
+    await store.liaisonProblems.update(problem.id, { status: 'open' });
+    const service = new LiaisonProblemService(store);
+    const team = await service.createTeam(student, problem.id, {
+      name: 'Outcome state team',
+      proposal: 'Submit one outcome.',
+    });
+    const outcome = await service.submitOutcome(student, problem.id, {
+      teamId: team.id,
+      title: 'Historical outcome',
+      description: 'This record has been disabled.',
+      linkUrl: null,
+      attachmentRef: null,
+    });
+    await store.liaisonOutcomes.update(outcome.id, { status: 'inactive' });
+
+    await expect(service.adoptOutcome(maintainer, problem.id, outcome.id)).rejects.toMatchObject({
+      status: 409,
+      code: 'liaison_outcome_not_submitted',
+    });
+    expect(await store.liaisonOutcomes.get(outcome.id)).toMatchObject({ status: 'inactive' });
   });
 });
