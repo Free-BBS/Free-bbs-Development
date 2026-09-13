@@ -143,7 +143,21 @@ export function localDateTimeInputToUtcInstant(value: string): string | null {
 }
 
 function dueDate(value: string | null): string {
-  return value === null ? '尚未设定' : value.slice(0, 10);
+  return value === null ? '尚未设定' : formatProposalDueDate(value);
+}
+
+export function formatProposalDueDate(value: string, timeZone?: string): string {
+  const values = new Map(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(new Date(value))
+      .map(({ type, value: part }) => [type, part]),
+  );
+  return `${values.get('year')}-${values.get('month')}-${values.get('day')}`;
 }
 
 export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailPageProps) {
@@ -183,6 +197,11 @@ export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailP
     const generation = ++requestGeneration.current;
     setLoadError(null);
     setProposal(null);
+    setDrawerOpen(false);
+    setPending(false);
+    setMutationError(null);
+    setFeedback(null);
+    setInternalNote('');
     try {
       const loaded = await api.request<unknown>(
         `/information/proposals/${encodeURIComponent(proposalId)}`,
@@ -203,6 +222,7 @@ export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailP
   async function saveMaintenance(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (proposal === null || !maintenance) return;
+    const generation = requestGeneration.current;
     setPending(true);
     setMutationError(null);
     setFeedback(null);
@@ -219,14 +239,17 @@ export function ProposalDetailPage({ client, proposalId, user }: ProposalDetailP
           internalNote: internalNote.trim(),
         }),
       });
+      if (generation !== requestGeneration.current) return;
       applyProposal(updated);
       setFeedback('提案维护信息已保存');
     } catch (caught) {
-      setMutationError(
-        caught instanceof ApiError ? caught.message : '提案维护信息保存失败，请稍后重试',
-      );
+      if (generation === requestGeneration.current) {
+        setMutationError(
+          caught instanceof ApiError ? caught.message : '提案维护信息保存失败，请稍后重试',
+        );
+      }
     } finally {
-      setPending(false);
+      if (generation === requestGeneration.current) setPending(false);
     }
   }
 

@@ -7,6 +7,7 @@ import type { UserContext } from '@freebbs-development/contracts';
 import type { ApiClient } from '../../core/api/client.js';
 import {
   ProposalDetailPage,
+  formatProposalDueDate,
   localDateTimeInputToUtcInstant,
   utcInstantToLocalDateTimeInput,
 } from './ProposalDetailPage.js';
@@ -53,6 +54,10 @@ function renderDetail(user: UserContext, response: object, request = vi.fn(async
 }
 
 describe('ProposalDetailPage', () => {
+  it('formats timeline due dates in the supplied local timezone rather than by slicing UTC', () => {
+    expect(formatProposalDueDate('2026-10-07T16:30:00.000Z', 'Asia/Shanghai')).toBe('2026-10-08');
+  });
+
   it('round-trips an unchanged UTC due date through the local datetime input', () => {
     const instant = '2026-10-08T10:07:00.000Z';
 
@@ -105,6 +110,104 @@ describe('ProposalDetailPage', () => {
     resolveFirst({ ...publicProposal, id: 'proposal-a', title: '提案 A' });
     expect(await screen.findByRole('heading', { name: '提案 B' })).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: '提案 A' })).not.toBeInTheDocument();
+  });
+
+  it('ignores a prior route maintenance response after navigating to another proposal', async () => {
+    let resolveSave!: (value: object) => void;
+    const request = vi.fn((path: string, init?: RequestInit) => {
+      if ((init?.method ?? 'GET') === 'PATCH') {
+        return new Promise<object>((resolve) => {
+          resolveSave = resolve;
+        });
+      }
+      return Promise.resolve(
+        path.endsWith('proposal-b')
+          ? { ...publicProposal, id: 'proposal-b', title: '提案 B', internalNote: 'B 备注' }
+          : { ...publicProposal, internalNote: 'A 备注' },
+      );
+    });
+    const view = render(
+      <MemoryRouter>
+        <ProposalDetailPage
+          client={{ request } as unknown as ApiClient}
+          proposalId="proposal-a"
+          user={maintainer}
+        />
+      </MemoryRouter>,
+    );
+    const actor = userEvent.setup();
+
+    await screen.findByRole('heading', { name: '增加夜间自习空间' });
+    await actor.click(screen.getByRole('button', { name: '维护提案' }));
+    await actor.click(screen.getByRole('button', { name: '保存提案维护信息' }));
+
+    view.rerender(
+      <MemoryRouter>
+        <ProposalDetailPage
+          client={{ request } as unknown as ApiClient}
+          proposalId="proposal-b"
+          user={maintainer}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('heading', { name: '提案 B' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '维护提案' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await actor.click(screen.getByRole('button', { name: '维护提案' }));
+    expect(screen.getByRole('button', { name: '保存提案维护信息' })).not.toBeDisabled();
+    resolveSave({ ...publicProposal, title: '提案 A 已保存', internalNote: 'A 已保存备注' });
+    expect(await screen.findByRole('dialog', { name: '维护提案' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '提案 B' })).toBeInTheDocument();
+    expect(screen.queryByText('提案 A 已保存')).not.toBeInTheDocument();
+    expect(screen.queryByText('A 已保存备注')).not.toBeInTheDocument();
+  });
+
+  it('ignores a prior route maintenance failure after navigating to another proposal', async () => {
+    let rejectSave!: (error: Error) => void;
+    const request = vi.fn((path: string, init?: RequestInit) => {
+      if ((init?.method ?? 'GET') === 'PATCH') {
+        return new Promise<object>((_resolve, reject) => {
+          rejectSave = reject;
+        });
+      }
+      return Promise.resolve(
+        path.endsWith('proposal-b')
+          ? { ...publicProposal, id: 'proposal-b', title: '提案 B', internalNote: 'B 备注' }
+          : { ...publicProposal, internalNote: 'A 备注' },
+      );
+    });
+    const view = render(
+      <MemoryRouter>
+        <ProposalDetailPage
+          client={{ request } as unknown as ApiClient}
+          proposalId="proposal-a"
+          user={maintainer}
+        />
+      </MemoryRouter>,
+    );
+    const actor = userEvent.setup();
+
+    await screen.findByRole('heading', { name: '增加夜间自习空间' });
+    await actor.click(screen.getByRole('button', { name: '维护提案' }));
+    await actor.click(screen.getByRole('button', { name: '保存提案维护信息' }));
+    view.rerender(
+      <MemoryRouter>
+        <ProposalDetailPage
+          client={{ request } as unknown as ApiClient}
+          proposalId="proposal-b"
+          user={maintainer}
+        />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('heading', { name: '提案 B' });
+    rejectSave(new Error('A 保存失败'));
+
+    await actor.click(screen.getByRole('button', { name: '维护提案' }));
+    expect(screen.getByRole('button', { name: '保存提案维护信息' })).not.toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '提案 B' })).toBeInTheDocument();
   });
 
   it('keeps maintenance controls in a right-side drawer for authorized maintainers', async () => {
