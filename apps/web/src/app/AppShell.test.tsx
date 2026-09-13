@@ -81,7 +81,7 @@ describe('AppShell', () => {
       '联络资源',
       '体育代表队',
     ]);
-    expect(within(navigation).queryByText('工作台')).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole('link', { name: '工作台' })).not.toBeInTheDocument();
     expect(within(navigation).queryByText('财务治理')).not.toBeInTheDocument();
     expect(within(navigation).queryByText('权限与模块管理')).not.toBeInTheDocument();
     expect(within(navigation).getByRole('link', { name: '经验库' })).toHaveAttribute(

@@ -26,10 +26,7 @@
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   min-height: 100vh;
-  background:
-    linear-gradient(var(--grid-line) 1px, transparent 1px) 0 0 / 72px 72px,
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px) 0 0 / 72px 72px,
-    var(--gradient-page);
+  background: var(--surface-page);
 }
 
 .sidebar {
@@ -44,11 +41,8 @@
   overflow: auto;
   padding: 30px 24px 24px;
   border-right: 1px solid var(--glass-stroke);
-  background:
-    radial-gradient(circle at 18% 4%, rgba(255, 211, 109, 0.18), transparent 26%),
-    radial-gradient(circle at 88% 72%, rgba(120, 217, 198, 0.14), transparent 32%),
-    var(--gradient-deep);
-  box-shadow: 18px 0 54px rgba(12, 19, 32, 0.14);
+  background: var(--gradient-deep);
+  box-shadow: 8px 0 20px rgba(23, 34, 32, 0.08);
   color: var(--color-sidebar-text);
 }
 
@@ -248,10 +242,8 @@
   gap: var(--space-6);
   padding: 18px clamp(24px, 4vw, 64px);
   border-bottom: 1px solid var(--glass-stroke);
-  background: var(--glass-fill);
-  box-shadow: 0 12px 34px rgba(12, 19, 32, 0.06);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--surface-raised);
+  box-shadow: 0 4px 12px rgba(23, 34, 32, 0.04);
 }
 
 .titlebar h1 {

@@ -12,7 +12,7 @@ export function StatusBadge({ children, status = 'neutral', className }: StatusB
   const classes = ['status-badge', className].filter(Boolean).join(' ');
 
   return (
-    <span className={classes} data-status={status}>
+    <span className={classes} data-status={status} data-tone={status}>
       {children}
     </span>
   );

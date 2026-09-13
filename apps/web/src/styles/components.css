@@ -625,6 +625,224 @@ code,
   margin: 0;
 }
 
+/* Shared learning-area presentation primitives */
+.module-page-header,
+.detail-section-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.module-page-header-copy,
+.detail-section-header > div:first-child {
+  min-width: 0;
+}
+
+.module-page-header h2,
+.detail-section h3,
+.confirm-dialog h2,
+.editor-drawer h2 {
+  margin: 0;
+  font-family: var(--font-serif);
+  letter-spacing: -0.02em;
+}
+
+.module-page-header h2 {
+  font-size: clamp(26px, 3vw, 36px);
+}
+
+.module-page-kicker {
+  margin: 0 0 6px;
+  color: var(--action-primary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.module-page-description,
+.detail-section-header p,
+.confirm-dialog p,
+.editor-drawer-header p {
+  margin: 8px 0 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.module-page-actions,
+.detail-section-actions,
+.confirm-dialog-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.filter-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  align-items: end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.filter-bar label {
+  display: grid;
+  gap: 6px;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.filter-bar input,
+.filter-bar select {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--color-text);
+}
+
+.async-state {
+  margin: 0;
+  padding: var(--space-5);
+  color: var(--color-muted);
+}
+
+.responsive-record-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.responsive-record-list > li {
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.detail-section {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-card);
+}
+
+.detail-section-body {
+  min-width: 0;
+}
+
+.editor-drawer-backdrop,
+.confirm-dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  background: rgba(12, 28, 27, 0.32);
+}
+
+.editor-drawer-backdrop {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.editor-drawer {
+  width: min(100%, 560px);
+  min-height: 100%;
+  padding: var(--space-5);
+  overflow-y: auto;
+  border-left: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-raised);
+}
+
+.editor-drawer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.editor-drawer-body {
+  padding-top: var(--space-5);
+}
+
+.confirm-dialog-backdrop {
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+}
+
+.confirm-dialog {
+  width: min(100%, 440px);
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-raised);
+}
+
+.confirm-dialog-actions {
+  justify-content: flex-end;
+  margin-top: var(--space-5);
+}
+
+.module-page-actions button,
+.detail-section-actions button,
+.filter-bar button,
+.editor-drawer button,
+.confirm-dialog button {
+  min-height: 40px;
+  padding: 8px 14px;
+  border: 1px solid var(--action-primary);
+  border-radius: var(--radius-sm);
+  background: var(--action-primary);
+  color: var(--action-primary-text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.editor-drawer-header button,
+.confirm-dialog-actions button:first-child {
+  border-color: var(--border-subtle);
+  background: var(--surface-raised);
+  color: var(--color-text);
+}
+
+@media (max-width: 680px) {
+  .module-page-header,
+  .detail-section-header {
+    flex-direction: column;
+  }
+
+  .module-page-actions,
+  .detail-section-actions {
+    width: 100%;
+  }
+
+  .module-page-actions > *,
+  .detail-section-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .editor-drawer {
+    width: 100%;
+  }
+}
+
 .page-section-header h2 {
   font-family: var(--font-serif);
   font-size: clamp(26px, 3vw, 38px);

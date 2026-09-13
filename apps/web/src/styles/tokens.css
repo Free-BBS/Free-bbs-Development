@@ -1,29 +1,32 @@
 :root {
   color-scheme: light;
 
-  --color-sidebar: #101823;
-  --color-sidebar-deep: #0c1320;
-  --color-active: #2d8374;
+  --surface-page: #f4f6f5;
+  --surface-raised: #ffffff;
+  --surface-muted: #edf1ef;
+  --border-subtle: #d8e0dd;
+  --action-primary: #155e59;
+  --action-primary-text: #ffffff;
+  --color-sidebar: #173a3a;
+  --color-sidebar-deep: #103232;
+  --color-active: #155e59;
   --color-accent: #d59a25;
-  --color-page: #edf3f0;
-  --color-line: rgba(16, 24, 35, 0.14);
-  --color-text: #101823;
-  --color-muted: rgba(16, 24, 35, 0.64);
-  --color-sidebar-text: #f4efe7;
-  --color-paper: rgba(255, 252, 246, 0.82);
-  --color-paper-muted: rgba(239, 241, 235, 0.82);
+  --color-page: var(--surface-page);
+  --color-line: var(--border-subtle);
+  --color-text: #172220;
+  --color-muted: #63716d;
+  --color-sidebar-text: #f7fbf9;
+  --color-paper: var(--surface-raised);
+  --color-paper-muted: var(--surface-muted);
   --color-focus: #168c9e;
   --color-danger: #a23d38;
   --color-warning: #825707;
   --color-success: #176b56;
-  --glass-fill: rgba(255, 252, 246, 0.72);
-  --glass-stroke: rgba(255, 255, 255, 0.62);
-  --glass-blur: blur(18px);
-  --gradient-deep: linear-gradient(145deg, #0c1320 0%, #142431 48%, #172b31 100%);
-  --gradient-page:
-    radial-gradient(circle at 8% 8%, rgba(120, 217, 198, 0.22), transparent 32%),
-    radial-gradient(circle at 92% 4%, rgba(255, 211, 109, 0.18), transparent 26%),
-    radial-gradient(circle at 72% 88%, rgba(89, 216, 255, 0.13), transparent 34%), #edf3f0;
+  --glass-fill: var(--surface-raised);
+  --glass-stroke: var(--border-subtle);
+  --glass-blur: none;
+  --gradient-deep: var(--color-sidebar);
+  --gradient-page: var(--surface-page);
 
   --font-display: 'Syne', 'Noto Serif SC', 'Songti SC', serif;
   --font-ui:
@@ -46,12 +49,12 @@
   --space-10: 40px;
   --space-12: 48px;
 
-  --radius-sm: 14px;
-  --radius-md: 22px;
-  --radius-lg: 28px;
-  --shadow-card: 0 1px 1px rgba(12, 19, 32, 0.04), 0 16px 42px rgba(12, 19, 32, 0.1);
-  --shadow-raised: 0 24px 70px rgba(5, 10, 18, 0.22);
-  --transition-fast: 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --radius-sm: 12px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --shadow-card: 0 1px 2px rgba(23, 34, 32, 0.06), 0 8px 20px rgba(23, 34, 32, 0.06);
+  --shadow-raised: 0 16px 36px rgba(23, 34, 32, 0.16);
+  --transition-fast: 140ms ease;
 }
 
 *,
@@ -74,7 +77,6 @@ body {
   min-height: 100vh;
   margin: 0;
   background: var(--gradient-page);
-  background-attachment: fixed;
   color: var(--color-text);
 }
 

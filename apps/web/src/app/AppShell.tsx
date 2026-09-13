@@ -50,33 +50,35 @@ function ModuleNavigation({
 
   return (
     <nav ref={navigationRef} className={className} aria-label={label}>
-      {visibleModuleManifests(user, moduleStates).map((module) => {
-        const content = (
-          <>
-            <span className="module-icon" aria-hidden="true">
-              <img src={module.icon} alt="" />
-            </span>
-            <span className="module-copy">
-              <span className="module-name">{module.name}</span>
-              <span className="module-owner" aria-hidden="true">
-                {module.ownerTeam}
+      {visibleModuleManifests(user, moduleStates)
+        .filter((module) => module.id !== 'dashboard')
+        .map((module) => {
+          const content = (
+            <>
+              <span className="module-icon" aria-hidden="true">
+                <img src={module.icon} alt="" />
               </span>
-            </span>
-          </>
-        );
+              <span className="module-copy">
+                <span className="module-name">{module.name}</span>
+                <span className="module-owner" aria-hidden="true">
+                  {module.ownerTeam}
+                </span>
+              </span>
+            </>
+          );
 
-        return (
-          <div data-testid="module-navigation-item" key={module.id}>
-            <NavLink
-              className={({ isActive }) => `module-link${isActive ? ' active' : ''}`}
-              end
-              to={module.route}
-            >
-              {content}
-            </NavLink>
-          </div>
-        );
-      })}
+          return (
+            <div data-testid="module-navigation-item" key={module.id}>
+              <NavLink
+                className={({ isActive }) => `module-link${isActive ? ' active' : ''}`}
+                end
+                to={module.route}
+              >
+                {content}
+              </NavLink>
+            </div>
+          );
+        })}
     </nav>
   );
 }
