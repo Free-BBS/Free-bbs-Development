@@ -4,7 +4,7 @@ import { InformationLayout } from './InformationLayout.js';
 
 export function ConsultationsPage(props: InformationPageProps) {
   return (
-    <InformationLayout title="咨询">
+    <InformationLayout title="咨询" user={props.user}>
       <InformationPage {...props} view="consultations" />
     </InformationLayout>
   );

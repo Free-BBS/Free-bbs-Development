@@ -93,7 +93,7 @@ function TriageRoute() {
 function ProposalPoolRoute() {
   const auth = useAuth();
   return (
-    <InformationLayout title="公开提案池">
+    <InformationLayout title="公开提案池" user={auth.user}>
       <ProposalPool client={auth.client} user={auth.user} />
     </InformationLayout>
   );
@@ -103,7 +103,7 @@ function ProposalDetailRoute() {
   const auth = useAuth();
   const { proposalId = '' } = useParams();
   return (
-    <InformationLayout title="提案详情">
+    <InformationLayout title="提案详情" user={auth.user}>
       <ProposalDetailPage client={auth.client} proposalId={proposalId} user={auth.user} />
     </InformationLayout>
   );

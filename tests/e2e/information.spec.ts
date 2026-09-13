@@ -36,7 +36,7 @@ test('information covers consultation and announcement lifecycles end to end', a
   const editedAnnouncementTitle = `${announcementTitle} 已编辑`;
   page.on('dialog', (dialog) => dialog.accept());
 
-  await page.goto('./information');
+  await page.goto('./information/consultations');
   await page.getByLabel('咨询标题').fill(consultationTitle);
   await page.getByLabel('咨询内容').fill('普通同学通过真实界面提交咨询。');
   await page.getByRole('button', { name: '提交咨询' }).click();
@@ -67,6 +67,7 @@ test('information covers consultation and announcement lifecycles end to end', a
   await transition(request, 'consultations', consultation!.id, 'closed');
 
   await switchUser(page, 'demo-admin');
+  await page.goto('./information/announcements');
   await page.getByLabel('公告标题').fill(announcementTitle);
   await page.getByLabel('公告正文').fill('管理员通过真实界面创建公告。');
   await page.getByRole('button', { name: '保存公告草稿' }).click();
@@ -96,6 +97,7 @@ test('information covers consultation and announcement lifecycles end to end', a
   await switchUser(page, 'demo-student');
   await page.reload();
   await expect(page.getByRole('heading', { name: editedAnnouncementTitle })).toBeVisible();
+  await expect(page.getByRole('link', { name: '分诊' })).toHaveCount(0);
   const denied = await request.patch(`${apiRoot}/information/announcements`, {
     headers: headers('demo-student'),
     data: { id: announcement!.id, title: '越权公告' },
@@ -111,12 +113,32 @@ test('information covers consultation and announcement lifecycles end to end', a
   );
   expect(illegalAnnouncement.status()).toBe(409);
 
-  await page.reload();
   await switchUser(page, 'demo-admin');
+  await page.goto('./information/announcements');
   await expect(
     page.locator('.record-card').filter({ hasText: editedAnnouncementTitle }),
   ).toContainText('已归档');
+  await page.goto('./information/triage');
   await expect(
     page.locator('.record-card').filter({ hasText: editedConsultationTitle }),
   ).toContainText('已关闭');
+
+  await switchUser(page, 'demo-student');
+  const proposalTitle = `E2E 提案 ${suffix}`;
+  const proposalResponse = await request.post(`${apiRoot}/information/proposals`, {
+    headers: headers('demo-student'),
+    data: {
+      title: proposalTitle,
+      problemDescription: '夜间自习空间不足。',
+      proposedSolution: '延长教学楼开放时间。',
+      category: 'campus_service',
+    },
+  });
+  expect(proposalResponse.status(), await proposalResponse.text()).toBe(201);
+  const proposal = (await proposalResponse.json()) as { data: { id: string } };
+  await page.goto('./information/proposals');
+  await page.getByRole('link', { name: `查看 ${proposalTitle}` }).click();
+  await expect(page.getByRole('heading', { name: proposalTitle })).toBeVisible();
+  await expect(page.getByRole('list', { name: '提案进展时间线' })).toBeVisible();
+  await expect(page.getByText('内部备注')).toHaveCount(0);
 });

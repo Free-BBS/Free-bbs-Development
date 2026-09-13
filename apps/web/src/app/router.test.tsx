@@ -109,6 +109,7 @@ describe('application routes', () => {
           category: 'facilities',
           submitterUid: 'student-1',
           assigneeUid: null,
+          dueAt: null,
           publicProgress: '正在收集意见。',
           status: 'reviewing',
           createdAt: '2026-01-01T00:00:00.000Z',

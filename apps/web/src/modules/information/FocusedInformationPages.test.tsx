@@ -8,6 +8,7 @@ import type { ApiClient } from '../../core/api/client.js';
 import { AnnouncementsPage } from './AnnouncementsPage.js';
 import { ConsultationsPage } from './ConsultationsPage.js';
 import { TriagePage } from './TriagePage.js';
+import { InformationLayout } from './InformationLayout.js';
 
 const student: UserContext = {
   uid: 'student-1',
@@ -56,6 +57,32 @@ function renderRoutePage(children: ReactNode) {
 }
 
 describe('focused information route adapters', () => {
+  it('keeps triage navigation hidden for ordinary students', () => {
+    renderRoutePage(
+      <InformationLayout title="公开信息" user={student}>
+        <p>内容</p>
+      </InformationLayout>,
+    );
+
+    expect(screen.getByRole('link', { name: '公开信息' })).toHaveAttribute(
+      'href',
+      '/information/announcements',
+    );
+    expect(screen.queryByRole('link', { name: '分诊' })).not.toBeInTheDocument();
+  });
+
+  it('shows triage navigation for authorized queue members', () => {
+    renderRoutePage(
+      <InformationLayout title="咨询分诊" user={triageUser}>
+        <p>内容</p>
+      </InformationLayout>,
+    );
+
+    expect(screen.getByRole('link', { name: '分诊' })).toHaveAttribute(
+      'href',
+      '/information/triage',
+    );
+  });
   it('shows only announcements and requests only announcement data', async () => {
     const request = vi.fn(async (_path: string) => [announcement]);
 
