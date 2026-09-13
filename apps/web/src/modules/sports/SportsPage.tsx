@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
@@ -81,20 +81,19 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim() ? error.message : '未知错误';
 }
 
-export function SportsPage({ client, user: suppliedUser }: SportsPageProps) {
+function conciseSummary(value: string, maximumCodePoints = 180): string {
+  const codePoints = Array.from(value);
+  return codePoints.length > maximumCodePoints
+    ? `${codePoints.slice(0, maximumCodePoints).join('')}…`
+    : value;
+}
+
+export function SportsPage({ client }: SportsPageProps) {
   const defaultClient = useMemo(createApiClient, []);
   const auth = useOptionalAuth();
   const activeClient = client ?? auth?.client ?? defaultClient;
-  const user =
-    suppliedUser === undefined ? ((auth?.user as SportsUser | null) ?? null) : suppliedUser;
   const [teams, setTeams] = useState<SportsTeamRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [season, setSeason] = useState('');
-  const [trainingSchedule, setTrainingSchedule] = useState('');
 
   const loadTeams = useCallback(async () => {
     setLoadError(null);
@@ -109,40 +108,6 @@ export function SportsPage({ client, user: suppliedUser }: SportsPageProps) {
     void loadTeams();
   }, [loadTeams]);
 
-  const canCreate = permitted(user, 'sports.team.create', 'sports_team');
-
-  async function createTeam(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!name.trim() || !description.trim()) {
-      setFeedback('队伍名称和简介不能为空');
-      return;
-    }
-    setBusy(true);
-    try {
-      const created = await activeClient.request<SportsTeamRecord>('/sports/teams', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim(),
-          season: season.trim(),
-          trainingSchedule: trainingSchedule.trim(),
-          status: 'draft',
-        }),
-      });
-      setTeams((current) => [...(current ?? []), created]);
-      setName('');
-      setDescription('');
-      setSeason('');
-      setTrainingSchedule('');
-      setFeedback('代表队草稿已创建');
-    } catch (error) {
-      setFeedback(`创建失败：${errorMessage(error)}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   return (
     <section className="module-page" aria-labelledby="sports-title">
       <header className="page-section-header">
@@ -153,7 +118,6 @@ export function SportsPage({ client, user: suppliedUser }: SportsPageProps) {
         </div>
       </header>
 
-      {feedback !== null && <p role="status">{feedback}</p>}
       {teams === null && loadError === null && <p role="status">正在加载代表队…</p>}
       {loadError !== null && <p role="alert">代表队加载失败：{loadError}</p>}
       {teams?.length === 0 && <p>暂无体育代表队</p>}
@@ -173,7 +137,7 @@ export function SportsPage({ client, user: suppliedUser }: SportsPageProps) {
                 {statusLabels[team.status]}
               </span>
               <h3 id={`sports-${team.id}-title`}>{team.name}</h3>
-              <p>{team.description}</p>
+              <p>{conciseSummary(team.description)}</p>
               <dl className="module-meta-list">
                 <div>
                   <dt>赛季</dt>
@@ -190,44 +154,6 @@ export function SportsPage({ client, user: suppliedUser }: SportsPageProps) {
             </article>
           ))}
         </div>
-      )}
-
-      {canCreate && (
-        <section className="module-surface" aria-labelledby="sports-create-title">
-          <h3 id="sports-create-title">新建代表队</h3>
-          <form onSubmit={(event) => void createTeam(event)}>
-            <label>
-              队伍名称
-              <input
-                required
-                value={name}
-                onChange={(event) => setName(event.currentTarget.value)}
-              />
-            </label>
-            <label>
-              公开简介
-              <textarea
-                required
-                value={description}
-                onChange={(event) => setDescription(event.currentTarget.value)}
-              />
-            </label>
-            <label>
-              赛季
-              <input value={season} onChange={(event) => setSeason(event.currentTarget.value)} />
-            </label>
-            <label>
-              训练或比赛安排
-              <textarea
-                value={trainingSchedule}
-                onChange={(event) => setTrainingSchedule(event.currentTarget.value)}
-              />
-            </label>
-            <button type="submit" disabled={busy}>
-              {busy ? '正在创建…' : '创建队伍草稿'}
-            </button>
-          </form>
-        </section>
       )}
     </section>
   );

@@ -53,4 +53,38 @@ describe('SportsPage', () => {
     expect(request.mock.calls.flat().join(' ')).not.toContain('/members');
     expect(request.mock.calls.flat().join(' ')).not.toContain('/checkins');
   });
+
+  it('keeps the directory read-only even for a team maintainer', async () => {
+    const request = vi.fn().mockResolvedValue(teams);
+
+    render(
+      <MemoryRouter>
+        <SportsPage
+          client={{ request } as DevelopmentApi}
+          user={sportsUser('sports-lead', [
+            { action: 'sports.team.create', resource: 'sports_team' },
+          ])}
+        />
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('article', { name: /篮球队/ });
+    expect(screen.queryByRole('button', { name: '创建队伍草稿' })).not.toBeInTheDocument();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a Unicode-safe concise summary for an overlong team description', async () => {
+    const description = '😀'.repeat(220);
+    const request = vi.fn().mockResolvedValue([{ ...teams[0], description }]);
+
+    render(
+      <MemoryRouter>
+        <SportsPage client={{ request } as DevelopmentApi} user={sportsUser('student-1')} />
+      </MemoryRouter>,
+    );
+
+    const card = await screen.findByRole('article', { name: /篮球队/ });
+    expect(card).toHaveTextContent(`${'😀'.repeat(180)}…`);
+    expect(card).not.toHaveTextContent('😀'.repeat(181));
+  });
 });

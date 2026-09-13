@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from 'react';
 import { Link } from 'react-router-dom';
 
 import { createApiClient } from '../../core/api/client.js';
@@ -146,7 +154,7 @@ function RosterImport({
           body: JSON.stringify({ rows }),
         },
       );
-      setPreview(result.rows);
+      setPreview(null);
       await onImported();
       onFeedback(`名单导入完成：新增 ${result.imported} 人，跳过 ${result.skipped} 人`);
     } catch (error) {
@@ -206,11 +214,15 @@ function RosterImport({
 }
 
 function TeamOperations({
+  canCreateCheckins,
+  canReadCheckins,
   client,
   initialTeam,
   onFeedback,
   onTeamUpdated,
 }: {
+  canCreateCheckins: boolean;
+  canReadCheckins: boolean;
   client: DevelopmentApi;
   initialTeam: SportsTeamRecord;
   onFeedback: (message: string) => void;
@@ -247,8 +259,9 @@ function TeamOperations({
     void loadMembers().catch((error) => onFeedback(`成员加载失败：${errorMessage(error)}`));
   }, [loadMembers, onFeedback]);
   useEffect(() => {
+    if (!canReadCheckins) return;
     void loadCheckins().catch((error) => onFeedback(`签到加载失败：${errorMessage(error)}`));
-  }, [loadCheckins, onFeedback]);
+  }, [canReadCheckins, loadCheckins, onFeedback]);
 
   async function addMember(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -367,7 +380,7 @@ function TeamOperations({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memberUid: memberUid.trim(), checkinDate }),
       });
-      await loadCheckins();
+      if (canReadCheckins) await loadCheckins();
       onFeedback('签到已记录');
     } catch (error) {
       onFeedback(`签到记录失败：${errorMessage(error)}`);
@@ -489,46 +502,49 @@ function TeamOperations({
         onImported={loadMembers}
         teamId={team.id}
       />
-      <section aria-labelledby="sports-checkins-title">
-        <h3 id="sports-checkins-title">训练签到</h3>
-        {team.status === 'active' && (
-          <form aria-label="训练签到" onSubmit={(event) => void createCheckin(event)}>
-            <label>
-              成员 UID
-              <input
-                required
-                value={memberUid}
-                onChange={(event) => setMemberUid(event.currentTarget.value)}
-              />
-            </label>
-            <label>
-              签到日期
-              <input
-                required
-                type="date"
-                value={checkinDate}
-                onChange={(event) => setCheckinDate(event.currentTarget.value)}
-              />
-            </label>
-            <button type="submit" disabled={busy}>
-              记录签到
-            </button>
-          </form>
-        )}
-        {checkins === null ? (
-          <p role="status">正在加载签到记录…</p>
-        ) : checkins.length === 0 ? (
-          <p>暂无签到记录</p>
-        ) : (
-          <ul aria-label="签到记录">
-            {checkins.map((checkin) => (
-              <li key={checkin.id}>
-                {checkin.memberUid}：{checkin.checkinDate}
-              </li>
+      {(canReadCheckins || canCreateCheckins) && (
+        <section aria-labelledby="sports-checkins-title">
+          <h3 id="sports-checkins-title">训练签到</h3>
+          {canCreateCheckins && team.status === 'active' && (
+            <form aria-label="训练签到" onSubmit={(event) => void createCheckin(event)}>
+              <label>
+                成员 UID
+                <input
+                  required
+                  value={memberUid}
+                  onChange={(event) => setMemberUid(event.currentTarget.value)}
+                />
+              </label>
+              <label>
+                签到日期
+                <input
+                  required
+                  type="date"
+                  value={checkinDate}
+                  onChange={(event) => setCheckinDate(event.currentTarget.value)}
+                />
+              </label>
+              <button type="submit" disabled={busy}>
+                记录签到
+              </button>
+            </form>
+          )}
+          {canReadCheckins &&
+            (checkins === null ? (
+              <p role="status">正在加载签到记录…</p>
+            ) : checkins.length === 0 ? (
+              <p>暂无签到记录</p>
+            ) : (
+              <ul aria-label="签到记录">
+                {checkins.map((checkin) => (
+                  <li key={checkin.id}>
+                    {checkin.memberUid}：{checkin.checkinDate}
+                  </li>
+                ))}
+              </ul>
             ))}
-          </ul>
-        )}
-      </section>
+        </section>
+      )}
       <section aria-label="队伍状态">
         <h3>队伍状态</h3>
         {team.status === 'draft' && (
@@ -551,7 +567,17 @@ function TeamOperations({
   );
 }
 
-function CaptainCheckins({ client, team }: { client: DevelopmentApi; team: SportsTeamRecord }) {
+function CaptainCheckins({
+  canCreate,
+  canRead,
+  client,
+  team,
+}: {
+  canCreate: boolean;
+  canRead: boolean;
+  client: DevelopmentApi;
+  team: SportsTeamRecord;
+}) {
   const [checkins, setCheckins] = useState<SportsCheckinRecord[] | null>(null);
   const [memberUid, setMemberUid] = useState('');
   const [checkinDate, setCheckinDate] = useState('');
@@ -566,8 +592,9 @@ function CaptainCheckins({ client, team }: { client: DevelopmentApi; team: Sport
     [client, team.id],
   );
   useEffect(() => {
+    if (!canRead) return;
     void load().catch((error) => setMessage(`签到加载失败：${errorMessage(error)}`));
-  }, [load]);
+  }, [canRead, load]);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     try {
@@ -576,7 +603,7 @@ function CaptainCheckins({ client, team }: { client: DevelopmentApi; team: Sport
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ memberUid: memberUid.trim(), checkinDate }),
       });
-      await load();
+      if (canRead) await load();
       setMessage('签到已记录');
     } catch (error) {
       setMessage(`签到记录失败：${errorMessage(error)}`);
@@ -585,7 +612,7 @@ function CaptainCheckins({ client, team }: { client: DevelopmentApi; team: Sport
   return (
     <section aria-labelledby="sports-checkins-title">
       <h3 id="sports-checkins-title">训练签到</h3>
-      {team.status === 'active' && (
+      {canCreate && team.status === 'active' && (
         <form aria-label="训练签到" onSubmit={(event) => void submit(event)}>
           <label>
             成员 UID
@@ -608,19 +635,20 @@ function CaptainCheckins({ client, team }: { client: DevelopmentApi; team: Sport
         </form>
       )}
       {message !== null && <p role="status">{message}</p>}
-      {checkins === null ? (
-        <p role="status">正在加载签到记录…</p>
-      ) : checkins.length === 0 ? (
-        <p>暂无签到记录</p>
-      ) : (
-        <ul aria-label="签到记录">
-          {checkins.map((checkin) => (
-            <li key={checkin.id}>
-              {checkin.memberUid}：{checkin.checkinDate}
-            </li>
-          ))}
-        </ul>
-      )}
+      {canRead &&
+        (checkins === null ? (
+          <p role="status">正在加载签到记录…</p>
+        ) : checkins.length === 0 ? (
+          <p>暂无签到记录</p>
+        ) : (
+          <ul aria-label="签到记录">
+            {checkins.map((checkin) => (
+              <li key={checkin.id}>
+                {checkin.memberUid}：{checkin.checkinDate}
+              </li>
+            ))}
+          </ul>
+        ))}
     </section>
   );
 }
@@ -638,18 +666,24 @@ export function SportsTeamDetailPage({
   const [team, setTeam] = useState<SportsTeamRecord | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const loadVersion = useRef(0);
+  const actorUid = user?.uid ?? '';
 
   const loadTeam = useCallback(async () => {
+    const version = ++loadVersion.current;
     setError(null);
+    setTeam(null);
     try {
       const teams = await activeClient.request<SportsTeamRecord[]>('/sports/teams');
       const found = teams.find((candidate) => candidate.id === teamId) ?? null;
+      if (version !== loadVersion.current) return;
       if (found === null) setError('未找到该代表队，或你没有访问权限。');
       setTeam(found);
     } catch (caught) {
+      if (version !== loadVersion.current) return;
       setError(`代表队加载失败：${errorMessage(caught)}`);
     }
-  }, [activeClient, teamId]);
+  }, [activeClient, actorUid, teamId]);
   useEffect(() => {
     void loadTeam();
   }, [loadTeam]);
@@ -675,13 +709,21 @@ export function SportsTeamDetailPage({
       {feedback !== null && <p role="status">{feedback}</p>}
       {canManage ? (
         <TeamOperations
+          key={team.id}
+          canCreateCheckins={canCreateCheckins}
+          canReadCheckins={canReadCheckins}
           client={activeClient}
           initialTeam={team}
           onFeedback={setFeedback}
           onTeamUpdated={setTeam}
         />
       ) : canReadCheckins || canCreateCheckins ? (
-        <CaptainCheckins client={activeClient} team={team} />
+        <CaptainCheckins
+          canCreate={canCreateCheckins}
+          canRead={canReadCheckins}
+          client={activeClient}
+          team={team}
+        />
       ) : (
         <p>你可以查看队伍公开信息；维护权限由队伍负责人按具体代表队授予。</p>
       )}
