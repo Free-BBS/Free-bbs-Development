@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 
-import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
+import {
+  organizationForRole,
+  type ScopeRef,
+  type UserContext,
+} from '@freebbs-development/contracts';
 import { EditorDrawer } from '../../components/EditorDrawer.js';
 import { createApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
@@ -96,6 +100,26 @@ function localDateTimeToInstant(value: string): string {
   return new Date(value).toISOString();
 }
 
+function utcInstantToLocalDateTimeInput(value: string): string {
+  const date = new Date(value);
+  const padded = (part: number, width = 2) => String(part).padStart(width, '0');
+  return `${date.getFullYear()}-${padded(date.getMonth() + 1)}-${padded(date.getDate())}T${padded(date.getHours())}:${padded(date.getMinutes())}:${padded(date.getSeconds())}.${padded(date.getMilliseconds(), 3)}`;
+}
+
+function canUpdateOrganization(user: PageUser | null, organizationId: string | null): boolean {
+  if (organizationId === null) return true;
+  return Boolean(
+    user?.roles.includes('platform.super_admin') ||
+    user?.roles.some((role) => {
+      const membership = organizationForRole(role);
+      return (
+        membership?.organizationId === organizationId &&
+        (membership.level === 'director' || membership.level === 'lead')
+      );
+    }),
+  );
+}
+
 function matches(pattern: string, value: string): boolean {
   return (
     pattern === '*' ||
@@ -142,11 +166,13 @@ export function ActivityDetailPage({
   const [busy, setBusy] = useState(false);
   const [maintenanceOpen, setMaintenanceOpen] = useState(false);
   const [milestoneTitle, setMilestoneTitle] = useState('');
+  const [milestoneDescription, setMilestoneDescription] = useState('');
   const [milestoneAt, setMilestoneAt] = useState('');
   const [fixtureRound, setFixtureRound] = useState('');
   const [fixtureA, setFixtureA] = useState('');
   const [fixtureB, setFixtureB] = useState('');
   const [fixtureAt, setFixtureAt] = useState('');
+  const [fixtureLocation, setFixtureLocation] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -206,7 +232,10 @@ export function ActivityDetailPage({
 
   async function addMilestone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!milestoneTitle.trim() || !milestoneAt) return;
+    if (!milestoneTitle.trim() || !milestoneDescription.trim() || !milestoneAt) {
+      setError('请填写节点名称、节点说明和发生时间');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -219,13 +248,14 @@ export function ActivityDetailPage({
             occursAt: localDateTimeToInstant(milestoneAt),
             title: milestoneTitle.trim(),
             type: 'workflow',
-            description: '',
+            description: milestoneDescription.trim(),
             completed: false,
             displayOrder: detail?.milestones.length ?? 0,
           }),
         },
       );
       setMilestoneTitle('');
+      setMilestoneDescription('');
       setMilestoneAt('');
       setFeedback('活动节点已添加');
       await load();
@@ -238,7 +268,16 @@ export function ActivityDetailPage({
 
   async function addFixture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!fixtureRound.trim() || !fixtureA.trim() || !fixtureB.trim() || !fixtureAt) return;
+    if (
+      !fixtureRound.trim() ||
+      !fixtureA.trim() ||
+      !fixtureB.trim() ||
+      !fixtureAt ||
+      !fixtureLocation.trim()
+    ) {
+      setError('请填写轮次、参赛双方、比赛时间和比赛地点');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -250,7 +289,7 @@ export function ActivityDetailPage({
           participantA: fixtureA.trim(),
           participantB: fixtureB.trim(),
           scheduledAt: localDateTimeToInstant(fixtureAt),
-          location: detail?.location ?? '',
+          location: fixtureLocation.trim(),
           score: null,
         }),
       });
@@ -258,7 +297,84 @@ export function ActivityDetailPage({
       setFixtureA('');
       setFixtureB('');
       setFixtureAt('');
+      setFixtureLocation('');
       setFeedback('赛程已添加');
+      await load();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateMilestone(milestoneId: string, patch: Partial<MilestoneRecord>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await activeClient.request(
+        `/events/activities/${encodeURIComponent(activityId)}/milestones/${encodeURIComponent(milestoneId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        },
+      );
+      setFeedback('活动节点已更新');
+      await load();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteMilestone(milestoneId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await activeClient.request(
+        `/events/activities/${encodeURIComponent(activityId)}/milestones/${encodeURIComponent(milestoneId)}`,
+        { method: 'DELETE' },
+      );
+      setFeedback('活动节点已删除');
+      await load();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateFixture(fixtureId: string, patch: Partial<FixtureRecord>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await activeClient.request(
+        `/events/activities/${encodeURIComponent(activityId)}/fixtures/${encodeURIComponent(fixtureId)}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(patch),
+        },
+      );
+      setFeedback('赛程已更新');
+      await load();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteFixture(fixtureId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await activeClient.request(
+        `/events/activities/${encodeURIComponent(activityId)}/fixtures/${encodeURIComponent(fixtureId)}`,
+        { method: 'DELETE' },
+      );
+      setFeedback('赛程已删除');
       await load();
     } catch (caught) {
       setError(errorMessage(caught));
@@ -285,7 +401,8 @@ export function ActivityDetailPage({
     registrationScope,
   );
   const canMaintain =
-    permitted(user, 'events.update', 'activity', detail.scope) ||
+    (permitted(user, 'events.update', 'activity', detail.scope) &&
+      canUpdateOrganization(user, detail.organizationId)) ||
     (detail.ownerUid === user?.uid &&
       permitted(user, 'events.create', 'activity', detail.scope) &&
       (detail.status === 'draft' || detail.status === 'rejected'));
@@ -296,6 +413,16 @@ export function ActivityDetailPage({
   const completed = milestones.filter((milestone) => milestone.completed).length;
   const progress =
     milestones.length === 0 ? null : Math.round((completed / milestones.length) * 100);
+  const registrationState =
+    user === null
+      ? '请登录后查看报名状态'
+      : detail.status !== 'published'
+        ? '报名尚未开放'
+        : !canRegister
+          ? '当前不可报名'
+          : registration?.status === 'registered'
+            ? '已报名'
+            : '未报名';
 
   return (
     <section className="module-page" aria-labelledby="activity-detail-title">
@@ -421,6 +548,7 @@ export function ActivityDetailPage({
           </button>
         )
       ) : null}
+      <p aria-label="报名状态">报名状态：{registrationState}</p>
 
       {canMaintain ? (
         <button type="button" onClick={() => setMaintenanceOpen(true)}>
@@ -446,6 +574,13 @@ export function ActivityDetailPage({
                 />
               </label>
               <label>
+                节点说明
+                <textarea
+                  value={milestoneDescription}
+                  onChange={(event) => setMilestoneDescription(event.target.value)}
+                />
+              </label>
+              <label>
                 发生时间
                 <input
                   type="datetime-local"
@@ -458,6 +593,81 @@ export function ActivityDetailPage({
                 添加节点
               </button>
             </form>
+            {milestones.length > 0 ? (
+              <ul aria-label="维护活动节点">
+                {milestones.map((milestone) => (
+                  <li key={milestone.id}>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const values = new FormData(event.currentTarget);
+                        void updateMilestone(milestone.id, {
+                          title: String(values.get('title')).trim(),
+                          description: String(values.get('description')).trim(),
+                          occursAt: localDateTimeToInstant(String(values.get('occursAt'))),
+                          displayOrder: Number(values.get('displayOrder')),
+                          completed: values.get('completed') === 'on',
+                        });
+                      }}
+                    >
+                      <label>
+                        节点名称
+                        <input name="title" defaultValue={milestone.title} />
+                      </label>
+                      <label>
+                        节点说明
+                        <textarea name="description" defaultValue={milestone.description} />
+                      </label>
+                      <label>
+                        发生时间
+                        <input
+                          name="occursAt"
+                          type="datetime-local"
+                          step="0.001"
+                          defaultValue={utcInstantToLocalDateTimeInput(milestone.occursAt)}
+                        />
+                      </label>
+                      <label>
+                        显示顺序
+                        <input
+                          name="displayOrder"
+                          type="number"
+                          min="0"
+                          defaultValue={milestone.displayOrder}
+                        />
+                      </label>
+                      <label>
+                        <input
+                          name="completed"
+                          type="checkbox"
+                          defaultChecked={milestone.completed}
+                        />
+                        已完成
+                      </label>
+                      <button type="submit" disabled={busy}>
+                        保存节点：{milestone.title}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          void updateMilestone(milestone.id, { completed: !milestone.completed })
+                        }
+                      >
+                        标记{milestone.completed ? '未完成' : '已完成'}：{milestone.title}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void deleteMilestone(milestone.id)}
+                      >
+                        删除节点：{milestone.title}
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </section>
           <section aria-labelledby="add-fixture-title">
             <h3 id="add-fixture-title">添加比赛赛程</h3>
@@ -486,10 +696,77 @@ export function ActivityDetailPage({
                   onChange={(event) => setFixtureAt(event.target.value)}
                 />
               </label>
+              <label>
+                比赛地点
+                <input
+                  value={fixtureLocation}
+                  onChange={(event) => setFixtureLocation(event.target.value)}
+                />
+              </label>
               <button type="submit" disabled={busy}>
                 添加赛程
               </button>
             </form>
+            {detail.fixtures.length > 0 ? (
+              <ul aria-label="维护比赛赛程">
+                {detail.fixtures.map((fixture) => (
+                  <li key={fixture.id}>
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        const values = new FormData(event.currentTarget);
+                        void updateFixture(fixture.id, {
+                          round: String(values.get('round')).trim(),
+                          participantA: String(values.get('participantA')).trim(),
+                          participantB: String(values.get('participantB')).trim(),
+                          scheduledAt: localDateTimeToInstant(String(values.get('scheduledAt'))),
+                          location: String(values.get('location')).trim(),
+                          score: String(values.get('score')).trim() || null,
+                        });
+                      }}
+                    >
+                      <label>
+                        轮次
+                        <input name="round" defaultValue={fixture.round} />
+                      </label>
+                      <label>
+                        参赛方 A<input name="participantA" defaultValue={fixture.participantA} />
+                      </label>
+                      <label>
+                        参赛方 B<input name="participantB" defaultValue={fixture.participantB} />
+                      </label>
+                      <label>
+                        比赛时间
+                        <input
+                          name="scheduledAt"
+                          type="datetime-local"
+                          step="0.001"
+                          defaultValue={utcInstantToLocalDateTimeInput(fixture.scheduledAt)}
+                        />
+                      </label>
+                      <label>
+                        比赛地点
+                        <input name="location" defaultValue={fixture.location} />
+                      </label>
+                      <label>
+                        比分
+                        <input name="score" defaultValue={fixture.score ?? ''} />
+                      </label>
+                      <button type="submit" disabled={busy}>
+                        保存赛程：{fixture.round}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void deleteFixture(fixture.id)}
+                      >
+                        删除赛程：{fixture.round}
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </section>
         </EditorDrawer>
       ) : null}

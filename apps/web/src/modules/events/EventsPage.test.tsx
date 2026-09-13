@@ -3,7 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
-import { EventsPage, type DevelopmentApi } from './EventsPage.js';
+import {
+  EventsPage,
+  conciseActivitySummary,
+  localDateTimeInputToUtcInstant,
+  type DevelopmentApi,
+  utcInstantToLocalDateTimeInput,
+} from './EventsPage.js';
 
 const scope = { type: 'public', id: '*' } as const;
 const activityScope = { type: 'activity', id: 'activity-workflow' } as const;
@@ -120,6 +126,7 @@ describe('EventsPage', () => {
     expect(within(card).getByText('常设活动')).toBeInTheDocument();
     expect(within(card).getByText('活动简介')).toBeInTheDocument();
     expect(within(card).getByText('地点：紫荆操场')).toBeInTheDocument();
+    expect(within(card).getByText(/结束时间：/)).toBeInTheDocument();
     expect(within(card).getByText(/报名截止：/)).toBeInTheDocument();
     expect(within(card).getByText('容量：120 人')).toBeInTheDocument();
     expect(within(card).getByText('联系人：running@example.edu.cn')).toBeInTheDocument();
@@ -161,5 +168,11 @@ describe('EventsPage', () => {
     await waitFor(() => expect(current.status).toBe('archived'));
     expect(current.technicalSupportStatus).toBe('confirmed');
     expect(registration).toEqual(expect.objectContaining({ status: 'cancelled' }));
+  });
+
+  it('keeps stored instants exact through datetime-local fields and exposes a semantic concise summary', () => {
+    const instant = '2026-09-01T10:20:30.456Z';
+    expect(localDateTimeInputToUtcInstant(utcInstantToLocalDateTimeInput(instant))).toBe(instant);
+    expect(conciseActivitySummary('一二三四五六七八九十'.repeat(20))).toMatch(/…$/);
   });
 });

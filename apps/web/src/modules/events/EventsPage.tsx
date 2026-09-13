@@ -81,6 +81,12 @@ function formatStart(value: string | null): string {
     new Date(value),
   );
 }
+export function conciseActivitySummary(description: string, maxLength = 120): string {
+  const characters = [...description.trim()];
+  return characters.length <= maxLength
+    ? characters.join('')
+    : `${characters.slice(0, maxLength).join('')}…`;
+}
 export function utcInstantToLocalDateTimeInput(value: string | null): string {
   if (value === null) return '';
   const date = new Date(value);
@@ -407,12 +413,15 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
                 </span>
                 {activity.standingActivity ? <span className="status-badge">常设活动</span> : null}
                 <h3 id={headingId}>{activity.title}</h3>
-                <p className="activity-summary">
+                <p
+                  className="activity-summary"
+                  aria-label={`完整活动介绍：${activity.description}`}
+                >
                   <strong>活动简介</strong>
-                  {activity.description}
+                  {conciseActivitySummary(activity.description)}
                 </p>
                 <p>开始时间：{formatStart(activity.startsAt)}</p>
-                {activity.endsAt ? <p>结束时间：{formatStart(activity.endsAt)}</p> : null}
+                <p>结束时间：{formatStart(activity.endsAt ?? null)}</p>
                 <p>地点：{activity.location || '待定'}</p>
                 <p>报名截止：{formatStart(activity.registrationDeadline ?? null)}</p>
                 <p>
