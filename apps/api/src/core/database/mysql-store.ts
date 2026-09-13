@@ -255,7 +255,7 @@ const definitions = {
       }),
       field('organizationId', 'organization_id'),
     ],
-    searchColumns: ['title', 'body', 'category', 'summary', 'tags'],
+    searchColumns: ['title', 'body', 'category', 'summary'],
   },
   announcements: {
     table: 'announcements',
@@ -459,7 +459,12 @@ function buildWhere(
       clauses.push('1 = 0');
       continue;
     }
-    clauses.push(`${mapped.column} = ?`);
+    // Match the application's exact string equality, independent of table collation.
+    clauses.push(
+      key === 'standingActivity'
+        ? `${mapped.column} = ?`
+        : `CAST(${mapped.column} AS BINARY) = CAST(? AS BINARY)`,
+    );
     values.push(filters[key]!);
   }
   if (filters.tag !== undefined) {
@@ -481,10 +486,16 @@ function buildWhere(
     values.push(filters.scopeId);
   }
   if (filters.query?.trim() && definition.searchColumns.length > 0) {
-    clauses.push(
-      `LOWER(CONCAT_WS(' ', ${definition.searchColumns.join(', ')})) LIKE ? ESCAPE '\\\\'`,
-    );
-    values.push(`%${escapeLikeQuery(filters.query.trim().toLocaleLowerCase())}%`);
+    const query = filters.query.trim().toLocaleLowerCase();
+    const textMatch = `LOWER(CONCAT_WS(' ', ${definition.searchColumns.join(', ')})) LIKE ? ESCAPE '\\\\'`;
+    values.push(`%${escapeLikeQuery(query)}%`);
+    if (definition.table === 'knowledge_entries') {
+      // JSON_TABLE unescapes values; LOCATE treats punctuation as literal characters.
+      clauses.push(
+        `(${textMatch} OR EXISTS (SELECT 1 FROM JSON_TABLE(tags, '$[*]' COLUMNS (tag_value VARCHAR(80) PATH '$')) AS knowledge_tags WHERE LOCATE(CAST(? AS BINARY), CAST(LOWER(knowledge_tags.tag_value) AS BINARY)) > 0))`,
+      );
+      values.push(query);
+    } else clauses.push(textMatch);
   }
   return {
     where: clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '',
@@ -605,7 +616,7 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
     const assignments: string[] = [];
     const values: SqlValue[] = [];
     for (const { key, column, encode } of this.definition.fields) {
-      if (!Object.hasOwn(patchRecord, key)) continue;
+      if (!Object.hasOwn(patchRecord, key) || patchRecord[key] === undefined) continue;
       assignments.push(`${column} = ?`);
       values.push(toSqlValue(encode ? encode(patchRecord[key]) : patchRecord[key]));
     }

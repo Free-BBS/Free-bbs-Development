@@ -108,7 +108,7 @@ const searchFields: Record<CollectionName, string[]> = {
   modules: ['moduleId', 'name', 'description'],
   moduleOwners: ['moduleId', 'ownerType', 'ownerId'],
   auditLogs: ['actorUid', 'action', 'resourceType', 'resourceId'],
-  knowledge: ['title', 'body', 'category', 'summary', 'tags'],
+  knowledge: ['title', 'body', 'category', 'summary'],
   announcements: ['title', 'body'],
   consultations: ['title', 'body', 'requesterUid', 'assigneeUid', 'reply'],
   proposals: ['title', 'problemDescription', 'proposedSolution', 'category', 'submitterUid'],
@@ -175,6 +175,10 @@ function collectionDefaults(collection: CollectionName): Record<string, unknown>
 
 function normalizedValues<T extends object>(value: T): T {
   const result = structuredClone(value) as Record<string, unknown>;
+  // Undefined means omitted, not a request to erase defaults or existing values.
+  for (const key of Object.keys(result)) {
+    if (result[key] === undefined) delete result[key];
+  }
   for (const key of [
     'expiresAt',
     'startsAt',
@@ -942,6 +946,13 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       .filter((record) => {
         if (!query) return true;
         const searchable = record as unknown as Record<string, unknown>;
+        // Search each decoded tag, never JSON syntax or separators between tags.
+        if (
+          this.collection === 'knowledge' &&
+          Array.isArray(searchable.tags) &&
+          searchable.tags.some((tag) => String(tag).toLocaleLowerCase().includes(query))
+        )
+          return true;
         return searchFields[this.collection]
           .map((key) => String(searchable[key] ?? ''))
           .join(' ')
@@ -975,6 +986,7 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       const existing = records[index];
       if (!existing) return null;
       const normalizedPatch = normalizedValues(patch);
+      if (Object.keys(normalizedPatch).length === 0) return structuredClone(existing);
       const conflictMessage = this.conflictMessage(
         { ...existing, ...normalizedPatch } as NewRecord<T>,
         existing.id,

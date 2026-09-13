@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { createMySqlStore, type MySqlStoreHandle } from './mysql-store.js';
 import { RecordConflictError } from './record-conflict-error.js';
+import { createMemoryStore } from './memory-store.js';
 
 const runMySql = process.env.DATA_MODE?.trim() === 'mysql';
 const integration = runMySql ? describe : describe.skip;
@@ -14,6 +15,7 @@ let handle: MySqlStoreHandle;
 async function cleanCreatedRecords(): Promise<void> {
   for (const table of [
     'audit_logs',
+    'knowledge_entries',
     'finance_records',
     'liaison_resources',
     'competition_fixtures',
@@ -54,6 +56,67 @@ integration('real MySQL 8 store integration', () => {
       await cleanCreatedRecords();
     } finally {
       await handle.close();
+    }
+  });
+
+  it('matches memory case/accent-sensitive category and season filtering', async () => {
+    const scope = { type: 'integration', id: runId };
+    for (const store of [createMemoryStore({ seed: false }), handle.store]) {
+      const entry = await store.knowledge.create({
+        type: 'faq',
+        title: 'Entry',
+        body: runId,
+        category: 'Café',
+        status: 'draft',
+        ownerUid: runId,
+        scope,
+      });
+      const team = await store.sportsTeams.create({
+        name: 'Team',
+        description: runId,
+        season: 'Été',
+        status: 'draft',
+        ownerUid: runId,
+        scope,
+      });
+      const filters = { scopeType: scope.type, scopeId: scope.id };
+      expect(
+        (await store.knowledge.list({ ...filters, category: 'Café' })).map(({ id }) => id),
+      ).toEqual([entry.id]);
+      for (const category of ['café', 'Cafe', 'Café '])
+        expect(await store.knowledge.list({ ...filters, category })).toEqual([]);
+      expect(
+        (await store.sportsTeams.list({ ...filters, season: 'Été' })).map(({ id }) => id),
+      ).toEqual([team.id]);
+      for (const season of ['été', 'Ete', 'Été '])
+        expect(await store.sportsTeams.list({ ...filters, season })).toEqual([]);
+    }
+  });
+
+  it('matches memory decoded-tag substring searches and pagination without JSON artifacts', async () => {
+    const scope = { type: 'integration_search', id: runId };
+    for (const store of [createMemoryStore({ seed: false }), handle.store]) {
+      const entry = await store.knowledge.create({
+        type: 'faq',
+        title: 'Entry',
+        body: runId,
+        tags: ['a"b', '50%_off', 'x\\y', 'red', 'blue', 'Café'],
+        status: 'draft',
+        ownerUid: runId,
+        scope,
+      });
+      for (const query of ['a"b', '50%_off', 'x\\y', 'CAFÉ']) {
+        const result = await store.knowledge.page(
+          { scopeType: scope.type, scopeId: scope.id, query },
+          { page: 1, pageSize: 10 },
+        );
+        expect(result.total).toBe(1);
+        expect(result.items.map(({ id }) => id)).toEqual([entry.id]);
+      }
+      for (const query of ['["', '\\"', 'red,blue', 'red blue', 'cafe'])
+        expect(
+          await store.knowledge.list({ scopeType: scope.type, scopeId: scope.id, query }),
+        ).toEqual([]);
     }
   });
 

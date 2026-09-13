@@ -233,23 +233,26 @@ describe('module readability record mappings', () => {
       organizationId: 'sports_center',
       query: 'Preview',
     });
-    expect(execute.mock.calls[0]![0]).toContain('category = ?');
-    expect(execute.mock.calls[0]![0]).toContain('organization_id = ?');
+    expect(execute.mock.calls[0]![0]).toContain('CAST(category AS BINARY) = CAST(? AS BINARY)');
+    expect(execute.mock.calls[0]![0]).toContain(
+      'CAST(organization_id AS BINARY) = CAST(? AS BINARY)',
+    );
     expect(execute.mock.calls[0]![0]).toContain('JSON_CONTAINS(tags, ?)');
     expect(execute.mock.calls[0]![1]).toEqual([
       'campus',
       'sports_center',
       JSON.stringify('quote"tag'),
       '%preview%',
+      'preview',
     ]);
     await store.activities.list({ standingActivity: false });
     expect(execute.mock.calls[1]![0]).toContain('standing_activity = ?');
     expect(execute.mock.calls[1]![1]).toEqual([false]);
     await store.sportsTeams.list({ season: '2026秋季' });
-    expect(execute.mock.calls[2]![0]).toContain('season = ?');
+    expect(execute.mock.calls[2]![0]).toContain('CAST(season AS BINARY) = CAST(? AS BINARY)');
     expect(execute.mock.calls[2]![1]).toEqual(['2026秋季']);
     await store.clubs.list({ category: 'outdoors' });
-    expect(execute.mock.calls[3]![0]).toContain('category = ?');
+    expect(execute.mock.calls[3]![0]).toContain('CAST(category AS BINARY) = CAST(? AS BINARY)');
     expect(execute.mock.calls[3]![1]).toEqual(['outdoors']);
   });
 });
