@@ -4,6 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { createApp } from '../../app.js';
 import { DemoAuthClient } from '../../core/auth/demo-auth-client.js';
 import { createMemoryStore } from '../../core/database/memory-store.js';
+import { canTransition } from '../../core/workflow/state-machine.js';
+import { PROBLEM_TRANSITIONS } from './problem-service.js';
 
 const adminHeaders = { 'X-Demo-User': 'demo-admin' };
 
@@ -69,5 +71,21 @@ describe('liaison resource lifecycle', () => {
       .expect(200);
 
     expect(await store.liaisonResources.get(resource.id)).toMatchObject({ status: 'active' });
+  });
+});
+
+describe('liaison problem lifecycle', () => {
+  it('uses the approved transition graph', () => {
+    expect(PROBLEM_TRANSITIONS).toEqual({
+      draft: ['pending_review'],
+      pending_review: ['open', 'rejected'],
+      rejected: ['draft'],
+      open: ['paused', 'closed'],
+      paused: ['open', 'closed'],
+      closed: ['archived'],
+      archived: [],
+    });
+    expect(canTransition(PROBLEM_TRANSITIONS, 'open', 'paused')).toBe(true);
+    expect(canTransition(PROBLEM_TRANSITIONS, 'open', 'archived')).toBe(false);
   });
 });

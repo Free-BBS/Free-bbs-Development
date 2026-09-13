@@ -9,6 +9,8 @@ import type { DevelopmentStore } from '../../core/database/types.js';
 
 const adminHeaders = { 'X-Demo-User': 'demo-admin' };
 const studentHeaders = { 'X-Demo-User': 'demo-student' };
+const liaisonHeaders = { 'X-Demo-User': 'demo-liaison-member' };
+const reviewerHeaders = { 'X-Demo-User': 'demo-tuanwei-lead' };
 
 function liaisonApp(store = createMemoryStore()) {
   return {
@@ -16,7 +18,13 @@ function liaisonApp(store = createMemoryStore()) {
       store,
       databaseMode: 'memory',
       authMode: 'demo',
-      authClient: new DemoAuthClient(['demo-admin', 'demo-student']),
+      authClient: new DemoAuthClient([
+        'demo-admin',
+        'demo-student',
+        'demo-liaison-member',
+        'demo-tuanwei-lead',
+        'demo-captain',
+      ]),
     }),
     store,
   };
@@ -180,5 +188,106 @@ describe('liaison API', () => {
     await store.modules.update(moduleRecord!.id, { enabled: false, status: 'disabled' });
 
     await request(app).get('/api/development/v1/liaison/resources').expect(503);
+  });
+
+  it('exposes the complete problem review and participation routes', async () => {
+    const { app } = liaisonApp();
+    const created = await request(app)
+      .post('/api/development/v1/liaison/problems')
+      .set(liaisonHeaders)
+      .send({
+        title: 'Open campus data question',
+        summary: 'Build a readable visualization.',
+        background: 'A research group supplied an anonymized sample.',
+        sourceType: 'lab',
+        sourceName: 'Campus data lab',
+        tags: ['data', 'frontend'],
+        expectedOutcome: 'A working public prototype',
+        constraints: 'Do not upload private datasets.',
+        startsAt: '2026-09-15T08:00:00.000Z',
+        deadline: null,
+        publicContact: 'Public liaison desk',
+        internalContactNote: 'Private contact details',
+      })
+      .expect(201);
+    const problemId = created.body.data.id as string;
+
+    const hidden = await request(app)
+      .get('/api/development/v1/liaison/problems')
+      .set(studentHeaders)
+      .expect(200);
+    expect(hidden.body.data.items.map(({ id }: { id: string }) => id)).not.toContain(problemId);
+
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/transitions`)
+      .set(liaisonHeaders)
+      .send({ to: 'pending_review' })
+      .expect(200);
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/review`)
+      .set(reviewerHeaders)
+      .send({ decision: 'approve', note: 'Public fields are safe.' })
+      .expect(200);
+
+    const publicDetail = await request(app)
+      .get(`/api/development/v1/liaison/problems/${problemId}`)
+      .set(studentHeaders)
+      .expect(200);
+    expect(publicDetail.body.data).not.toHaveProperty('internalContactNote');
+    expect(publicDetail.body.data).not.toHaveProperty('reviewNote');
+
+    const team = await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/teams`)
+      .set(studentHeaders)
+      .send({ name: 'Visualization team', proposal: 'Start with a public metric card.' })
+      .expect(201);
+    const teamId = team.body.data.id as string;
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/teams/${teamId}/members`)
+      .set('X-Demo-User', 'demo-captain')
+      .send({ action: 'request' })
+      .expect(201);
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/teams/${teamId}/members`)
+      .set(studentHeaders)
+      .send({ action: 'confirm', memberUid: 'demo-captain' })
+      .expect(200);
+
+    await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/posts`)
+      .set(studentHeaders)
+      .send({ kind: 'progress', teamId, body: 'The first public prototype is ready.' })
+      .expect(201);
+    const posts = await request(app)
+      .get(`/api/development/v1/liaison/problems/${problemId}/posts`)
+      .set(studentHeaders)
+      .expect(200);
+    expect(posts.body.data).toEqual(
+      expect.arrayContaining([expect.objectContaining({ teamId, kind: 'progress' })]),
+    );
+
+    const outcome = await request(app)
+      .post(`/api/development/v1/liaison/problems/${problemId}/outcomes`)
+      .set(studentHeaders)
+      .send({
+        teamId,
+        title: 'Public prototype',
+        description: 'The first complete version.',
+        linkUrl: 'https://example.test/prototype',
+        attachmentRef: null,
+      })
+      .expect(201);
+    await request(app)
+      .patch(`/api/development/v1/liaison/problems/${problemId}/outcomes/${outcome.body.data.id}`)
+      .set(liaisonHeaders)
+      .send({ status: 'adopted' })
+      .expect(200);
+    const outcomes = await request(app)
+      .get(`/api/development/v1/liaison/problems/${problemId}/outcomes`)
+      .set(studentHeaders)
+      .expect(200);
+    expect(outcomes.body.data).toEqual(
+      expect.arrayContaining([expect.objectContaining({ status: 'adopted' })]),
+    );
   });
 });

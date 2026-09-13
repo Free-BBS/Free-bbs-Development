@@ -7,6 +7,7 @@ import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { LiaisonProblemService } from './problem-service.js';
 import { LiaisonService } from './service.js';
 
 import type { Request, Response } from 'express';
@@ -79,6 +80,95 @@ const patchSchema = z
   );
 const resourceRouteSchema = z.object({ resourceId: identifier }).strict();
 const transitionSchema = z.object({ to: status }).strict();
+const problemStatus = z.enum([
+  'draft',
+  'pending_review',
+  'rejected',
+  'open',
+  'paused',
+  'closed',
+  'archived',
+]);
+const problemText = z.string().trim().min(1).max(20_000);
+const nullableDateTime = z.string().datetime({ offset: true }).nullable();
+const problemFields = {
+  title: z.string().trim().min(1).max(255),
+  summary: z.string().trim().min(1).max(500),
+  background: problemText,
+  sourceType: z.enum(['lab', 'company', 'campus', 'other']),
+  sourceName: z.string().trim().min(1).max(255),
+  tags: z.array(z.string().trim().min(1).max(64)).max(20),
+  expectedOutcome: problemText,
+  constraints: z.string().trim().max(20_000),
+  startsAt: nullableDateTime,
+  deadline: nullableDateTime,
+  publicContact: z.string().trim().min(1).max(500),
+  internalContactNote: z.string().trim().max(20_000),
+};
+const problemCreateSchema = z.object(problemFields).strict();
+const problemPatchSchema = z
+  .object({
+    title: problemFields.title.optional(),
+    summary: problemFields.summary.optional(),
+    background: problemFields.background.optional(),
+    sourceType: problemFields.sourceType.optional(),
+    sourceName: problemFields.sourceName.optional(),
+    tags: problemFields.tags.optional(),
+    expectedOutcome: problemFields.expectedOutcome.optional(),
+    constraints: problemFields.constraints.optional(),
+    startsAt: problemFields.startsAt.optional(),
+    deadline: problemFields.deadline.optional(),
+    publicContact: problemFields.publicContact.optional(),
+    internalContactNote: problemFields.internalContactNote.optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0);
+const problemListSchema = z
+  .object({
+    query: z.string().trim().min(1).max(200).optional(),
+    status: problemStatus.optional(),
+    tag: z.string().trim().min(1).max(64).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .strict();
+const problemRouteSchema = z.object({ problemId: identifier }).strict();
+const problemTransitionSchema = z.object({ to: problemStatus }).strict();
+const problemReviewSchema = z
+  .object({
+    decision: z.enum(['approve', 'reject']),
+    note: z.string().trim().max(4_000).nullable().default(null),
+  })
+  .strict();
+const teamRouteSchema = z.object({ problemId: identifier, teamId: identifier }).strict();
+const outcomeRouteSchema = z.object({ problemId: identifier, outcomeId: identifier }).strict();
+const teamCreateSchema = z
+  .object({
+    name: z.string().trim().min(1).max(255),
+    proposal: problemText,
+  })
+  .strict();
+const teamMemberSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('request') }).strict(),
+  z.object({ action: z.literal('confirm'), memberUid: identifier }).strict(),
+]);
+const postCreateSchema = z
+  .object({
+    teamId: identifier.nullable().default(null),
+    kind: z.enum(['discussion', 'progress']),
+    body: problemText,
+  })
+  .strict();
+const outcomeCreateSchema = z
+  .object({
+    teamId: identifier,
+    title: z.string().trim().min(1).max(255),
+    description: problemText,
+    linkUrl: z.string().url().max(2_048).nullable().default(null),
+    attachmentRef: z.string().trim().min(1).max(500).nullable().default(null),
+  })
+  .strict();
+const outcomePatchSchema = z.object({ status: z.literal('adopted') }).strict();
 
 function send<T>(response: Response, statusCode: number, data: T): void {
   const envelope: ApiEnvelope<T> = {
@@ -164,6 +254,7 @@ function forbid(response: Response, message = 'Liaison permission is required'):
 export function createLiaisonRouter(options: LiaisonRouterOptions): Router {
   const router = Router();
   const service = new LiaisonService(options.store);
+  const problemService = new LiaisonProblemService(options.store);
 
   router.use(async (_request, response, next) => {
     try {
@@ -180,6 +271,143 @@ export function createLiaisonRouter(options: LiaisonRouterOptions): Router {
     } catch (error) {
       next(error);
     }
+  });
+
+  router.get('/problems', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const filters = parse(problemListSchema, request.query);
+    send(response, 200, await problemService.list(actor, filters));
+  });
+
+  router.post('/problems', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    send(
+      response,
+      201,
+      await problemService.create(actor, parse(problemCreateSchema, request.body)),
+    );
+  });
+
+  router.get('/problems/:problemId', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    send(response, 200, await problemService.get(actor, problemId));
+  });
+
+  router.patch('/problems/:problemId', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    send(
+      response,
+      200,
+      await problemService.update(actor, problemId, parse(problemPatchSchema, request.body)),
+    );
+  });
+
+  router.post('/problems/:problemId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    const { to } = parse(problemTransitionSchema, request.body);
+    send(response, 200, await problemService.transition(actor, problemId, to));
+  });
+
+  router.post('/problems/:problemId/review', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    const review = parse(problemReviewSchema, request.body);
+    send(
+      response,
+      200,
+      await problemService.review(actor, problemId, review.decision, review.note),
+    );
+  });
+
+  router.get('/problems/:problemId/teams', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    send(response, 200, await problemService.listTeams(actor, problemId));
+  });
+
+  router.post('/problems/:problemId/teams', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    send(
+      response,
+      201,
+      await problemService.createTeam(actor, problemId, parse(teamCreateSchema, request.body)),
+    );
+  });
+
+  router.post('/problems/:problemId/teams/:teamId/members', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId, teamId } = parse(teamRouteSchema, request.params);
+    const input = parse(teamMemberSchema, request.body);
+    if (input.action === 'request') {
+      send(response, 201, await problemService.requestMembership(actor, problemId, teamId));
+      return;
+    }
+    send(
+      response,
+      200,
+      await problemService.confirmMembership(actor, problemId, teamId, input.memberUid),
+    );
+  });
+
+  router.get('/problems/:problemId/posts', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    send(response, 200, await problemService.listPosts(actor, problemId));
+  });
+
+  router.post('/problems/:problemId/posts', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    send(
+      response,
+      201,
+      await problemService.createPost(actor, problemId, parse(postCreateSchema, request.body)),
+    );
+  });
+
+  router.get('/problems/:problemId/outcomes', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    send(response, 200, await problemService.listOutcomes(actor, problemId));
+  });
+
+  router.post('/problems/:problemId/outcomes', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId } = parse(problemRouteSchema, request.params);
+    send(
+      response,
+      201,
+      await problemService.submitOutcome(
+        actor,
+        problemId,
+        parse(outcomeCreateSchema, request.body),
+      ),
+    );
+  });
+
+  router.patch('/problems/:problemId/outcomes/:outcomeId', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId, outcomeId } = parse(outcomeRouteSchema, request.params);
+    parse(outcomePatchSchema, request.body);
+    send(response, 200, await problemService.adoptOutcome(actor, problemId, outcomeId));
   });
 
   router.get('/resources', async (request, response) => {
