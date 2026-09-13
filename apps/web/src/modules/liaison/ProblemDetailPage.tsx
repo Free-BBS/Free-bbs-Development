@@ -12,6 +12,7 @@ import { ProblemCommunity } from './ProblemCommunity.js';
 import { ProblemEditorDrawer } from './ProblemEditorDrawer.js';
 import {
   formatLiaisonDate,
+  hasLiaisonPermission,
   problemStatusLabels,
   sourceTypeLabels,
   statusTone,
@@ -172,8 +173,12 @@ export function ProblemDetailPage({
           <ul className="liaison-team-list" aria-label="参与课题的团队">
             {teams.map((team) => {
               const membership = team.members.find(({ memberUid }) => memberUid === user?.uid);
-              const canConfirmMembers =
-                isOpen && detail.canJoin && team.maintainerUid === user?.uid;
+              const canJoinTeam =
+                detail.canJoin &&
+                hasLiaisonPermission(user, 'liaison.problem.join', 'liaison_problem', [
+                  { type: 'liaison_team', id: team.id },
+                ]);
+              const canConfirmMembers = isOpen && canJoinTeam && team.maintainerUid === user?.uid;
               const pendingMembers =
                 team.maintainerUid === user?.uid
                   ? team.members.filter(({ status }) => status === 'pending')
@@ -218,7 +223,7 @@ export function ProblemDetailPage({
                       </ul>
                     ) : null}
                   </div>
-                  {isOpen && detail.canJoin && !membership ? (
+                  {isOpen && canJoinTeam && !membership ? (
                     <button
                       className="secondary-action"
                       type="button"

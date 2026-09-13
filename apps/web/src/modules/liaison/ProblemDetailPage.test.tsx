@@ -295,6 +295,83 @@ describe('ProblemDetailPage', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('keeps a team-scoped denied confirmation read-only', async () => {
+    const pendingMember = {
+      ...member,
+      id: 'member-applicant',
+      memberUid: 'demo-captain',
+      role: 'member' as const,
+      status: 'pending',
+    };
+    const maintainedTeam = { ...teams[0], members: [member, pendingMember] };
+    const request = vi.fn(async (path: string): Promise<unknown> => {
+      if (path === `/liaison/problems/${problem.id}`) return problem;
+      if (path === `/liaison/problems/${problem.id}/teams`) return [maintainedTeam];
+      if (path.includes('/posts') || path.includes('/outcomes')) return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const teamDeniedMaintainer = {
+      ...student,
+      policies: [
+        {
+          action: 'liaison.problem.join',
+          resource: 'liaison_problem',
+          scope: { type: 'liaison_team', id: maintainedTeam.id },
+          effect: 'deny' as const,
+        },
+      ],
+    };
+
+    renderDetail({ request } as Pick<ApiClient, 'request'>, teamDeniedMaintainer);
+
+    expect(await screen.findByText('demo-captain 申请加入')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '确认 demo-captain 加入' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('resolves join applications independently for each team scope', async () => {
+    const deniedTeam = {
+      ...teams[0],
+      id: 'team-denied',
+      name: '受限探索队',
+      maintainerUid: 'demo-captain',
+      members: [],
+    };
+    const allowedTeam = {
+      ...deniedTeam,
+      id: 'team-allowed',
+      name: '开放探索队',
+    };
+    const request = vi.fn(async (path: string): Promise<unknown> => {
+      if (path === `/liaison/problems/${problem.id}`) return problem;
+      if (path === `/liaison/problems/${problem.id}/teams`) return [deniedTeam, allowedTeam];
+      if (path.includes('/posts') || path.includes('/outcomes')) return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const teamDeniedStudent = {
+      ...student,
+      policies: [
+        {
+          action: 'liaison.problem.join',
+          resource: 'liaison_problem',
+          scope: { type: 'liaison_team', id: deniedTeam.id },
+          effect: 'deny' as const,
+        },
+      ],
+    };
+
+    renderDetail({ request } as Pick<ApiClient, 'request'>, teamDeniedStudent);
+
+    const teamList = await screen.findByRole('list', { name: '参与课题的团队' });
+    const deniedCard = within(teamList).getByText(deniedTeam.name).closest('li');
+    const allowedCard = within(teamList).getByText(allowedTeam.name).closest('li');
+    expect(deniedCard).not.toBeNull();
+    expect(allowedCard).not.toBeNull();
+    expect(within(deniedCard!).queryByRole('button', { name: '申请加入' })).not.toBeInTheDocument();
+    expect(within(allowedCard!).getByRole('button', { name: '申请加入' })).toBeInTheDocument();
+  });
+
   it.each(['paused', 'closed'] as const)(
     'keeps pending applicants read-only while the problem is %s',
     async (status) => {

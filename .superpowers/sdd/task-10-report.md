@@ -97,3 +97,18 @@ Final verification:
 - Changed-file ESLint and Prettier checks passed.
 - Production build passed for contracts, API, and web; Vite transformed 88 modules.
 - Liaison E2E with `PLAYWRIGHT_USE_SYSTEM_CHROME=true`: 1 test passed in 10.8 seconds.
+
+## Team-scope authorization alignment
+
+The final permission audit found that the API authorizes existing-team membership operations across both problem and team scopes, while the UI had only resolved the problem scope. The RED cycle added coverage for a team-maintainer confirmation and an ordinary-student application under an exact `liaison_team` deny; both controls remained visible before the change.
+
+Each rendered team now resolves `liaison.problem.join` against that team's `{ type: 'liaison_team', id }` scope. The confirmation control combines this result with the existing problem-scope capability, open lifecycle, and maintainer identity checks. The existing application control reuses the same team capability. A denied team's pending queue therefore remains readable to its maintainer, while both confirmation and application controls stay hidden and unrelated teams retain their allowed actions. No API or service authorization code changed.
+
+Final verification:
+
+- Focused liaison UI/API and dashboard suite: 7 files passed, 56 tests passed.
+- Full Vitest: 139 files passed and 1 environment-gated file skipped; 629 tests passed and 9 skipped.
+- Type checks passed for contracts, API, and web.
+- Changed-file ESLint and Prettier checks passed.
+- Production build passed for contracts, API, and web; Vite transformed 88 modules.
+- Liaison E2E with `PLAYWRIGHT_USE_SYSTEM_CHROME=true`: 1 test passed in 10.8 seconds.
