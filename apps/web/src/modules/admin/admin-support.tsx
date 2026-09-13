@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 
+import { AsyncState } from '../../components/AsyncState.js';
 import type { ApiClient } from '../../core/api/client.js';
 
 export type AdminClient = Pick<ApiClient, 'request'>;
@@ -41,19 +42,23 @@ export function SectionState({
   onRetry?: () => void;
   children: ReactNode;
 }) {
-  if (loading) return <p role="status">正在加载治理数据…</p>;
+  if (loading) return <AsyncState state="loading" loadingLabel="正在加载治理数据…" />;
   if (error)
     return (
-      <div className="empty-state" data-state="error">
-        <p role="alert">{error}</p>
-        {onRetry ? (
-          <button type="button" onClick={onRetry}>
-            重试
-          </button>
-        ) : null}
-      </div>
+      <AsyncState
+        state="error"
+        title="治理数据加载失败"
+        description={error}
+        action={
+          onRetry ? (
+            <button type="button" onClick={onRetry}>
+              重试
+            </button>
+          ) : undefined
+        }
+      />
     );
-  if (empty) return <p className="record-list-state">暂无记录。</p>;
+  if (empty) return <AsyncState state="empty" title="暂无记录" />;
   return <>{children}</>;
 }
 

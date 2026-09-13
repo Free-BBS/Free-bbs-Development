@@ -115,6 +115,11 @@ test('the production administrator exercises every governance section against My
       ['free_bbs_auth_token', 'production-admin-token'],
     );
     await page.goto('./admin');
+    await expect(
+      page.getByRole('main', { name: '治理管理台' }).locator(':scope > header'),
+    ).toHaveClass(/module-page-header/);
+    await expect(page.getByRole('search')).toHaveClass(/filter-bar/);
+    await expect(page.getByRole('list').first()).toHaveClass(/responsive-record-list/);
 
     const sections = [
       '用户与授权',

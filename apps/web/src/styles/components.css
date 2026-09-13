@@ -731,6 +731,31 @@ code,
   box-shadow: var(--shadow-card);
 }
 
+.finance-record {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-3);
+}
+
+.finance-record > header,
+.finance-record-summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.finance-record-summary {
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.finance-record p {
+  margin: 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
 .detail-section {
   display: grid;
   gap: var(--space-4);
@@ -1012,6 +1037,10 @@ code,
   .module-page-actions > *,
   .detail-section-actions > * {
     flex: 1 1 auto;
+  }
+
+  .finance-record > header {
+    flex-direction: column;
   }
 
   .editor-drawer {

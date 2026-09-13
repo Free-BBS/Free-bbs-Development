@@ -6,6 +6,11 @@ import {
   type UserContext,
 } from '@freebbs-development/contracts';
 
+import { AsyncState } from '../../components/AsyncState.js';
+import { FilterBar } from '../../components/FilterBar.js';
+import { ModulePageHeader } from '../../components/ModulePageHeader.js';
+import { ResponsiveRecordList } from '../../components/ResponsiveRecordList.js';
+import { StatusBadge, type StatusBadgeStatus } from '../../components/StatusBadge.js';
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
 
@@ -64,6 +69,14 @@ const statusLabels: Record<FinanceStatus, string> = {
   approved: '已批准',
   rejected: '已驳回',
   archived: '已归档',
+};
+
+const statusTones: Record<FinanceStatus, StatusBadgeStatus> = {
+  draft: 'neutral',
+  submitted: 'warning',
+  approved: 'success',
+  rejected: 'error',
+  archived: 'neutral',
 };
 
 function leadOrganizationIds(user: FinanceUser | null): string[] {
@@ -205,6 +218,8 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
   const [formError, setFormError] = useState('');
   const [feedback, setFeedback] = useState('');
   const [policyRevision, setPolicyRevision] = useState(0);
+  const [query, setQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<FinanceStatus | ''>('');
 
   useEffect(() => {
     const now = Date.now();
@@ -499,28 +514,72 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
     'finance.record.create',
     scopeFromDraft(createDraft),
   );
+  const visibleRecords = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase('zh-CN');
+    return (records ?? []).filter(
+      (record) =>
+        (!statusFilter || record.status === statusFilter) &&
+        (!normalizedQuery ||
+          [
+            record.title,
+            record.activityId ?? '',
+            organizationName(record.organizationId),
+            record.scope.type,
+            record.scope.id,
+          ].some((value) => value.toLocaleLowerCase('zh-CN').includes(normalizedQuery))),
+    );
+  }, [query, records, statusFilter]);
 
   if (error !== null && statusOf(error) === 403) {
     return (
-      <section className="module-page" aria-labelledby="finance-title">
-        <h2 id="finance-title">财务治理</h2>
-        <div className="empty-state">
-          <h3>暂无财务访问权限</h3>
-          <p>财务信息只对获得明确授权的同学开放。</p>
-        </div>
+      <section className="module-page" aria-label="财务治理">
+        <ModulePageHeader
+          kicker="FINANCE"
+          title="财务治理"
+          description="金额始终以整数分存储，预算、结算和审批记录可追溯。"
+        />
+        <AsyncState
+          state="error"
+          title="暂无财务访问权限"
+          description="财务信息只对获得明确授权的同学开放。"
+        />
       </section>
     );
   }
 
   return (
-    <section className="module-page" aria-labelledby="finance-title">
-      <header className="page-heading">
-        <div>
-          <p className="eyebrow">FINANCE</p>
-          <h2 id="finance-title">财务治理</h2>
-        </div>
-        <p>金额始终以整数分存储，预算、结算和审批记录可追溯。</p>
-      </header>
+    <section className="module-page" aria-label="财务治理">
+      <ModulePageHeader
+        kicker="FINANCE"
+        title="财务治理"
+        description="金额始终以整数分存储，预算、结算和审批记录可追溯。"
+      />
+
+      <FilterBar ariaLabel="筛选财务记录" onSubmit={(event) => event.preventDefault()}>
+        <label>
+          搜索财务记录
+          <input
+            type="search"
+            value={query}
+            placeholder="标题、组织、活动或范围"
+            onChange={(event) => setQuery(event.currentTarget.value)}
+          />
+        </label>
+        <label>
+          记录状态
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.currentTarget.value as FinanceStatus | '')}
+          >
+            <option value="">全部状态</option>
+            {Object.entries(statusLabels).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </FilterBar>
 
       {feedback ? <p role="status">{feedback}</p> : null}
       {formError ? <p role="alert">{formError}</p> : null}
@@ -528,133 +587,131 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
       <div className="content-grid">
         <section className="panel" aria-labelledby="finance-list-title">
           <h3 id="finance-list-title">财务记录</h3>
-          {records === null && error === null ? <p>正在加载财务记录…</p> : null}
-          {error !== null ? <p role="alert">财务记录加载失败，请稍后重试。</p> : null}
-          {records?.length === 0 ? (
-            <div className="empty-state">
-              <h4>暂无财务记录</h4>
-              <p>创建第一条预算或结算草稿后会显示在这里。</p>
-            </div>
-          ) : null}
-          {records && records.length > 0 ? (
-            <ul className="record-list">
-              {records.map((record) => {
-                const canUpdate = permitted(user, 'finance.record.update', record.scope);
-                const canMaintain = canMaintainRecord(record);
-                const canApprove =
-                  canReviewFinance(user) || permitted(user, 'finance.record.approve', record.scope);
-                const busy = busyId === record.id;
-                const editing = editingId === record.id && editDraft !== null;
-                return (
-                  <li key={record.id} className="record-card">
-                    <article aria-labelledby={`finance-${record.id}-title`}>
-                      <header>
-                        <div>
-                          <h4 id={`finance-${record.id}-title`}>{record.title}</h4>
-                          <p>
-                            {record.kind === 'budget' ? '预算' : '结算'} ·{' '}
-                            {statusLabels[record.status]}
-                          </p>
-                        </div>
-                        <strong>{formatAmount(record.amountCents)}</strong>
-                      </header>
-                      <p>
-                        范围：{record.scope.type}/{record.scope.id}
-                      </p>
-                      <p>关联活动：{record.activityId ?? '无'}</p>
-                      <p>组织：{organizationName(record.organizationId)}</p>
-                      <p>
-                        审核：
-                        {record.reviewDecision
-                          ? `${statusLabels[record.reviewDecision]} · ${
-                              record.reviewerUid ?? '未知审核人'
-                            }${record.reviewedAt ? ` · ${record.reviewedAt}` : ''}`
-                          : '待审核'}
-                      </p>
+          <ResponsiveRecordList
+            ariaLabel="财务记录"
+            records={visibleRecords}
+            state={error !== null ? 'error' : records === null ? 'loading' : 'ready'}
+            errorMessage="财务记录加载失败，请稍后重试。"
+            emptyTitle={records?.length === 0 ? '暂无财务记录' : '没有匹配的财务记录'}
+            emptyDescription={
+              records?.length === 0
+                ? '创建第一条预算或结算草稿后会显示在这里。'
+                : '请调整关键词或状态筛选后再试。'
+            }
+            getKey={(record) => record.id}
+            renderRecord={(record) => {
+              const canUpdate = permitted(user, 'finance.record.update', record.scope);
+              const canMaintain = canMaintainRecord(record);
+              const canApprove =
+                canReviewFinance(user) || permitted(user, 'finance.record.approve', record.scope);
+              const busy = busyId === record.id;
+              const editing = editingId === record.id && editDraft !== null;
+              return (
+                <article className="finance-record" aria-labelledby={`finance-${record.id}-title`}>
+                  <header>
+                    <div>
+                      <h4 id={`finance-${record.id}-title`}>{record.title}</h4>
+                      <p>{record.kind === 'budget' ? '预算' : '结算'}</p>
+                    </div>
+                    <div className="finance-record-summary">
+                      <StatusBadge status={statusTones[record.status]}>
+                        {statusLabels[record.status]}
+                      </StatusBadge>
+                      <strong>{formatAmount(record.amountCents)}</strong>
+                    </div>
+                  </header>
+                  <p>
+                    范围：{record.scope.type}/{record.scope.id}
+                  </p>
+                  <p>关联活动：{record.activityId ?? '无'}</p>
+                  <p>组织：{organizationName(record.organizationId)}</p>
+                  <p>
+                    审核：
+                    {record.reviewDecision
+                      ? `${statusLabels[record.reviewDecision]} · ${
+                          record.reviewerUid ?? '未知审核人'
+                        }${record.reviewedAt ? ` · ${record.reviewedAt}` : ''}`
+                      : '待审核'}
+                  </p>
 
-                      {editing ? (
-                        <form onSubmit={(event) => void saveEdit(record, event)}>
-                          {fields(editDraft, setEditDraft, '编辑')}
-                          <button type="submit" disabled={busy}>
-                            保存修改
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => {
-                              setEditingId(null);
-                              setEditDraft(null);
-                            }}
-                          >
-                            取消编辑
-                          </button>
-                        </form>
-                      ) : record.status === 'draft' && canMaintain ? (
+                  {editing ? (
+                    <form onSubmit={(event) => void saveEdit(record, event)}>
+                      {fields(editDraft, setEditDraft, '编辑')}
+                      <button type="submit" disabled={busy}>
+                        保存修改
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => {
+                          setEditingId(null);
+                          setEditDraft(null);
+                        }}
+                      >
+                        取消编辑
+                      </button>
+                    </form>
+                  ) : record.status === 'draft' && canMaintain ? (
+                    <button
+                      type="button"
+                      aria-label={`编辑 ${record.title}`}
+                      onClick={() => beginEdit(record)}
+                    >
+                      编辑
+                    </button>
+                  ) : null}
+
+                  <div className="action-row module-page-actions">
+                    {record.status === 'draft' && canMaintain ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void transition(record, 'submitted', '财务记录已提交审批')}
+                      >
+                        提交审批
+                      </button>
+                    ) : null}
+                    {record.status === 'submitted' && canApprove ? (
+                      <>
                         <button
                           type="button"
-                          aria-label={`编辑 ${record.title}`}
-                          onClick={() => beginEdit(record)}
+                          disabled={busy}
+                          onClick={() => void transition(record, 'approved', '财务记录已批准')}
                         >
-                          编辑
+                          批准
                         </button>
-                      ) : null}
-
-                      <div className="action-row">
-                        {record.status === 'draft' && canMaintain ? (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() =>
-                              void transition(record, 'submitted', '财务记录已提交审批')
-                            }
-                          >
-                            提交审批
-                          </button>
-                        ) : null}
-                        {record.status === 'submitted' && canApprove ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void transition(record, 'approved', '财务记录已批准')}
-                            >
-                              批准
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void transition(record, 'rejected', '财务记录已驳回')}
-                            >
-                              驳回
-                            </button>
-                          </>
-                        ) : null}
-                        {record.status === 'rejected' && canMaintain ? (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void transition(record, 'draft', '财务记录已退回草稿')}
-                          >
-                            退回草稿
-                          </button>
-                        ) : null}
-                        {(record.status === 'approved' || record.status === 'rejected') &&
-                        canUpdate ? (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void transition(record, 'archived', '财务记录已归档')}
-                          >
-                            归档
-                          </button>
-                        ) : null}
-                      </div>
-                    </article>
-                  </li>
-                );
-              })}
-            </ul>
-          ) : null}
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void transition(record, 'rejected', '财务记录已驳回')}
+                        >
+                          驳回
+                        </button>
+                      </>
+                    ) : null}
+                    {record.status === 'rejected' && canMaintain ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void transition(record, 'draft', '财务记录已退回草稿')}
+                      >
+                        退回草稿
+                      </button>
+                    ) : null}
+                    {(record.status === 'approved' || record.status === 'rejected') && canUpdate ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void transition(record, 'archived', '财务记录已归档')}
+                      >
+                        归档
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            }}
+          />
         </section>
 
         {hasAnyGrant(user, 'finance.record.create') ? (

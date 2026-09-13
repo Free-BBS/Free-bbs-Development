@@ -33,11 +33,15 @@ test('finance covers access denial and the complete approval lifecycle', async (
   await expect(page.getByRole('heading', { name: '暂无财务访问权限' })).toBeVisible();
 
   await switchUser(page, 'demo-admin');
+  await expect(
+    page.getByRole('region', { name: '财务治理' }).locator(':scope > header'),
+  ).toHaveClass(/module-page-header/);
+  await expect(page.getByRole('search', { name: '筛选财务记录' })).toBeVisible();
   await page.getByLabel('记录标题', { exact: true }).fill(title);
   await page.getByLabel('金额（元）', { exact: true }).fill('123.45');
   await page.getByRole('button', { name: '保存草稿' }).click();
   await expect(page.getByRole('status')).toHaveText('财务草稿已创建');
-  const card = page.locator('.record-card').filter({ hasText: title });
+  const card = page.locator('.responsive-record-list > li').filter({ hasText: title });
   await card.getByRole('button', { name: `编辑 ${title}` }).click();
   await card.getByLabel('编辑记录标题').fill(editedTitle);
   await card.getByLabel('编辑金额（元）').fill('234.56');
@@ -45,7 +49,9 @@ test('finance covers access denial and the complete approval lifecycle', async (
   await expect(page.getByRole('status')).toHaveText('财务草稿已更新');
   await page.reload();
   await switchUser(page, 'demo-admin');
-  const refreshedDraft = page.locator('.record-card').filter({ hasText: editedTitle });
+  const refreshedDraft = page
+    .locator('.responsive-record-list > li')
+    .filter({ hasText: editedTitle });
   await expect(refreshedDraft).toContainText('草稿');
   await expect(refreshedDraft).toContainText('¥234.56');
 
@@ -106,7 +112,7 @@ test('finance covers access denial and the complete approval lifecycle', async (
 
   await page.reload();
   await switchUser(page, 'demo-admin');
-  await expect(page.locator('.record-card').filter({ hasText: editedTitle })).toContainText(
-    '已归档',
-  );
+  await expect(
+    page.locator('.responsive-record-list > li').filter({ hasText: editedTitle }),
+  ).toContainText('已归档');
 });
