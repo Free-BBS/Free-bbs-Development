@@ -1,4 +1,4 @@
-import { act, render, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { RouterProvider, matchRoutes } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -36,10 +36,8 @@ function leafRoute(pathname: string) {
 }
 
 function redirectTarget(pathname: string) {
-  return (
-    (leafRoute(pathname) as unknown as { element?: { props?: { to?: string } } }).element?.props
-      ?.to
-  );
+  return (leafRoute(pathname) as unknown as { element?: { props?: { to?: string } } }).element
+    ?.props?.to;
 }
 
 describe('application routes', () => {
@@ -97,5 +95,46 @@ describe('application routes', () => {
     render(<RouterProvider router={appRouter} />);
 
     await waitFor(() => expect(appRouter.state.location.pathname).toBe('/development/dashboard'));
+  });
+
+  it('loads and displays the requested proposal on a direct detail route', async () => {
+    mockRequest.mockImplementation(async (path: string) => {
+      if (path === '/modules') return [];
+      if (path === '/information/proposals/proposal-1') {
+        return {
+          id: 'proposal-1',
+          title: '改善自习空间照明',
+          problemDescription: '晚间照明不足。',
+          proposedSolution: '增加阅读灯。',
+          category: 'facilities',
+          submitterUid: 'student-1',
+          assigneeUid: null,
+          publicProgress: '正在收集意见。',
+          status: 'reviewing',
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-02T00:00:00.000Z',
+        };
+      }
+      return [];
+    });
+    mockUseAuth.mockReturnValue({
+      status: 'authenticated',
+      user: student,
+      error: null,
+      reload: vi.fn(),
+      authMode: 'main',
+      demoUser: null,
+      setDemoUser: vi.fn(),
+      loginUrl: '/login',
+      client: { request: mockRequest },
+    });
+
+    await act(async () => {
+      await appRouter.navigate('/information/proposals/proposal-1');
+    });
+    render(<RouterProvider router={appRouter} />);
+
+    expect(await screen.findByRole('heading', { name: '改善自习空间照明' })).toBeInTheDocument();
+    expect(mockRequest).toHaveBeenCalledWith('/information/proposals/proposal-1');
   });
 });

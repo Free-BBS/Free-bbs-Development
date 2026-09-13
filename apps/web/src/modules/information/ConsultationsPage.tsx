@@ -5,7 +5,7 @@ import { InformationLayout } from './InformationLayout.js';
 export function ConsultationsPage(props: InformationPageProps) {
   return (
     <InformationLayout title="咨询">
-      <InformationPage {...props} />
+      <InformationPage {...props} view="consultations" />
     </InformationLayout>
   );
 }

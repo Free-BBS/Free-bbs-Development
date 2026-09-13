@@ -5,7 +5,7 @@ import { InformationLayout } from './InformationLayout.js';
 export function TriagePage(props: InformationPageProps) {
   return (
     <InformationLayout title="咨询分诊">
-      <InformationPage {...props} />
+      <InformationPage {...props} view="triage" />
     </InformationLayout>
   );
 }

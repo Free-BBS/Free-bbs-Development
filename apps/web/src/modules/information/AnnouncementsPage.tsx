@@ -5,7 +5,7 @@ import { InformationLayout } from './InformationLayout.js';
 export function AnnouncementsPage(props: InformationPageProps) {
   return (
     <InformationLayout title="公开信息">
-      <InformationPage {...props} />
+      <InformationPage {...props} view="announcements" />
     </InformationLayout>
   );
 }

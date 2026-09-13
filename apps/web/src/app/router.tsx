@@ -15,6 +15,7 @@ import { FinancePage } from '../modules/finance/FinancePage.js';
 import { AnnouncementsPage } from '../modules/information/AnnouncementsPage.js';
 import { ConsultationsPage } from '../modules/information/ConsultationsPage.js';
 import { InformationLayout } from '../modules/information/InformationLayout.js';
+import { ProposalDetailPage } from '../modules/information/ProposalDetailPage.js';
 import { ProposalPool } from '../modules/information/ProposalPool.js';
 import { TriagePage } from '../modules/information/TriagePage.js';
 import { KnowledgePage } from '../modules/knowledge/KnowledgePage.js';
@@ -65,14 +66,22 @@ function KnowledgeRoute() {
 function AnnouncementsRoute() {
   const auth = useAuth();
   return (
-    <AnnouncementsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} user={auth.user} />
+    <AnnouncementsPage
+      key={auth.demoUser ?? auth.user?.uid}
+      client={auth.client}
+      user={auth.user}
+    />
   );
 }
 
 function ConsultationsRoute() {
   const auth = useAuth();
   return (
-    <ConsultationsPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} user={auth.user} />
+    <ConsultationsPage
+      key={auth.demoUser ?? auth.user?.uid}
+      client={auth.client}
+      user={auth.user}
+    />
   );
 }
 
@@ -92,9 +101,10 @@ function ProposalPoolRoute() {
 
 function ProposalDetailRoute() {
   const auth = useAuth();
+  const { proposalId = '' } = useParams();
   return (
     <InformationLayout title="提案详情">
-      <ProposalPool client={auth.client} user={auth.user} />
+      <ProposalDetailPage client={auth.client} proposalId={proposalId} user={auth.user} />
     </InformationLayout>
   );
 }
