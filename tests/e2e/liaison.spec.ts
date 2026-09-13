@@ -1,4 +1,4 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 const apiRoot = '/api/development/v1';
 const headers = (user: string) => ({
@@ -11,70 +11,79 @@ async function switchUser(page: Page, user: string) {
   await expect(page.getByLabel('Demo user')).toHaveValue(user);
 }
 
-async function transition(request: APIRequestContext, id: string, to: string) {
-  const response = await request.post(`${apiRoot}/liaison/resources/${id}/transitions`, {
-    headers: headers('demo-admin'),
-    data: { to },
-  });
-  expect(response.status(), await response.text()).toBe(200);
-}
-
-test('liaison covers public discovery, manager editing, archive and restore', async ({
+test('liaison supports proxy entry, explicit review and a student problem community', async ({
   page,
   request,
 }, testInfo) => {
   test.setTimeout(90_000);
   const suffix = `${testInfo.workerIndex}-${testInfo.retry}`;
-  const name = `E2E 联络资源 ${suffix}`;
-  const editedName = `${name} 已编辑`;
+  const title = `E2E 校企真实问题 ${suffix}`;
+  const editedTitle = `${title} 已校对`;
+  const teamName = `E2E 探索队 ${suffix}`;
 
   await page.goto('./liaison');
-  await expect(page.getByRole('heading', { name: '联络资源', level: 2 })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '维护联络资源' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: '真实问题揭榜' })).toBeVisible();
+  await expect(page.getByRole('button', { name: '代录问题' })).toHaveCount(0);
+
+  await switchUser(page, 'demo-liaison-member');
+  await page.getByRole('button', { name: '代录问题' }).click();
+  const create = page.getByRole('dialog', { name: '代录真实问题' });
+  await create.getByLabel('问题标题').fill(title);
+  await create.getByLabel('简短摘要').fill('把真实业务问题整理为可协作的学生课题。');
+  await create.getByLabel('背景说明').fill('合作方希望验证一个轻量原型。');
+  await create.getByLabel('来源类型').selectOption('company');
+  await create.getByLabel('来源名称').fill('E2E 校企合作伙伴');
+  await create.getByLabel('领域标签（用逗号分隔）').fill('产品设计,前端');
+  await create.getByLabel('预期成果').fill('可运行原型与简短复盘。');
+  await create.getByLabel('限制条件').fill('只能使用公开或匿名化数据。');
+  await create.getByLabel('公开对接方式').fill('联络中心公开咨询台');
+  await create.getByLabel('内部对接说明').fill('private-contact-e2e');
+  await create.getByRole('button', { name: '保存课题草稿' }).click();
+  await expect(page.getByRole('status')).toHaveText('问题草稿已保存');
+
+  const card = page.locator('.liaison-problem-card').filter({ hasText: title });
+  await expect(card).toContainText('企业 · E2E 校企合作伙伴');
+  await card.getByRole('link', { name: '查看课题' }).click();
+  await page.getByRole('button', { name: '编辑课题' }).click();
+  const editor = page.getByRole('dialog', { name: '编辑课题' });
+  await editor.getByLabel('问题标题').fill(editedTitle);
+  await editor.getByRole('button', { name: '保存课题修改' }).click();
+  await expect(page.getByRole('heading', { name: editedTitle })).toBeVisible();
+  await page.getByRole('button', { name: '提交审核' }).click();
+  await expect(page.getByText('待审核', { exact: true })).toBeVisible();
 
   await switchUser(page, 'demo-admin');
-  const create = page.getByRole('heading', { name: '维护联络资源' }).locator('..');
-  await create.getByLabel('资源名称').fill(name);
-  await create.getByLabel('资源说明').fill('端到端公开联络资源。');
-  await create.getByLabel('资源分类').fill('contact');
-  await create.getByRole('button', { name: '创建资源' }).click();
-  await expect(page.getByRole('status')).toHaveText('联络资源已创建');
-
-  const card = page.locator('.record-card').filter({ hasText: name });
-  await card.getByRole('button', { name: '编辑', exact: true }).click();
-  await card.getByLabel('编辑资源名称').fill(editedName);
-  await card.getByLabel('编辑资源说明').fill('刷新后仍保留的资源说明。');
-  await card.getByRole('button', { name: '保存修改' }).click();
-  await expect(page.getByRole('status')).toHaveText('联络资源已更新');
-
-  const list = await request.get(`${apiRoot}/liaison/resources`, {
-    headers: headers('demo-admin'),
-  });
-  const resources = (await list.json()) as { data: Array<{ id: string; name: string }> };
-  const resource = resources.data.find((item) => item.name === editedName);
-  expect(resource).toBeTruthy();
-  const id = resource!.id;
+  await expect(page.getByRole('button', { name: '批准发布' })).toBeVisible();
+  await page.getByRole('button', { name: '批准发布' }).click();
+  await expect(page.getByText('进行中', { exact: true })).toBeVisible();
 
   await switchUser(page, 'demo-student');
-  await page.reload();
-  await expect(page.getByRole('heading', { name: editedName })).toBeVisible();
-  const denied = await request.patch(`${apiRoot}/liaison/resources`, {
-    headers: headers('demo-student'),
-    data: { id, name: '越权资源' },
-  });
-  expect([403, 404]).toContain(denied.status());
+  await expect(page.getByRole('button', { name: '编辑课题' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '批准发布' })).toHaveCount(0);
+  await expect(page.getByText('private-contact-e2e')).toHaveCount(0);
+  await page.getByRole('button', { name: '参与课题' }).click();
+  const join = page.getByRole('dialog', { name: '参与课题' });
+  await join.getByLabel('团队名称').fill(teamName);
+  await join.getByLabel('简短方案').fill('先访谈确认目标，再完成一个可测试原型。');
+  await join.getByRole('button', { name: '创建并参与团队' }).click();
+  await expect(
+    page.getByRole('list', { name: '参与课题的团队' }).getByText(teamName),
+  ).toBeVisible();
 
-  await transition(request, id, 'archived');
-  await transition(request, id, 'active');
-  const illegal = await request.post(`${apiRoot}/liaison/resources/${id}/transitions`, {
-    headers: headers('demo-admin'),
-    data: { to: 'active' },
-  });
-  expect(illegal.status()).toBe(409);
+  await page.getByLabel('讨论内容').fill('我们先确认公开样例数据的边界。');
+  await page.getByRole('button', { name: '发布讨论' }).click();
+  await expect(page.getByText('我们先确认公开样例数据的边界。')).toBeVisible();
 
-  await page.reload();
-  await switchUser(page, 'demo-admin');
-  const persisted = page.locator('.record-card').filter({ hasText: editedName });
-  await expect(persisted).toContainText('公开 · 使用中');
-  await expect(persisted).toContainText('刷新后仍保留的资源说明。');
+  const list = await request.get(
+    `${apiRoot}/liaison/problems?query=${encodeURIComponent(editedTitle)}`,
+    {
+      headers: headers('demo-student'),
+    },
+  );
+  expect(list.status(), await list.text()).toBe(200);
+  const body = (await list.json()) as { data: { items: Array<Record<string, unknown>> } };
+  const created = body.data.items.find((item) => item.title === editedTitle);
+  expect(created).toBeTruthy();
+  expect(created).not.toHaveProperty('internalContactNote');
+  expect(JSON.stringify(created)).not.toContain('private-contact-e2e');
 });

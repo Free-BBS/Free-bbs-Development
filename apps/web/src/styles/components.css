@@ -744,6 +744,151 @@ code,
   min-width: 0;
 }
 
+/* Liaison problem board: a restrained notice-board hierarchy using shared learning-area tokens. */
+.liaison-board,
+.liaison-detail {
+  gap: var(--space-5);
+}
+
+.liaison-problem-card {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.liaison-problem-card > header,
+.liaison-outcome-list header,
+.liaison-team-list > li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.liaison-problem-card h3,
+.liaison-brief-grid h4,
+.liaison-outcome-list h4 {
+  margin: 0;
+  font-family: var(--font-serif);
+}
+
+.liaison-problem-card > p,
+.liaison-card-facts,
+.liaison-brief-grid p,
+.liaison-team-list p,
+.liaison-community-list p,
+.liaison-outcome-list p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.liaison-tag-list,
+.liaison-team-list,
+.liaison-outcome-list,
+.liaison-community-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.liaison-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.liaison-tag-list li {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--action-primary) 8%, transparent);
+  color: var(--action-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.liaison-card-facts,
+.liaison-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr));
+  gap: var(--space-3);
+}
+
+.liaison-card-facts div,
+.liaison-brief-grid > div {
+  display: grid;
+  gap: 5px;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.liaison-card-facts dt,
+.liaison-outcome-list span,
+.liaison-team-list small,
+.liaison-community-list time {
+  color: var(--color-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.liaison-card-facts dd {
+  margin: 0;
+}
+
+.liaison-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.liaison-problem-card a,
+.liaison-detail > a {
+  color: var(--action-primary);
+  font-weight: 800;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.liaison-card-actions .primary-action-link {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  padding: 8px 14px;
+  border: 1px solid var(--action-primary);
+  border-radius: var(--radius-sm);
+  background: var(--action-primary);
+  color: var(--action-primary-text);
+  text-decoration: none;
+}
+
+.liaison-team-list,
+.liaison-community-list,
+.liaison-outcome-list {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.liaison-team-list > li,
+.liaison-community-list > li,
+.liaison-outcome-list > li {
+  padding: var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.liaison-outcome-list header > div {
+  display: grid;
+  gap: 3px;
+}
+
+@media (max-width: 680px) {
+  .liaison-problem-card > header,
+  .liaison-outcome-list header,
+  .liaison-team-list > li {
+    flex-direction: column;
+  }
+}
+
 .editor-drawer-backdrop,
 .confirm-dialog-backdrop {
   position: fixed;

@@ -137,8 +137,16 @@ function LiaisonRoute() {
 }
 
 function ProblemDetailRoute() {
+  const auth = useAuth();
   const { problemId = '' } = useParams();
-  return <ProblemDetailPage problemId={problemId} />;
+  return (
+    <ProblemDetailPage
+      key={`${auth.demoUser ?? auth.user?.uid}:${problemId}`}
+      client={auth.client}
+      problemId={problemId}
+      user={auth.user}
+    />
+  );
 }
 
 function SportsRoute() {
