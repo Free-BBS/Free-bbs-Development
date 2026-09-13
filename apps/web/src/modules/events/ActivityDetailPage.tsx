@@ -96,8 +96,9 @@ function formatDateTime(value: string | null): string {
   }).format(new Date(value));
 }
 
-function localDateTimeToInstant(value: string): string {
-  return new Date(value).toISOString();
+function localDateTimeToInstant(value: string): string | null {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
 function utcInstantToLocalDateTimeInput(value: string): string {
@@ -236,6 +237,11 @@ export function ActivityDetailPage({
       setError('请填写节点名称、节点说明和发生时间');
       return;
     }
+    const occursAt = localDateTimeToInstant(milestoneAt);
+    if (occursAt === null) {
+      setError('请输入有效的发生时间');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -245,12 +251,16 @@ export function ActivityDetailPage({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            occursAt: localDateTimeToInstant(milestoneAt),
+            occursAt,
             title: milestoneTitle.trim(),
             type: 'workflow',
             description: milestoneDescription.trim(),
             completed: false,
-            displayOrder: detail?.milestones.length ?? 0,
+            displayOrder:
+              (detail?.milestones.reduce(
+                (highest, milestone) => Math.max(highest, milestone.displayOrder),
+                -1,
+              ) ?? -1) + 1,
           }),
         },
       );
@@ -278,6 +288,11 @@ export function ActivityDetailPage({
       setError('请填写轮次、参赛双方、比赛时间和比赛地点');
       return;
     }
+    const scheduledAt = localDateTimeToInstant(fixtureAt);
+    if (scheduledAt === null) {
+      setError('请输入有效的比赛时间');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -288,7 +303,7 @@ export function ActivityDetailPage({
           round: fixtureRound.trim(),
           participantA: fixtureA.trim(),
           participantB: fixtureB.trim(),
-          scheduledAt: localDateTimeToInstant(fixtureAt),
+          scheduledAt,
           location: fixtureLocation.trim(),
           score: null,
         }),
@@ -601,22 +616,40 @@ export function ActivityDetailPage({
                       onSubmit={(event) => {
                         event.preventDefault();
                         const values = new FormData(event.currentTarget);
+                        const title = String(values.get('title')).trim();
+                        const description = String(values.get('description')).trim();
+                        const occursAt = localDateTimeToInstant(String(values.get('occursAt')));
+                        const displayOrder = Number(values.get('displayOrder'));
+                        if (
+                          !title ||
+                          !description ||
+                          occursAt === null ||
+                          !Number.isInteger(displayOrder) ||
+                          displayOrder < 0
+                        ) {
+                          setError('请填写节点名称、节点说明、有效发生时间和显示顺序');
+                          return;
+                        }
                         void updateMilestone(milestone.id, {
-                          title: String(values.get('title')).trim(),
-                          description: String(values.get('description')).trim(),
-                          occursAt: localDateTimeToInstant(String(values.get('occursAt'))),
-                          displayOrder: Number(values.get('displayOrder')),
+                          title,
+                          description,
+                          occursAt,
+                          displayOrder,
                           completed: values.get('completed') === 'on',
                         });
                       }}
                     >
                       <label>
                         节点名称
-                        <input name="title" defaultValue={milestone.title} />
+                        <input name="title" required defaultValue={milestone.title} />
                       </label>
                       <label>
                         节点说明
-                        <textarea name="description" defaultValue={milestone.description} />
+                        <textarea
+                          name="description"
+                          required
+                          defaultValue={milestone.description}
+                        />
                       </label>
                       <label>
                         发生时间
@@ -624,6 +657,7 @@ export function ActivityDetailPage({
                           name="occursAt"
                           type="datetime-local"
                           step="0.001"
+                          required
                           defaultValue={utcInstantToLocalDateTimeInput(milestone.occursAt)}
                         />
                       </label>
@@ -633,6 +667,7 @@ export function ActivityDetailPage({
                           name="displayOrder"
                           type="number"
                           min="0"
+                          required
                           defaultValue={milestone.displayOrder}
                         />
                       </label>
@@ -715,25 +750,44 @@ export function ActivityDetailPage({
                       onSubmit={(event) => {
                         event.preventDefault();
                         const values = new FormData(event.currentTarget);
+                        const round = String(values.get('round')).trim();
+                        const participantA = String(values.get('participantA')).trim();
+                        const participantB = String(values.get('participantB')).trim();
+                        const scheduledAt = localDateTimeToInstant(
+                          String(values.get('scheduledAt')),
+                        );
+                        const location = String(values.get('location')).trim();
+                        if (
+                          !round ||
+                          !participantA ||
+                          !participantB ||
+                          scheduledAt === null ||
+                          !location
+                        ) {
+                          setError('请填写轮次、参赛双方、有效比赛时间和比赛地点');
+                          return;
+                        }
                         void updateFixture(fixture.id, {
-                          round: String(values.get('round')).trim(),
-                          participantA: String(values.get('participantA')).trim(),
-                          participantB: String(values.get('participantB')).trim(),
-                          scheduledAt: localDateTimeToInstant(String(values.get('scheduledAt'))),
-                          location: String(values.get('location')).trim(),
+                          round,
+                          participantA,
+                          participantB,
+                          scheduledAt,
+                          location,
                           score: String(values.get('score')).trim() || null,
                         });
                       }}
                     >
                       <label>
                         轮次
-                        <input name="round" defaultValue={fixture.round} />
+                        <input name="round" required defaultValue={fixture.round} />
                       </label>
                       <label>
-                        参赛方 A<input name="participantA" defaultValue={fixture.participantA} />
+                        参赛方 A
+                        <input name="participantA" required defaultValue={fixture.participantA} />
                       </label>
                       <label>
-                        参赛方 B<input name="participantB" defaultValue={fixture.participantB} />
+                        参赛方 B
+                        <input name="participantB" required defaultValue={fixture.participantB} />
                       </label>
                       <label>
                         比赛时间
@@ -741,12 +795,13 @@ export function ActivityDetailPage({
                           name="scheduledAt"
                           type="datetime-local"
                           step="0.001"
+                          required
                           defaultValue={utcInstantToLocalDateTimeInput(fixture.scheduledAt)}
                         />
                       </label>
                       <label>
                         比赛地点
-                        <input name="location" defaultValue={fixture.location} />
+                        <input name="location" required defaultValue={fixture.location} />
                       </label>
                       <label>
                         比分

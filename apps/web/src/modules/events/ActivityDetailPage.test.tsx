@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
@@ -238,7 +238,17 @@ describe('ActivityDetailPage', () => {
       ownerUid: 'maintainer',
       scope: { type: 'public', id: '*' },
       progress: null,
-      milestones: [] as Array<{
+      milestones: [
+        {
+          id: 'milestone-existing',
+          occursAt: '2026-08-30T09:00:00.000Z',
+          title: '已有节点',
+          type: 'workflow',
+          description: '已有说明',
+          completed: false,
+          displayOrder: 9,
+        },
+      ] as Array<{
         id: string;
         occursAt: string;
         title: string;
@@ -262,11 +272,12 @@ describe('ActivityDetailPage', () => {
       const body = JSON.parse(String(init?.body ?? '{}'));
       if (path.endsWith('/milestones') && init?.method === 'POST') {
         detail.milestones.push({ id: 'milestone-new', ...body });
-        return detail.milestones[0];
+        return detail.milestones.at(-1);
       }
       if (path.endsWith('/milestones/milestone-new') && init?.method === 'PATCH') {
-        detail.milestones[0] = { ...detail.milestones[0], ...body };
-        return detail.milestones[0];
+        const index = detail.milestones.findIndex(({ id }) => id === 'milestone-new');
+        detail.milestones[index] = { ...detail.milestones[index], ...body };
+        return detail.milestones[index];
       }
       if (path.endsWith('/fixtures') && init?.method === 'POST') return body;
       throw new Error(`Unexpected request: ${path}`);
@@ -282,15 +293,15 @@ describe('ActivityDetailPage', () => {
     );
     await screen.findByRole('button', { name: '维护活动流程' });
     await user.click(screen.getByRole('button', { name: '维护活动流程' }));
-    await user.type(screen.getByLabelText('节点名称'), '  场地确认  ');
-    await user.type(screen.getByLabelText('节点说明'), '  完成场地确认  ');
-    await user.type(screen.getByLabelText('发生时间'), '2026-09-01T09:00');
+    await user.type(screen.getAllByLabelText('节点名称')[0]!, '  场地确认  ');
+    await user.type(screen.getAllByLabelText('节点说明')[0]!, '  完成场地确认  ');
+    await user.type(screen.getAllByLabelText('发生时间')[0]!, '2026-09-01T09:00');
     await user.click(screen.getByText('添加节点'));
     expect(request).toHaveBeenCalledWith(
       '/events/activities/activity-manage/milestones',
       expect.objectContaining({
         method: 'POST',
-        body: expect.stringContaining('"description":"完成场地确认"'),
+        body: expect.stringMatching(/"description":"完成场地确认".*"displayOrder":10/),
       }),
     );
     expect(await screen.findByRole('progressbar', { name: '活动筹备进度' })).toHaveAttribute(
@@ -300,7 +311,7 @@ describe('ActivityDetailPage', () => {
     await user.click(screen.getByText('标记已完成：场地确认'));
     expect(await screen.findByRole('progressbar', { name: '活动筹备进度' })).toHaveAttribute(
       'aria-valuenow',
-      '100',
+      '50',
     );
 
     await user.type(screen.getByLabelText('轮次'), ' 决赛 ');
@@ -365,8 +376,25 @@ describe('ActivityDetailPage', () => {
         },
       ],
     };
-    const request = vi.fn(async (path: string) => {
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
       if (path === '/events/activities/activity-contracts') return structuredClone(detail);
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      if (path.endsWith('/milestones/m-1') && init?.method === 'PATCH') {
+        detail.milestones[0] = { ...detail.milestones[0], ...body };
+        return detail.milestones[0];
+      }
+      if (path.endsWith('/milestones/m-1') && init?.method === 'DELETE') {
+        detail.milestones = [];
+        return undefined;
+      }
+      if (path.endsWith('/fixtures/f-1') && init?.method === 'PATCH') {
+        detail.fixtures[0] = { ...detail.fixtures[0], ...body };
+        return detail.fixtures[0];
+      }
+      if (path.endsWith('/fixtures/f-1') && init?.method === 'DELETE') {
+        detail.fixtures = [];
+        return undefined;
+      }
       return undefined;
     });
     render(
@@ -379,23 +407,88 @@ describe('ActivityDetailPage', () => {
       </MemoryRouter>,
     );
     await user.click(await screen.findByRole('button', { name: '维护活动流程' }));
+    const milestoneTitle = screen.getAllByLabelText('节点名称')[1]!;
+    await user.clear(milestoneTitle);
+    await user.type(milestoneTitle, '更新筹备');
     await user.click(screen.getByText('保存节点：筹备'));
-    await user.click(screen.getByText('删除节点：筹备'));
-    await user.click(screen.getByText('保存赛程：半决赛'));
-    await user.click(screen.getByText('删除赛程：半决赛'));
     expect(request).toHaveBeenCalledWith(
       '/events/activities/activity-contracts/milestones/m-1',
-      expect.objectContaining({ method: 'PATCH' }),
+      expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"title":"更新筹备"') }),
     );
+    expect(await screen.findByText('更新筹备')).toBeInTheDocument();
+    await user.click(screen.getByText('删除节点：更新筹备'));
+    expect(await screen.findByText('尚未发布流程')).toBeInTheDocument();
+    const fixtureRound = screen.getAllByLabelText('轮次')[1]!;
+    await user.clear(fixtureRound);
+    await user.type(fixtureRound, '决赛');
+    await user.click(screen.getByText('保存赛程：半决赛'));
+    expect(request).toHaveBeenCalledWith('/events/activities/activity-contracts/fixtures/f-1', expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"round":"决赛"') }));
+    expect(await screen.findByText('决赛')).toBeInTheDocument();
+    await user.click(screen.getByText('删除赛程：决赛'));
+    expect(screen.queryByRole('table', { name: '比赛预览' })).not.toBeInTheDocument();
     expect(request).toHaveBeenCalledWith('/events/activities/activity-contracts/milestones/m-1', {
       method: 'DELETE',
     });
-    expect(request).toHaveBeenCalledWith(
-      '/events/activities/activity-contracts/fixtures/f-1',
-      expect.objectContaining({ method: 'PATCH' }),
-    );
     expect(request).toHaveBeenCalledWith('/events/activities/activity-contracts/fixtures/f-1', {
       method: 'DELETE',
     });
+  });
+
+  it('keeps the editor recoverable when an existing milestone date is cleared', async () => {
+    const detail = {
+      id: 'activity-date',
+      title: '日期活动',
+      description: '活动。',
+      status: 'draft',
+      startsAt: null,
+      endsAt: null,
+      location: '',
+      registrationDeadline: null,
+      capacity: null,
+      contact: '',
+      organizationId: null,
+      standingActivity: false,
+      clubId: null,
+      ownerUid: 'maintainer',
+      scope: { type: 'public', id: '*' },
+      progress: null,
+      milestones: [
+        {
+          id: 'm-date',
+          occursAt: '2026-09-01T09:00:00.000Z',
+          title: '节点',
+          type: 'workflow',
+          description: '说明',
+          completed: false,
+          displayOrder: 0,
+        },
+      ],
+      fixtures: [],
+    };
+    const request = vi.fn(async (path: string) => {
+      if (path === '/events/activities/activity-date') return structuredClone(detail);
+      return undefined;
+    });
+    render(
+      <MemoryRouter>
+        <ActivityDetailPage
+          activityId="activity-date"
+          client={{ request: request as DevelopmentApi['request'] }}
+          user={maintainer}
+        />
+      </MemoryRouter>,
+    );
+    await screen.findByRole('button', { name: '维护活动流程' });
+    fireEvent.click(screen.getByRole('button', { name: '维护活动流程' }));
+    const fields = screen.getAllByLabelText('发生时间');
+    fireEvent.change(fields[1]!, { target: { value: '' } });
+    fireEvent.submit(screen.getByText('保存节点：节点').closest('form')!);
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      '请填写节点名称、节点说明、有效发生时间和显示顺序',
+    );
+    expect(request).not.toHaveBeenCalledWith(
+      '/events/activities/activity-date/milestones/m-date',
+      expect.anything(),
+    );
   });
 });
