@@ -42,13 +42,11 @@ export interface AnnouncementPatch {
 }
 
 export interface ConsultationInput {
-  dueAt?: string | null;
   title: string;
   body: string;
 }
 
 export interface ConsultationPatch {
-  dueAt?: string | null;
   title?: string;
   body?: string;
 }
@@ -185,6 +183,7 @@ export class InformationService {
   ): Promise<ConsultationRecord> {
     return this.store.consultations.create({
       ...input,
+      dueAt: null,
       requesterUid: actorUid,
       assigneeUid: null,
       reply: null,
@@ -209,7 +208,10 @@ export class InformationService {
       if (!canEditOwnOpen) {
         throw new HttpError(404, 'consultation_not_found', 'Consultation not found');
       }
-      return transactionStore.consultations.update(id, patch);
+      return transactionStore.consultations.update(id, {
+        ...(patch.title === undefined ? {} : { title: patch.title }),
+        ...(patch.body === undefined ? {} : { body: patch.body }),
+      });
     });
   }
 

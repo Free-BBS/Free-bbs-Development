@@ -44,6 +44,7 @@ interface ActivityDetail {
   location: string;
   registrationDeadline: string | null;
   capacity: number | null;
+  registrationCount: number;
   contact: string;
   organizationId: string | null;
   standingActivity: boolean;
@@ -426,18 +427,28 @@ export function ActivityDetailPage({
       left.displayOrder - right.displayOrder || left.occursAt.localeCompare(right.occursAt),
   );
   const completed = milestones.filter((milestone) => milestone.completed).length;
+  const registrationCount = detail.registrationCount ?? 0;
   const progress =
     milestones.length === 0 ? null : Math.round((completed / milestones.length) * 100);
   const registrationState =
     user === null
       ? '请登录后查看报名状态'
-      : detail.status !== 'published'
-        ? '报名尚未开放'
-        : !canRegister
-          ? '当前不可报名'
-          : registration?.status === 'registered'
-            ? '已报名'
-            : '未报名';
+      : registration?.status === 'registered'
+        ? '已报名'
+        : detail.status !== 'published'
+          ? '报名尚未开放'
+          : !canRegister
+            ? '当前不可报名'
+            : detail.registrationDeadline !== null &&
+                Date.parse(detail.registrationDeadline) <= Date.now()
+              ? '报名已截止'
+              : detail.capacity !== null && registrationCount >= detail.capacity
+                ? '名额已满'
+                : '未报名';
+  const registrationUnavailable =
+    (detail.registrationDeadline !== null &&
+      Date.parse(detail.registrationDeadline) <= Date.now()) ||
+    (detail.capacity !== null && registrationCount >= detail.capacity);
 
   return (
     <section className="module-page" aria-labelledby="activity-detail-title">
@@ -472,6 +483,16 @@ export function ActivityDetailPage({
           <dt>容量</dt>
           <dd>{detail.capacity === null ? '不限' : `${detail.capacity} 人`}</dd>
         </div>
+        {detail.capacity !== null ? (
+          <div>
+            <dt>报名人数</dt>
+            <dd>
+              {registrationCount >= detail.capacity
+                ? `名额已满（${registrationCount} / ${detail.capacity}）`
+                : `${registrationCount} / ${detail.capacity}`}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>联系人</dt>
           <dd>{detail.contact || '待公布'}</dd>
@@ -558,7 +579,11 @@ export function ActivityDetailPage({
             取消报名
           </button>
         ) : (
-          <button type="button" disabled={busy} onClick={() => void updateRegistration('POST')}>
+          <button
+            type="button"
+            disabled={busy || registrationUnavailable}
+            onClick={() => void updateRegistration('POST')}
+          >
             报名活动
           </button>
         )

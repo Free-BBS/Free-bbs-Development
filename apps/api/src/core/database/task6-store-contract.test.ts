@@ -36,6 +36,67 @@ const publicRecord = {
 };
 
 describe('Task 6 store contracts', () => {
+  it('counts active liaison teams only for the bounded problem page on both adapters', async () => {
+    const memory = createMemoryStore({ seed: false });
+    await memory.subjects.create({
+      uid: 'owner',
+      displayName: 'Owner',
+      avatarUrl: null,
+      status: 'active',
+      ownerUid: 'owner',
+      scope: { type: 'self', id: 'owner' },
+    });
+    const problem = await memory.liaisonProblems.create({
+      title: 'Bounded aggregate',
+      summary: 'Count teams for one page.',
+      background: 'Contract fixture',
+      sourceType: 'campus',
+      sourceName: 'Campus',
+      tags: [],
+      expectedOutcome: 'A stable aggregate',
+      constraints: '',
+      startsAt: null,
+      deadline: null,
+      publicContact: '',
+      internalContactNote: '',
+      recorderUid: 'owner',
+      reviewerUid: null,
+      reviewedAt: null,
+      reviewNote: null,
+      status: 'open',
+      ownerUid: 'owner',
+      scope: { type: 'public', id: '*' },
+    });
+    for (const [name, status] of [
+      ['Active team', 'active'],
+      ['Inactive team', 'inactive'],
+    ] as const) {
+      await memory.liaisonTeams.create({
+        problemId: problem.id,
+        name,
+        proposal: 'Test proposal',
+        maintainerUid: 'owner',
+        status,
+        ownerUid: 'owner',
+        scope: { type: 'liaison_problem', id: problem.id },
+      });
+    }
+    await expect(
+      memory.liaisonTeams.countActiveByProblemIds([problem.id, 'missing']),
+    ).resolves.toEqual({ [problem.id]: 1 });
+
+    const fake = fakeMySql();
+    fake.pool.execute.mockResolvedValueOnce([[{ problem_id: 'problem-a', total: 2 }], []]);
+    const mysql = createMySqlStore({ pool: fake.typedPool });
+    await expect(
+      mysql.store.liaisonTeams.countActiveByProblemIds(['problem-a', 'problem-b']),
+    ).resolves.toEqual({ 'problem-a': 2 });
+    expect(fake.pool.execute.mock.calls[0]).toEqual([
+      expect.stringMatching(/liaison_teams.*problem_id IN \(\?, \?\).*GROUP BY problem_id/),
+      ['active', 'problem-a', 'problem-b'],
+    ]);
+  });
+
   it('enforces active membership and registration uniqueness in memory and permits recreate after delete', async () => {
     const store = createMemoryStore({ seed: false });
     const membershipInput = {
@@ -107,6 +168,16 @@ describe('Task 6 store contracts', () => {
     expect(activity?.id).toBe('activity-a');
     expect(inside.connection.execute.mock.calls[0]?.[0]).toMatch(/SELECT .* FOR UPDATE$/);
     expect(inside.pool.execute).not.toHaveBeenCalled();
+
+    const registrationLock = fakeMySql();
+    registrationLock.connection.execute.mockResolvedValueOnce([[], []]);
+    const registrationHandle = createMySqlStore({ pool: registrationLock.typedPool });
+    await registrationHandle.store.transaction((store) =>
+      store.activityRegistrations.listForUpdate({ query: 'activity-a' }),
+    );
+    expect(registrationLock.connection.execute.mock.calls[0]?.[0]).toMatch(
+      /activity_registrations.*LIKE \?.*FOR UPDATE$/,
+    );
   });
 
   it('maps MySQL membership and registration duplicate errors to stable conflicts', async () => {

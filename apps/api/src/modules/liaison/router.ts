@@ -153,6 +153,10 @@ const problemReviewSchema = z
   })
   .strict();
 const teamRouteSchema = z.object({ problemId: identifier, teamId: identifier }).strict();
+const teamMemberRouteSchema = z
+  .object({ problemId: identifier, teamId: identifier, memberUid: identifier })
+  .strict();
+const postRouteSchema = z.object({ problemId: identifier, postId: identifier }).strict();
 const outcomeRouteSchema = z.object({ problemId: identifier, outcomeId: identifier }).strict();
 const teamCreateSchema = z
   .object({
@@ -171,6 +175,8 @@ const postCreateSchema = z
     body: problemText,
   })
   .strict();
+const postPatchSchema = z.object({ body: problemText }).strict();
+const postTransitionSchema = z.object({ to: z.literal('hidden') }).strict();
 const outcomeCreateSchema = z
   .object({
     teamId: identifier,
@@ -393,6 +399,17 @@ export function createLiaisonRouter(options: LiaisonRouterOptions): Router {
     );
   });
 
+  router.delete(
+    '/problems/:problemId/teams/:teamId/members/:memberUid',
+    async (request, response) => {
+      const actor = await requireActor(options, request, response);
+      if (actor === null) return;
+      const { problemId, teamId, memberUid } = parse(teamMemberRouteSchema, request.params);
+      await problemService.removeMember(actor, problemId, teamId, memberUid);
+      response.status(204).end();
+    },
+  );
+
   router.get('/problems/:problemId/posts', async (request, response) => {
     const actor = await requireActor(options, request, response);
     if (actor === null) return;
@@ -409,6 +426,22 @@ export function createLiaisonRouter(options: LiaisonRouterOptions): Router {
       201,
       await problemService.createPost(actor, problemId, parse(postCreateSchema, request.body)),
     );
+  });
+
+  router.patch('/problems/:problemId/posts/:postId', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId, postId } = parse(postRouteSchema, request.params);
+    const { body } = parse(postPatchSchema, request.body);
+    send(response, 200, await problemService.updatePost(actor, problemId, postId, body));
+  });
+
+  router.post('/problems/:problemId/posts/:postId/transitions', async (request, response) => {
+    const actor = await requireActor(options, request, response);
+    if (actor === null) return;
+    const { problemId, postId } = parse(postRouteSchema, request.params);
+    parse(postTransitionSchema, request.body);
+    send(response, 200, await problemService.hidePost(actor, problemId, postId));
   });
 
   router.get('/problems/:problemId/outcomes', async (request, response) => {

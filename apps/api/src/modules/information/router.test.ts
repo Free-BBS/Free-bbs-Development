@@ -94,6 +94,41 @@ describe('information API', () => {
     });
   });
 
+  it('keeps dueAt out of requester create and edit while allowing triage maintenance', async () => {
+    const { app, store } = informationApp();
+    await request(app)
+      .post('/api/development/v1/information/consultations')
+      .set(studentHeaders)
+      .send({
+        title: 'Deadline spoof',
+        body: 'Requesters cannot prioritize their own consultation.',
+        dueAt: '2026-09-20T08:00:00.000Z',
+      })
+      .expect(400);
+
+    const created = await request(app)
+      .post('/api/development/v1/information/consultations')
+      .set(studentHeaders)
+      .send({ title: 'Normal request', body: 'Please triage this.' })
+      .expect(201);
+    expect(created.body.data.dueAt).toBeNull();
+
+    await request(app)
+      .patch('/api/development/v1/information/consultations')
+      .set(studentHeaders)
+      .send({ id: created.body.data.id, dueAt: '2026-09-20T08:00:00.000Z' })
+      .expect(400);
+
+    await request(app)
+      .patch(`/api/development/v1/information/consultations/${created.body.data.id}/handling`)
+      .set(adminHeaders)
+      .send({ dueAt: '2026-09-20T08:00:00.000Z' })
+      .expect(200);
+    expect(await store.consultations.get(created.body.data.id)).toMatchObject({
+      dueAt: '2026-09-20T08:00:00.000Z',
+    });
+  });
+
   it('publishes announcements and advances consultation status with transactional audits', async () => {
     const { app, store } = informationApp();
     const announcement = await addAnnouncement(store, { title: '待发布公告' });

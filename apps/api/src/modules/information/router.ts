@@ -76,9 +76,7 @@ const announcementPatchSchema = z
   .refine(
     (value) => value.title !== undefined || value.body !== undefined || value.scope !== undefined,
   );
-const consultationCreateSchema = z
-  .object({ title, body, dueAt: nullableContentDateTime.default(null) })
-  .strict();
+const consultationCreateSchema = z.object({ title, body }).strict();
 const transitionAnnouncementSchema = z.object({ to: announcementStatus }).strict();
 const transitionConsultationSchema = z.object({ to: consultationStatus }).strict();
 const consultationHandlingSchema = z
@@ -94,15 +92,12 @@ const consultationHandlingSchema = z
   );
 const consultationPatchSchema = z
   .object({
-    dueAt: nullableContentDateTime.optional(),
     id: identifier,
     title: title.optional(),
     body: body.optional(),
   })
   .strict()
-  .refine(
-    (value) => value.title !== undefined || value.body !== undefined || value.dueAt !== undefined,
-  );
+  .refine((value) => value.title !== undefined || value.body !== undefined);
 const proposalCreateSchema = z
   .object({
     dueAt: nullableContentDateTime.default(null),

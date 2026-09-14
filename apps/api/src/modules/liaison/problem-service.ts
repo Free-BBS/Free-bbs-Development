@@ -15,6 +15,7 @@ import type {
 } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
 import { canTransition } from '../../core/workflow/state-machine.js';
+import { encodeUtcDateTime } from '../../core/database/date-codec.js';
 
 export const PROBLEM_TRANSITIONS = {
   draft: ['pending_review'],
@@ -69,10 +70,34 @@ export interface OutcomeCreateInput {
   attachmentRef: string | null;
 }
 
-export type ProblemProjection = Omit<LiaisonProblemRecord, 'internalContactNote' | 'reviewNote'> & {
-  internalContactNote?: string;
-  reviewNote?: string | null;
-};
+export interface PublicProblemProjection {
+  id: string;
+  title: string;
+  summary: string;
+  background: string;
+  sourceType: LiaisonProblemRecord['sourceType'];
+  sourceName: string;
+  tags: string[];
+  expectedOutcome: string;
+  constraints: string;
+  startsAt: string | null;
+  deadline: string | null;
+  publicContact: string;
+  status: LiaisonProblemStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+export interface PrivilegedProblemProjection extends PublicProblemProjection {
+  internalContactNote: string;
+  reviewNote: string | null;
+  recorderUid: string;
+  reviewerUid: string | null;
+  reviewedAt: string | null;
+  ownerUid: string;
+  scope: ScopeRef;
+}
+export type ProblemProjection = PublicProblemProjection | PrivilegedProblemProjection;
+export type ProblemListProjection = ProblemProjection & { teamCount: number };
 export type TeamProjection = LiaisonTeamRecord & { members: LiaisonTeamMemberRecord[] };
 
 function permitted(
@@ -154,6 +179,10 @@ function outcomeNotFound(): HttpError {
   return new HttpError(404, 'liaison_outcome_not_found', 'Liaison outcome not found');
 }
 
+function postNotFound(): HttpError {
+  return new HttpError(404, 'liaison_post_not_found', 'Liaison post not found');
+}
+
 function problemNotOpen(): HttpError {
   return new HttpError(409, 'liaison_problem_not_open', 'Liaison problem is not open');
 }
@@ -208,15 +237,44 @@ function canSee(actor: AuthorizationContext, problem: LiaisonProblemRecord): boo
 }
 
 function project(actor: AuthorizationContext, problem: LiaisonProblemRecord): ProblemProjection {
-  if (hasSensitiveAccess(actor, problem)) return problem;
-  const { internalContactNote: _internal, reviewNote: _review, ...publicRecord } = problem;
-  void _internal;
-  void _review;
-  return publicRecord;
+  const publicRecord: PublicProblemProjection = {
+    id: problem.id,
+    title: problem.title,
+    summary: problem.summary,
+    background: problem.background,
+    sourceType: problem.sourceType,
+    sourceName: problem.sourceName,
+    tags: [...problem.tags],
+    expectedOutcome: problem.expectedOutcome,
+    constraints: problem.constraints,
+    startsAt: problem.startsAt,
+    deadline: problem.deadline,
+    publicContact: problem.publicContact,
+    status: problem.status,
+    createdAt: problem.createdAt,
+    updatedAt: problem.updatedAt,
+  };
+  if (!hasSensitiveAccess(actor, problem)) return publicRecord;
+  return {
+    ...publicRecord,
+    internalContactNote: problem.internalContactNote,
+    reviewNote: problem.reviewNote,
+    recorderUid: problem.recorderUid,
+    reviewerUid: problem.reviewerUid,
+    reviewedAt: problem.reviewedAt,
+    ownerUid: problem.ownerUid,
+    scope: problem.scope,
+  };
 }
 
 function normalizeTime(value: string | null): string | null {
-  return value === null ? null : new Date(value).toISOString();
+  return value === null ? null : (encodeUtcDateTime(value)?.toISOString() ?? null);
+}
+
+function instant(value: Date): string {
+  const encoded = encodeUtcDateTime(value);
+  if (encoded === null) throw new Error('A liaison workflow instant is required');
+  return encoded.toISOString();
 }
 
 function ensureProblemSchedule(startsAt: string | null, deadline: string | null): void {
@@ -238,7 +296,7 @@ export class LiaisonProblemService {
   async list(
     actor: AuthorizationContext,
     input: ProblemListInput,
-  ): Promise<Page<ProblemProjection>> {
+  ): Promise<Page<ProblemListProjection>> {
     const page = input.page ?? 1;
     const pageSize = input.pageSize ?? 20;
     const filters = {
@@ -246,11 +304,19 @@ export class LiaisonProblemService {
       ...(input.status === undefined ? {} : { status: input.status }),
       ...(input.tag === undefined ? {} : { tag: input.tag }),
     };
-    const records = await this.store.transaction((store) =>
-      store.liaisonProblems.pageVisible(filters, { page, pageSize }, problemVisibility(actor)),
+    const records = await this.store.liaisonProblems.pageVisible(
+      filters,
+      { page, pageSize },
+      problemVisibility(actor),
+    );
+    const teamCounts = await this.store.liaisonTeams.countActiveByProblemIds(
+      records.items.map(({ id }) => id),
     );
     return {
-      items: records.items.map((problem) => project(actor, problem)),
+      items: records.items.map((problem) => ({
+        ...project(actor, problem),
+        teamCount: teamCounts[problem.id] ?? 0,
+      })),
       page,
       pageSize,
       total: records.total,
@@ -397,7 +463,7 @@ export class LiaisonProblemService {
         throw new HttpError(409, 'problem_already_reviewed', 'Problem is not pending review');
       }
       const to = decision === 'approve' ? 'open' : 'rejected';
-      const reviewedAt = this.now().toISOString();
+      const reviewedAt = instant(this.now());
       const updated = await store.liaisonProblems.update(id, {
         status: to,
         reviewerUid: actor.uid,
@@ -464,7 +530,7 @@ export class LiaisonProblemService {
         teamId: team.id,
         memberUid: actor.uid,
         role: 'maintainer',
-        joinedAt: this.now().toISOString(),
+        joinedAt: instant(this.now()),
         status: 'active',
         ownerUid: actor.uid,
         scope: { type: 'liaison_team', id: team.id },
@@ -515,7 +581,7 @@ export class LiaisonProblemService {
         teamId,
         memberUid: actor.uid,
         role: 'member',
-        joinedAt: this.now().toISOString(),
+        joinedAt: instant(this.now()),
         status: 'pending',
         ownerUid: actor.uid,
         scope: { type: 'liaison_team', id: teamId },
@@ -587,6 +653,126 @@ export class LiaisonProblemService {
         (left, right) =>
           left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
       );
+  }
+
+  async updatePost(
+    actor: AuthorizationContext,
+    problemId: string,
+    postId: string,
+    body: string,
+  ): Promise<LiaisonPostRecord> {
+    return this.store.transaction(async (store) => {
+      const problem = await store.liaisonProblems.getForUpdate(problemId);
+      const post = await store.liaisonPosts.getForUpdate(postId);
+      if (
+        problem === null ||
+        post === null ||
+        post.problemId !== problemId ||
+        post.authorUid !== actor.uid ||
+        post.status !== 'visible' ||
+        post.hiddenAt !== null ||
+        !(await actorIsActive(store, actor.uid))
+      )
+        throw postNotFound();
+      const scopes = [problemScope(problemId), ...(post.teamId ? [teamScope(post.teamId)] : [])];
+      if (!permittedAcross(actor, 'liaison.problem.post', 'liaison_problem', scopes)) {
+        throw postNotFound();
+      }
+      if (problem.status !== 'open') throw problemNotOpen();
+      const updated = await store.liaisonPosts.update(postId, { body });
+      if (updated === null) throw postNotFound();
+      await recordAuditEvent(store, {
+        actorUid: actor.uid,
+        action: 'liaison.problem.post_updated',
+        resourceType: 'liaison_post',
+        resourceId: postId,
+        details: { problemId, teamId: post.teamId },
+      });
+      return updated;
+    });
+  }
+
+  async hidePost(
+    actor: AuthorizationContext,
+    problemId: string,
+    postId: string,
+  ): Promise<LiaisonPostRecord> {
+    return this.store.transaction(async (store) => {
+      const problem = await store.liaisonProblems.getForUpdate(problemId);
+      const post = await store.liaisonPosts.getForUpdate(postId);
+      if (
+        problem === null ||
+        post === null ||
+        post.problemId !== problemId ||
+        post.status !== 'visible' ||
+        post.hiddenAt !== null ||
+        !(await actorIsActive(store, actor.uid))
+      )
+        throw postNotFound();
+      const scopes = [problemScope(problemId), ...(post.teamId ? [teamScope(post.teamId)] : [])];
+      if (!permittedAcross(actor, 'liaison.problem.update', 'liaison_problem', scopes)) {
+        throw postNotFound();
+      }
+      const hiddenAt = instant(this.now());
+      const updated = await store.liaisonPosts.update(postId, {
+        status: 'hidden',
+        hiddenAt,
+        hiddenByUid: actor.uid,
+      });
+      if (updated === null) throw postNotFound();
+      await recordAuditEvent(store, {
+        actorUid: actor.uid,
+        action: 'liaison.problem.post_hidden',
+        resourceType: 'liaison_post',
+        resourceId: postId,
+        details: { problemId, teamId: post.teamId, hiddenAt },
+      });
+      return updated;
+    });
+  }
+
+  async removeMember(
+    actor: AuthorizationContext,
+    problemId: string,
+    teamId: string,
+    memberUid: string,
+  ): Promise<void> {
+    await this.store.transaction(async (store) => {
+      const problem = await store.liaisonProblems.getForUpdate(problemId);
+      const team = await store.liaisonTeams.getForUpdate(teamId);
+      if (
+        problem === null ||
+        team === null ||
+        team.problemId !== problemId ||
+        team.maintainerUid !== actor.uid ||
+        memberUid === actor.uid ||
+        !(await actorIsActive(store, actor.uid)) ||
+        !permittedAcross(actor, 'liaison.problem.join', 'liaison_problem', [
+          problemScope(problemId),
+          teamScope(teamId),
+        ])
+      )
+        throw teamNotFound();
+      const membership = (await store.liaisonTeamMembers.listForUpdate({ query: problemId })).find(
+        (candidate) =>
+          candidate.problemId === problemId &&
+          candidate.teamId === teamId &&
+          candidate.memberUid === memberUid &&
+          candidate.status === 'active' &&
+          candidate.role !== 'maintainer',
+      );
+      if (membership === undefined) throw teamNotFound();
+      if ((await store.liaisonTeamMembers.update(membership.id, { status: 'inactive' })) === null) {
+        throw teamNotFound();
+      }
+      await recordAuditEvent(store, {
+        actorUid: actor.uid,
+        action: 'liaison.problem.team_member_removed',
+        resourceType: 'liaison_team_member',
+        resourceId: membership.id,
+        details: { problemId, teamId, memberUid },
+      });
+    });
   }
 
   async createPost(
@@ -699,7 +885,7 @@ export class LiaisonProblemService {
         problemId,
         ...input,
         version,
-        submittedAt: this.now().toISOString(),
+        submittedAt: instant(this.now()),
         adoptedAt: null,
         adoptedByUid: null,
         status: 'submitted',
@@ -745,7 +931,7 @@ export class LiaisonProblemService {
         throw new HttpError(409, 'outcome_already_adopted', 'Outcome is already adopted');
       }
       if (outcome.status !== 'submitted') throw outcomeNotSubmitted();
-      const adoptedAt = this.now().toISOString();
+      const adoptedAt = instant(this.now());
       const updated = await store.liaisonOutcomes.update(outcomeId, {
         status: 'adopted',
         adoptedAt,

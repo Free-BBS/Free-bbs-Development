@@ -1145,6 +1145,20 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
     return this.filteredRecords(filters);
   }
 
+  async countActiveByProblemIds(problemIds: readonly string[]): Promise<Record<string, number>> {
+    if (this.collection !== 'liaisonTeams') {
+      throw new Error('Team aggregation requires the liaison team repository');
+    }
+    const requested = new Set(problemIds);
+    if (requested.size > 100) throw new RangeError('At most 100 problem ids may be aggregated');
+    const counts: Record<string, number> = {};
+    for (const team of this.records() as unknown as LiaisonTeamRecord[]) {
+      if (team.status !== 'active' || !requested.has(team.problemId)) continue;
+      counts[team.problemId] = (counts[team.problemId] ?? 0) + 1;
+    }
+    return counts;
+  }
+
   private filteredRecords(filters: ListFilters = {}): T[] {
     const query = filters.query?.trim().toLocaleLowerCase();
     return this.records()

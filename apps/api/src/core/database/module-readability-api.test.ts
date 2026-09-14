@@ -39,10 +39,14 @@ const cases = [
   {
     path: '/information/consultations',
     base: { title: 'Question', body: 'Body' },
-    fields: { dueAt: '2026-10-01T04:00:00.000Z' },
+    fields: { title: 'Updated question' },
     defaults: { dueAt: null },
     filter: {},
-    bad: [{ dueAt: 'invalid' }, { dueAt: '2026-02-30T00:00:00Z' }],
+    bad: [
+      { dueAt: '2026-10-01T04:00:00.000Z' },
+      { dueAt: 'invalid' },
+      { dueAt: '2026-02-30T00:00:00Z' },
+    ],
   },
   {
     path: '/information/proposals',

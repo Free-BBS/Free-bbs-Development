@@ -21,6 +21,7 @@ function fixture() {
 describe('events API', () => {
   it('restores, cancels, and reuses the actor registration history', async () => {
     const { app, store } = fixture();
+    await store.activities.update('activity-night-run', { registrationDeadline: null });
     await request(app)
       .post('/api/development/v1/events/activities/activity-night-run/registrations')
       .set(student)

@@ -22,6 +22,7 @@ interface Announcement {
 }
 
 interface Consultation {
+  dueAt: string | null;
   id: string;
   title: string;
   body: string;
@@ -121,6 +122,7 @@ export function InformationPage({ client, user, view }: InformationPageProps) {
   const [handlingId, setHandlingId] = useState<string | null>(null);
   const [assigneeUid, setAssigneeUid] = useState('');
   const [reply, setReply] = useState('');
+  const [consultationDueAt, setConsultationDueAt] = useState('');
 
   const loadInformation = useCallback(
     async (announceLoading = true) => {
@@ -316,6 +318,12 @@ export function InformationPage({ client, user, view }: InformationPageProps) {
     setHandlingId(item.id);
     setAssigneeUid(item.assigneeUid ?? '');
     setReply(item.reply ?? '');
+    const due = item.dueAt === null ? null : new Date(item.dueAt);
+    setConsultationDueAt(
+      due === null || Number.isNaN(due.getTime())
+        ? ''
+        : `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}T${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`,
+    );
   }
 
   async function saveHandling(event: FormEvent<HTMLFormElement>, item: Consultation) {
@@ -331,6 +339,7 @@ export function InformationPage({ client, user, view }: InformationPageProps) {
         body: JSON.stringify({
           assigneeUid: assigneeUid.trim() || null,
           reply: reply.trim() || null,
+          dueAt: consultationDueAt ? new Date(consultationDueAt).toISOString() : null,
         }),
       });
       setHandlingId(null);
@@ -650,6 +659,9 @@ export function InformationPage({ client, user, view }: InformationPageProps) {
                           <>
                             {item.assigneeUid ? <p>负责人：{item.assigneeUid}</p> : null}
                             {item.reply ? <p>{item.reply}</p> : null}
+                            {item.dueAt ? (
+                              <p>计划完成：{new Date(item.dueAt).toLocaleString('zh-CN')}</p>
+                            ) : null}
                             {handlingId === item.id ? (
                               <form onSubmit={(event) => void saveHandling(event, item)}>
                                 <label>
@@ -666,6 +678,14 @@ export function InformationPage({ client, user, view }: InformationPageProps) {
                                     value={reply}
                                     maxLength={20000}
                                     onChange={(event) => setReply(event.target.value)}
+                                  />
+                                </label>
+                                <label>
+                                  计划完成时间
+                                  <input
+                                    type="datetime-local"
+                                    value={consultationDueAt}
+                                    onChange={(event) => setConsultationDueAt(event.target.value)}
                                   />
                                 </label>
                                 <button type="submit" disabled={pending}>

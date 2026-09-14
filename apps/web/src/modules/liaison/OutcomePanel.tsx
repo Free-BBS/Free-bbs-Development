@@ -16,8 +16,8 @@ export interface OutcomePanelProps {
   outcomes: readonly LiaisonOutcome[];
   teams: readonly LiaisonTeam[];
   currentUid: string;
-  canSubmit: boolean;
-  canManage: boolean;
+  canSubmit: (team: LiaisonTeam) => boolean;
+  canManage: (outcome: LiaisonOutcome) => boolean;
   pending: boolean;
   onSubmit: (input: OutcomeInput) => Promise<boolean>;
   onAdopt: (outcomeId: string) => Promise<void>;
@@ -33,8 +33,10 @@ export function OutcomePanel({
   onSubmit,
   onAdopt,
 }: OutcomePanelProps) {
-  const memberTeams = teams.filter((team) =>
-    team.members.some((member) => member.memberUid === currentUid && member.status === 'active'),
+  const memberTeams = teams.filter(
+    (team) =>
+      canSubmit(team) &&
+      team.members.some((member) => member.memberUid === currentUid && member.status === 'active'),
   );
   const [teamId, setTeamId] = useState(memberTeams[0]?.id ?? '');
   const selectedTeamId = teamId || memberTeams[0]?.id || '';
@@ -97,7 +99,7 @@ export function OutcomePanel({
                   查看成果链接
                 </a>
               ) : null}
-              {canManage && outcome.status === 'submitted' ? (
+              {canManage(outcome) && outcome.status === 'submitted' ? (
                 <button type="button" disabled={pending} onClick={() => void onAdopt(outcome.id)}>
                   标记为已采纳
                 </button>
@@ -106,7 +108,7 @@ export function OutcomePanel({
           ))}
         </ul>
       )}
-      {canSubmit && memberTeams.length > 0 ? (
+      {memberTeams.length > 0 ? (
         <form onSubmit={submit} noValidate>
           <h4>提交成果版本</h4>
           <label>

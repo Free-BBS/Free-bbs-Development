@@ -112,6 +112,10 @@ export interface LiaisonProblemRepository extends RecordRepository<LiaisonProble
   ): Promise<Page<LiaisonProblemRecord>>;
 }
 
+export interface LiaisonTeamRepository extends RecordRepository<LiaisonTeamRecord> {
+  countActiveByProblemIds(problemIds: readonly string[]): Promise<Record<string, number>>;
+}
+
 export interface SubjectRecord extends StoredRecord {
   uid: string;
   displayName: string;
@@ -407,7 +411,7 @@ export interface DevelopmentStore {
   sportsCheckins: RecordRepository<SportsCheckinRecord>;
   liaisonResources: RecordRepository<LiaisonResourceRecord>;
   liaisonProblems: LiaisonProblemRepository;
-  liaisonTeams: RecordRepository<LiaisonTeamRecord>;
+  liaisonTeams: LiaisonTeamRepository;
   liaisonTeamMembers: RecordRepository<LiaisonTeamMemberRecord>;
   liaisonPosts: RecordRepository<LiaisonPostRecord>;
   liaisonOutcomes: RecordRepository<LiaisonOutcomeRecord>;

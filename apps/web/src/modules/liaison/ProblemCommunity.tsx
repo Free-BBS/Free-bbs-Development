@@ -14,6 +14,10 @@ export interface ProblemCommunityProps {
     kind: 'discussion' | 'progress';
     body: string;
   }) => Promise<boolean>;
+  canEdit: (post: LiaisonPost) => boolean;
+  canHide: (post: LiaisonPost) => boolean;
+  onEdit: (postId: string, body: string) => Promise<boolean>;
+  onHide: (postId: string) => Promise<void>;
 }
 
 function formatDateTime(value: string): string {
@@ -29,11 +33,17 @@ export function ProblemCommunity({
   canPost = true,
   pending,
   onPost,
+  canEdit,
+  canHide,
+  onEdit,
+  onHide,
 }: ProblemCommunityProps) {
   const [kind, setKind] = useState<'discussion' | 'progress'>('discussion');
   const [teamId, setTeamId] = useState('');
   const [body, setBody] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editingBody, setEditingBody] = useState('');
   const memberTeams = teams.filter((team) =>
     team.members.some((member) => member.memberUid === currentUid && member.status === 'active'),
   );
@@ -76,8 +86,61 @@ export function ProblemCommunity({
               <p>
                 <strong>{post.kind === 'progress' ? '团队进展' : '讨论'}</strong> · {post.authorUid}
               </p>
-              <p>{post.body}</p>
+              {editingPostId === post.id ? (
+                <form
+                  onSubmit={async (event) => {
+                    event.preventDefault();
+                    if (!editingBody.trim()) {
+                      setError('动态内容不能为空');
+                      return;
+                    }
+                    if (await onEdit(post.id, editingBody.trim())) setEditingPostId(null);
+                  }}
+                >
+                  <label>
+                    编辑动态内容
+                    <textarea
+                      value={editingBody}
+                      maxLength={20000}
+                      onChange={(event) => setEditingBody(event.target.value)}
+                    />
+                  </label>
+                  <button type="submit" disabled={pending}>
+                    保存动态修改
+                  </button>
+                  <button type="button" disabled={pending} onClick={() => setEditingPostId(null)}>
+                    取消
+                  </button>
+                </form>
+              ) : (
+                <p>{post.body}</p>
+              )}
               <time dateTime={post.createdAt}>{formatDateTime(post.createdAt)}</time>
+              {canEdit(post) && editingPostId !== post.id ? (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={pending}
+                  aria-label={`编辑动态：${post.body}`}
+                  onClick={() => {
+                    setEditingPostId(post.id);
+                    setEditingBody(post.body);
+                  }}
+                >
+                  编辑
+                </button>
+              ) : null}
+              {canHide(post) ? (
+                <button
+                  type="button"
+                  className="secondary-action"
+                  disabled={pending}
+                  aria-label={`隐藏动态：${post.body}`}
+                  onClick={() => void onHide(post.id)}
+                >
+                  隐藏违规内容
+                </button>
+              ) : null}
             </li>
           ))}
         </ol>

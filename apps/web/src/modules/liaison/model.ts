@@ -27,12 +27,12 @@ export interface LiaisonProblem {
   deadline: string | null;
   publicContact: string;
   internalContactNote?: string;
-  recorderUid: string;
-  reviewerUid: string | null;
-  reviewedAt: string | null;
+  recorderUid?: string;
+  reviewerUid?: string | null;
+  reviewedAt?: string | null;
   status: LiaisonProblemStatus;
-  ownerUid: string;
-  scope: ScopeRef;
+  ownerUid?: string;
+  scope?: ScopeRef;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,7 +91,7 @@ export interface LiaisonOutcome {
 }
 
 export interface ProblemPage {
-  items: LiaisonProblem[];
+  items: Array<LiaisonProblem & { teamCount: number }>;
   page: number;
   pageSize: number;
   total: number;
@@ -122,13 +122,6 @@ function matches(pattern: string, value: string): boolean {
   );
 }
 
-const studentActions = new Set([
-  'liaison.problem.read',
-  'liaison.problem.join',
-  'liaison.problem.post',
-  'liaison.problem.outcome.submit',
-]);
-
 export function hasLiaisonPermission(
   user: LiaisonUser | null | undefined,
   action: string,
@@ -137,20 +130,20 @@ export function hasLiaisonPermission(
 ): boolean {
   if (!user) return false;
   const now = Date.now();
-  const applies = (policy: LiaisonPolicy) =>
+  const applies = (policy: LiaisonPolicy, scope?: ScopeRef) =>
     matches(policy.action, action) &&
     matches(policy.resource, resource) &&
     (policy.expiresAt == null || Date.parse(policy.expiresAt) > now) &&
     (policy.scope === undefined ||
-      scopes.some(
-        (scope) =>
-          policy.scope?.type === scope.type &&
-          (policy.scope.id === '*' || policy.scope.id === scope.id),
-      ));
-  const policies = (user.policies ?? []).filter(applies);
-  if (policies.some(({ effect }) => effect === 'deny')) return false;
-  if (policies.some(({ effect }) => effect !== 'deny')) return true;
-  return studentActions.has(action);
+      (scope !== undefined &&
+        policy.scope.type === scope.type &&
+        (policy.scope.id === '*' || policy.scope.id === scope.id)));
+  const decide = (scope?: ScopeRef) => {
+    const policies = (user.policies ?? []).filter((policy) => applies(policy, scope));
+    if (policies.some(({ effect }) => effect === 'deny')) return false;
+    return policies.some(({ effect }) => effect !== 'deny');
+  };
+  return scopes.length === 0 ? decide() : scopes.every((scope) => decide(scope));
 }
 
 export function problemScope(problemId: string): ScopeRef {

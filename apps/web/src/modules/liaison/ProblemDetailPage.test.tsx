@@ -8,13 +8,21 @@ import type { ApiClient } from '../../core/api/client.js';
 import type { LiaisonProblem } from './model.js';
 import { ProblemDetailPage } from './ProblemDetailPage.js';
 
-const student: UserContext = {
+const student: UserContext & {
+  policies: Array<{ action: string; resource: string; effect: 'allow' }>;
+} = {
   uid: 'demo-student',
   displayName: '普通同学',
   avatarUrl: null,
   baseRole: 'student',
   roles: [],
   tags: [],
+  policies: [
+    { action: 'liaison.problem.read', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.join', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.post', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.outcome.submit', resource: 'liaison_outcome', effect: 'allow' },
+  ],
 };
 
 const problem: LiaisonProblem = {
@@ -136,6 +144,92 @@ function renderDetail(client: Pick<ApiClient, 'request'>, user: UserContext = st
 }
 
 describe('ProblemDetailPage', () => {
+  it('lets authors edit posts and maintainers hide posts and remove active team members', async () => {
+    const otherMember = {
+      ...member,
+      id: 'member-other',
+      memberUid: 'demo-captain',
+      role: 'member' as const,
+    };
+    const governedTeams = [{ ...teams[0], members: [member, otherMember] }];
+    let governedPosts = [posts[0]!];
+    const request = vi.fn(async (path: string, init?: RequestInit): Promise<unknown> => {
+      if (path === `/liaison/problems/${problem.id}`) return problem;
+      if (path === `/liaison/problems/${problem.id}/teams`) return governedTeams;
+      if (path === `/liaison/problems/${problem.id}/posts`) return governedPosts;
+      if (path === `/liaison/problems/${problem.id}/outcomes`) return [];
+      if (path.endsWith(`/posts/${posts[0]!.id}`) && init?.method === 'PATCH') {
+        governedPosts = [{ ...governedPosts[0]!, ...JSON.parse(String(init.body)) }];
+        return governedPosts[0];
+      }
+      if (path.endsWith(`/posts/${posts[0]!.id}/transitions`) && init?.method === 'POST') {
+        governedPosts = [];
+        return { ...posts[0], status: 'hidden' };
+      }
+      if (path.endsWith('/members/demo-captain') && init?.method === 'DELETE') {
+        governedTeams[0] = {
+          ...governedTeams[0]!,
+          members: governedTeams[0]!.members.filter(
+            ({ memberUid }) => memberUid !== 'demo-captain',
+          ),
+        };
+        return undefined;
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const maintainer = {
+      ...student,
+      policies: [
+        ...student.policies,
+        { action: 'liaison.problem.update', resource: 'liaison_problem', effect: 'allow' as const },
+      ],
+    };
+    const actor = userEvent.setup();
+    renderDetail({ request } as Pick<ApiClient, 'request'>, maintainer);
+
+    await actor.click(await screen.findByRole('button', { name: `编辑动态：${posts[0]!.body}` }));
+    const editor = screen.getByLabelText('编辑动态内容');
+    await actor.clear(editor);
+    await actor.type(editor, '作者修订后的进展。');
+    await actor.click(screen.getByRole('button', { name: '保存动态修改' }));
+    expect(await screen.findByText('作者修订后的进展。')).toBeInTheDocument();
+
+    await actor.click(screen.getByRole('button', { name: '移除成员：demo-captain' }));
+    expect(screen.queryByText('demo-captain')).not.toBeInTheDocument();
+    await actor.click(screen.getByRole('button', { name: '隐藏动态：作者修订后的进展。' }));
+    expect(await screen.findByText('还没有讨论，欢迎提出第一个问题。')).toBeInTheDocument();
+  });
+
+  it('exposes every legal maintenance transition without mixing review decisions', async () => {
+    let current = { ...problem, status: 'open' as const } as LiaisonProblem;
+    const request = vi.fn(async (path: string, init?: RequestInit): Promise<unknown> => {
+      if (path.endsWith('/transitions') && init?.method === 'POST') {
+        current = { ...current, status: JSON.parse(String(init.body)).to };
+        return current;
+      }
+      if (path === `/liaison/problems/${problem.id}`) return current;
+      if (path.includes('/teams') || path.includes('/posts') || path.includes('/outcomes'))
+        return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const maintainer = {
+      ...student,
+      policies: [
+        ...student.policies,
+        { action: 'liaison.problem.update', resource: 'liaison_problem', effect: 'allow' as const },
+      ],
+    };
+    const actor = userEvent.setup();
+    renderDetail({ request } as Pick<ApiClient, 'request'>, maintainer);
+    await actor.click(await screen.findByRole('button', { name: '暂停课题' }));
+    expect(await screen.findByText('已暂停')).toBeInTheDocument();
+    await actor.click(screen.getByRole('button', { name: '重新开放' }));
+    await actor.click(await screen.findByRole('button', { name: '结项课题' }));
+    expect(await screen.findByText('已结项')).toBeInTheDocument();
+    await actor.click(screen.getByRole('button', { name: '归档课题' }));
+    expect(await screen.findByText('已归档')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '批准发布' })).not.toBeInTheDocument();
+  });
   it('renders four sections and orders progress entries with newest last', async () => {
     expect(JSON.stringify(problem)).not.toContain('internalContact');
     renderDetail(
@@ -313,6 +407,7 @@ describe('ProblemDetailPage', () => {
     const teamDeniedMaintainer = {
       ...student,
       policies: [
+        ...student.policies,
         {
           action: 'liaison.problem.join',
           resource: 'liaison_problem',
@@ -352,6 +447,7 @@ describe('ProblemDetailPage', () => {
     const teamDeniedStudent = {
       ...student,
       policies: [
+        ...student.policies,
         {
           action: 'liaison.problem.join',
           resource: 'liaison_problem',

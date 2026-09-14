@@ -38,6 +38,7 @@ export interface ActivityDetail extends ActivityRecord {
   milestones: ActivityMilestoneRecord[];
   fixtures: CompetitionFixtureRecord[];
   progress: { completed: number; total: number; percentage: number } | null;
+  registrationCount: number;
 }
 
 function allowed(
@@ -97,6 +98,9 @@ export class ActivityDetailService {
     const fixtures = (await this.store.competitionFixtures.list({ query: activityId }))
       .filter((record) => record.activityId === activityId)
       .sort((left, right) => left.scheduledAt.localeCompare(right.scheduledAt));
+    const registrationCount = (
+      await this.store.activityRegistrations.list({ query: activityId })
+    ).filter((record) => record.activityId === activityId && record.status === 'registered').length;
     const completed = milestones.filter(({ completed: done }) => done).length;
     const progress =
       milestones.length === 0
@@ -107,7 +111,7 @@ export class ActivityDetailService {
             percentage: Math.round((completed / milestones.length) * 100),
           };
 
-    return { ...activity, milestones, fixtures, progress };
+    return { ...activity, milestones, fixtures, progress, registrationCount };
   }
 
   async createMilestone(

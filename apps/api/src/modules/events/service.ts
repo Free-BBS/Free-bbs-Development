@@ -79,7 +79,10 @@ function registrationNotFound(): HttpError {
 }
 
 export class EventsService {
-  constructor(private readonly store: DevelopmentStore) {}
+  constructor(
+    private readonly store: DevelopmentStore,
+    private readonly now: () => Date = () => new Date(),
+  ) {}
 
   async list(actor: AuthorizationContext, filters: ListFilters): Promise<ActivityRecord[]> {
     const records = await this.store.activities.list(filters);
@@ -299,11 +302,28 @@ export class EventsService {
           'Activity is not accepting registration',
         );
       }
-      const existing = (
-        await store.activityRegistrations.listForUpdate({ query: activityId })
-      ).find((record) => record.activityId === activityId && record.participantUid === actor.uid);
+      if (
+        activity.registrationDeadline !== null &&
+        Date.parse(activity.registrationDeadline) <= this.now().getTime()
+      ) {
+        throw new HttpError(
+          409,
+          'activity_registration_closed',
+          'Activity registration deadline has passed',
+        );
+      }
+      const registrations = await store.activityRegistrations.listForUpdate({ query: activityId });
+      const existing = registrations.find(
+        (record) => record.activityId === activityId && record.participantUid === actor.uid,
+      );
       if (existing?.status === 'registered') {
         throw new HttpError(409, 'activity_registration_exists', 'Registration already exists');
+      }
+      const registeredCount = registrations.filter(
+        (record) => record.activityId === activityId && record.status === 'registered',
+      ).length;
+      if (activity.capacity !== null && registeredCount >= activity.capacity) {
+        throw new HttpError(409, 'activity_capacity_reached', 'Activity capacity has been reached');
       }
       const registration =
         existing === undefined

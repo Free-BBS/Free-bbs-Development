@@ -18,13 +18,12 @@ import {
   statusTone,
   type LiaisonProblem,
   type LiaisonProblemStatus,
-  type LiaisonTeam,
   type LiaisonUser,
   type ProblemPage,
 } from './model.js';
 
 interface BoardProblem extends LiaisonProblem {
-  teamCount: number | null;
+  teamCount: number;
 }
 
 export interface LiaisonPageProps {
@@ -57,6 +56,8 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState<'' | LiaisonProblemStatus>('');
   const [filters, setFilters] = useState({ query: '', status: '' as '' | LiaisonProblemStatus });
+  const [page, setPage] = useState(1);
+  const [pageInfo, setPageInfo] = useState({ page: 1, pageSize: 20, total: 0 });
   const [editorOpen, setEditorOpen] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
   const [editorError, setEditorError] = useState<string | null>(null);
@@ -70,33 +71,21 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
       setState('loading');
       setFeedback(null);
       setActionError(null);
-      const params = new URLSearchParams({ page: '1', pageSize: '20' });
+      const params = new URLSearchParams({ page: String(page), pageSize: '20' });
       if (filters.query) params.set('query', filters.query);
       if (filters.status) params.set('status', filters.status);
       try {
         const result = await api.request<ProblemPage>(`/liaison/problems?${params.toString()}`);
         if (generation !== requestGeneration.current) return;
-        const withCounts = await Promise.all(
-          result.items.map(async (problem): Promise<BoardProblem> => {
-            try {
-              const teams = await api.request<LiaisonTeam[]>(
-                `/liaison/problems/${encodeURIComponent(problem.id)}/teams`,
-              );
-              return { ...problem, teamCount: teams.length };
-            } catch {
-              return { ...problem, teamCount: null };
-            }
-          }),
-        );
-        if (generation !== requestGeneration.current) return;
-        setProblems(withCounts);
+        setProblems(result.items);
+        setPageInfo({ page: result.page, pageSize: result.pageSize, total: result.total });
         setState('ready');
         if (successMessage) setFeedback(successMessage);
       } catch {
         if (generation === requestGeneration.current) setState('error');
       }
     },
-    [api, filters],
+    [api, filters, page],
   );
 
   useEffect(() => {
@@ -108,6 +97,7 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setPage(1);
     setFilters({ query: query.trim(), status });
   }
 
@@ -260,9 +250,7 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
                 </div>
                 <div>
                   <dt>参与情况</dt>
-                  <dd>
-                    {problem.teamCount === null ? '暂不可用' : `${problem.teamCount} 个参与团队`}
-                  </dd>
+                  <dd>{problem.teamCount} 个参与团队</dd>
                 </div>
               </dl>
               <div className="liaison-card-actions">
@@ -294,6 +282,31 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
           );
         }}
       />
+      {pageInfo.total > pageInfo.pageSize ? (
+        <nav aria-label="问题榜分页" className="pagination-controls">
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={pageInfo.page <= 1 || state === 'loading'}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+          >
+            上一页
+          </button>
+          <span>
+            第 {pageInfo.page} / {Math.ceil(pageInfo.total / pageInfo.pageSize)} 页
+          </span>
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={
+              pageInfo.page >= Math.ceil(pageInfo.total / pageInfo.pageSize) || state === 'loading'
+            }
+            onClick={() => setPage((current) => current + 1)}
+          >
+            下一页
+          </button>
+        </nav>
+      ) : null}
       {state === 'error' ? (
         <button
           type="button"

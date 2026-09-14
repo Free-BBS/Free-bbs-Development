@@ -5,6 +5,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createMySqlStore, type MySqlStoreHandle } from './mysql-store.js';
 import { RecordConflictError } from './record-conflict-error.js';
 import { createMemoryStore } from './memory-store.js';
+import { EventsService } from '../../modules/events/service.js';
+import type { AuthorizationContext } from '../authorization/policy.js';
 
 const runMySql = process.env.DATA_MODE?.trim() === 'mysql';
 const integration = runMySql ? describe : describe.skip;
@@ -62,6 +64,49 @@ integration('real MySQL 8 store integration', () => {
     } finally {
       await handle.close();
     }
+  });
+
+  it('serializes the same registration policy on the MySQL adapter', async () => {
+    const activity = await handle.store.activities.create({
+      title: 'MySQL capacity contract',
+      description: runId,
+      clubId: null,
+      startsAt: null,
+      capacity: 1,
+      registrationDeadline: '2026-09-15T08:00:00.000Z',
+      technicalSupportStatus: 'not_requested',
+      technicalSupportNote: null,
+      status: 'published',
+      ownerUid: runId,
+      scope: publicScope,
+    });
+    const actor = (uid: string): AuthorizationContext => ({
+      uid,
+      displayName: uid,
+      avatarUrl: null,
+      baseRole: 'student',
+      roles: [],
+      tags: [],
+      policies: [
+        {
+          id: `mysql-register-${uid}`,
+          action: 'events.register',
+          resource: 'activity_registration',
+          effect: 'allow',
+        },
+      ],
+    });
+    const service = new EventsService(handle.store, () => new Date('2026-09-14T08:00:00.000Z'));
+    const results = await Promise.allSettled([
+      service.register(actor(`${runId}-member`), activity.id),
+      service.register(actor(`${runId}-participant`), activity.id),
+    ]);
+    expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter(({ status }) => status === 'rejected')).toEqual([
+      expect.objectContaining({
+        reason: expect.objectContaining({ code: 'activity_capacity_reached' }),
+      }),
+    ]);
   });
 
   it('matches memory case/accent-sensitive category and season filtering', async () => {

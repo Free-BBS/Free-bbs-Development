@@ -74,6 +74,28 @@ describe('liaison API', () => {
     });
   });
 
+  it('rejects calendar-invalid liaison times at the MySQL-compatible boundary', async () => {
+    const { app } = liaisonApp();
+    await request(app)
+      .post('/api/development/v1/liaison/problems')
+      .set(liaisonHeaders)
+      .send({
+        title: 'Invalid calendar date',
+        summary: 'The timestamp shape is valid but the date is not.',
+        background: 'Calendar validation must match the persistence codec.',
+        sourceType: 'lab',
+        sourceName: 'Campus data lab',
+        tags: ['data'],
+        expectedOutcome: 'A stable validation error',
+        constraints: '',
+        startsAt: '2026-02-31T08:00:00.000Z',
+        deadline: null,
+        publicContact: 'Public liaison desk',
+        internalContactNote: '',
+      })
+      .expect(400);
+  });
+
   it('lets anonymous callers read only public resources', async () => {
     const { app, store } = liaisonApp();
     await addResource(store, {
@@ -218,7 +240,7 @@ describe('liaison API', () => {
   });
 
   it('exposes the complete problem review and participation routes', async () => {
-    const { app } = liaisonApp();
+    const { app, store } = liaisonApp();
     const created = await request(app)
       .post('/api/development/v1/liaison/problems')
       .set(liaisonHeaders)
@@ -262,6 +284,9 @@ describe('liaison API', () => {
       .expect(200);
     expect(publicDetail.body.data).not.toHaveProperty('internalContactNote');
     expect(publicDetail.body.data).not.toHaveProperty('reviewNote');
+    for (const internalField of ['recorderUid', 'reviewerUid', 'reviewedAt', 'ownerUid', 'scope']) {
+      expect(publicDetail.body.data).not.toHaveProperty(internalField);
+    }
 
     const team = await request(app)
       .post(`/api/development/v1/liaison/problems/${problemId}/teams`)
@@ -269,7 +294,7 @@ describe('liaison API', () => {
       .send({ name: 'Visualization team', proposal: 'Start with a public metric card.' })
       .expect(201);
     const teamId = team.body.data.id as string;
-    await request(app)
+    const confirmed = await request(app)
       .post(`/api/development/v1/liaison/problems/${problemId}/teams/${teamId}/members`)
       .set('X-Demo-User', 'demo-captain')
       .send({ action: 'request' })
@@ -280,17 +305,64 @@ describe('liaison API', () => {
       .send({ action: 'confirm', memberUid: 'demo-captain' })
       .expect(200);
 
-    await request(app)
+    const post = await request(app)
       .post(`/api/development/v1/liaison/problems/${problemId}/posts`)
       .set(studentHeaders)
       .send({ kind: 'progress', teamId, body: 'The first public prototype is ready.' })
       .expect(201);
+    await request(app)
+      .patch(`/api/development/v1/liaison/problems/${problemId}/posts/${post.body.data.id}`)
+      .set('X-Demo-User', 'demo-captain')
+      .send({ body: 'Another member cannot rewrite the author post.' })
+      .expect(404);
+    await request(app)
+      .post(
+        `/api/development/v1/liaison/problems/${problemId}/posts/${post.body.data.id}/transitions`,
+      )
+      .set(studentHeaders)
+      .send({ to: 'hidden' })
+      .expect(404);
+    await request(app)
+      .delete(
+        `/api/development/v1/liaison/problems/${problemId}/teams/${teamId}/members/demo-captain`,
+      )
+      .set(liaisonHeaders)
+      .expect(404);
+    await request(app)
+      .patch(`/api/development/v1/liaison/problems/${problemId}/posts/${post.body.data.id}`)
+      .set(studentHeaders)
+      .send({ body: 'The author corrected the public prototype update.' })
+      .expect(200);
+    await request(app)
+      .post(
+        `/api/development/v1/liaison/problems/${problemId}/posts/${post.body.data.id}/transitions`,
+      )
+      .set(liaisonHeaders)
+      .send({ to: 'hidden' })
+      .expect(200);
     const posts = await request(app)
       .get(`/api/development/v1/liaison/problems/${problemId}/posts`)
       .set(studentHeaders)
       .expect(200);
-    expect(posts.body.data).toEqual(
-      expect.arrayContaining([expect.objectContaining({ teamId, kind: 'progress' })]),
+    expect(posts.body.data).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: post.body.data.id })]),
+    );
+
+    await request(app)
+      .delete(
+        `/api/development/v1/liaison/problems/${problemId}/teams/${teamId}/members/demo-captain`,
+      )
+      .set(studentHeaders)
+      .expect(204);
+    expect(await store.liaisonTeamMembers.get(confirmed.body.data.id)).toMatchObject({
+      status: 'inactive',
+    });
+    expect(await store.auditLogs.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: 'liaison.problem.post_updated' }),
+        expect.objectContaining({ action: 'liaison.problem.post_hidden' }),
+        expect.objectContaining({ action: 'liaison.problem.team_member_removed' }),
+      ]),
     );
 
     const outcome = await request(app)
@@ -315,6 +387,14 @@ describe('liaison API', () => {
       .expect(200);
     expect(outcomes.body.data).toEqual(
       expect.arrayContaining([expect.objectContaining({ status: 'adopted' })]),
+    );
+
+    const board = await request(app)
+      .get('/api/development/v1/liaison/problems?page=1&pageSize=20')
+      .set(studentHeaders)
+      .expect(200);
+    expect(board.body.data.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: problemId, teamCount: 1 })]),
     );
   });
 });

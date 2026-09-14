@@ -354,7 +354,7 @@ describe('liaison problem service', () => {
     ]).toContain(privateDraft.id);
   });
 
-  it('requests one bounded repository snapshot when more than 100 records are visible', async () => {
+  it('counts teams only for the bounded page when more than 100 records are visible', async () => {
     const base = createMemoryStore({ seed: false });
     await base.subjects.create({
       uid: 'demo-admin',
@@ -369,6 +369,8 @@ describe('liaison problem service', () => {
       await base.liaisonProblems.update(problem.id, { status: 'open' });
     }
     const repositoryPage = vi.fn(base.liaisonProblems.pageVisible.bind(base.liaisonProblems));
+    const teamCount = vi.spyOn(base.liaisonTeams, 'countActiveByProblemIds');
+    const teamList = vi.spyOn(base.liaisonTeams, 'list');
     const transaction = vi.fn();
     const store: DevelopmentStore = {
       ...base,
@@ -385,7 +387,7 @@ describe('liaison problem service', () => {
       pageSize: 10,
     });
 
-    expect(transaction).toHaveBeenCalledOnce();
+    expect(transaction).not.toHaveBeenCalled();
     expect(repositoryPage).toHaveBeenCalledOnce();
     expect(repositoryPage.mock.calls[0]?.[0]).toEqual({ query: 'real problem' });
     expect(repositoryPage.mock.calls[0]?.[1]).toEqual({ page: 1, pageSize: 10 });
@@ -395,6 +397,9 @@ describe('liaison problem service', () => {
     });
     expect(result).toMatchObject({ page: 1, pageSize: 10, total: 101 });
     expect(result.items).toHaveLength(10);
+    expect(teamCount).toHaveBeenCalledOnce();
+    expect(teamCount).toHaveBeenCalledWith(result.items.map(({ id }) => id));
+    expect(teamList).not.toHaveBeenCalled();
   });
 
   it('returns stable conflicts for duplicate membership and repeated adoption while keeping the problem open', async () => {

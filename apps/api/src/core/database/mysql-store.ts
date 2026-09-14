@@ -737,6 +737,23 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
     return rows.map((row) => this.decode(row));
   }
 
+  async countActiveByProblemIds(problemIds: readonly string[]): Promise<Record<string, number>> {
+    if (this.definition.table !== 'liaison_teams') {
+      throw new Error('Team aggregation requires the liaison team repository');
+    }
+    const requested = [...new Set(problemIds)];
+    if (requested.length > 100) throw new RangeError('At most 100 problem ids may be aggregated');
+    if (requested.length === 0) return {};
+    const placeholders = requested.map(() => '?').join(', ');
+    const [rows] = await this.executor.execute<RowDataPacket[]>(
+      `SELECT problem_id, COUNT(*) AS total FROM liaison_teams WHERE status = ? AND problem_id IN (${placeholders}) GROUP BY problem_id`,
+      ['active', ...requested],
+    );
+    return Object.fromEntries(
+      rows.map((row) => [String(row.problem_id), Number(row.total)] as const),
+    );
+  }
+
   async page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>> {
     validatePageRequest(request);
     const { where, values } = buildWhere(this.definition, filters ?? {});

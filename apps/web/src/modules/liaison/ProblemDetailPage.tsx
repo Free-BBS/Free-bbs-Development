@@ -6,6 +6,7 @@ import { EditorDrawer } from '../../components/EditorDrawer.js';
 import { ModulePageHeader } from '../../components/ModulePageHeader.js';
 import { StatusBadge } from '../../components/StatusBadge.js';
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
+import type { ScopeRef } from '@freebbs-development/contracts';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
 import { OutcomePanel } from './OutcomePanel.js';
 import { ProblemCommunity } from './ProblemCommunity.js';
@@ -130,6 +131,56 @@ export function ProblemDetailPage({
                 </button>
               </>
             ) : null}
+            {problem.status === 'open' && detail.canUpdate ? (
+              <>
+                <button
+                  className="secondary-action"
+                  type="button"
+                  disabled={detail.pending !== null}
+                  onClick={() => void detail.transition('paused')}
+                >
+                  暂停课题
+                </button>
+                <button
+                  className="secondary-action"
+                  type="button"
+                  disabled={detail.pending !== null}
+                  onClick={() => void detail.transition('closed')}
+                >
+                  结项课题
+                </button>
+              </>
+            ) : null}
+            {problem.status === 'paused' && detail.canUpdate ? (
+              <>
+                <button
+                  className="secondary-action"
+                  type="button"
+                  disabled={detail.pending !== null}
+                  onClick={() => void detail.transition('open')}
+                >
+                  重新开放
+                </button>
+                <button
+                  className="secondary-action"
+                  type="button"
+                  disabled={detail.pending !== null}
+                  onClick={() => void detail.transition('closed')}
+                >
+                  结项课题
+                </button>
+              </>
+            ) : null}
+            {problem.status === 'closed' && detail.canUpdate ? (
+              <button
+                className="secondary-action"
+                type="button"
+                disabled={detail.pending !== null}
+                onClick={() => void detail.transition('archived')}
+              >
+                归档课题
+              </button>
+            ) : null}
           </>
         }
       />
@@ -222,6 +273,25 @@ export function ProblemDetailPage({
                         ))}
                       </ul>
                     ) : null}
+                    {team.maintainerUid === user?.uid && canJoinTeam
+                      ? team.members
+                          .filter(
+                            (candidate) =>
+                              candidate.status === 'active' && candidate.role !== 'maintainer',
+                          )
+                          .map((candidate) => (
+                            <button
+                              key={candidate.id}
+                              className="secondary-action"
+                              type="button"
+                              disabled={detail.pending !== null}
+                              aria-label={`移除成员：${candidate.memberUid}`}
+                              onClick={() => void detail.removeMember(team, candidate.memberUid)}
+                            >
+                              移除 {candidate.memberUid}
+                            </button>
+                          ))
+                      : null}
                   </div>
                   {isOpen && canJoinTeam && !membership ? (
                     <button
@@ -247,16 +317,48 @@ export function ProblemDetailPage({
         canPost={detail.canPost && isOpen && user !== null}
         pending={detail.pending !== null}
         onPost={detail.createPost}
+        canEdit={(post) => {
+          const scopes: ScopeRef[] = [
+            { type: 'liaison_problem', id: problem.id },
+            ...(post.teamId ? [{ type: 'liaison_team', id: post.teamId }] : []),
+          ];
+          return (
+            isOpen &&
+            post.authorUid === user?.uid &&
+            hasLiaisonPermission(user, 'liaison.problem.post', 'liaison_problem', scopes)
+          );
+        }}
+        canHide={(post) => {
+          const scopes: ScopeRef[] = [
+            { type: 'liaison_problem', id: problem.id },
+            ...(post.teamId ? [{ type: 'liaison_team', id: post.teamId }] : []),
+          ];
+          return hasLiaisonPermission(user, 'liaison.problem.update', 'liaison_problem', scopes);
+        }}
+        onEdit={detail.updatePost}
+        onHide={detail.hidePost}
       />
 
       <OutcomePanel
         outcomes={outcomes}
         teams={teams}
         currentUid={user?.uid ?? ''}
-        canSubmit={
-          detail.canSubmitOutcome && (problem.status === 'open' || problem.status === 'paused')
+        canSubmit={(team) =>
+          detail.canSubmitOutcome &&
+          (problem.status === 'open' || problem.status === 'paused') &&
+          hasLiaisonPermission(user, 'liaison.problem.outcome.submit', 'liaison_outcome', [
+            { type: 'liaison_problem', id: problem.id },
+            { type: 'liaison_team', id: team.id },
+          ])
         }
-        canManage={detail.canManageOutcome}
+        canManage={(outcome) =>
+          detail.canManageOutcome &&
+          hasLiaisonPermission(user, 'liaison.problem.outcome.manage', 'liaison_outcome', [
+            { type: 'liaison_problem', id: problem.id },
+            { type: 'liaison_team', id: outcome.teamId },
+            { type: 'liaison_outcome', id: outcome.id },
+          ])
+        }
         pending={detail.pending !== null}
         onSubmit={detail.submitOutcome}
         onAdopt={detail.adoptOutcome}

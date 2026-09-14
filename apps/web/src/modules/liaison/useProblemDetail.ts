@@ -9,6 +9,7 @@ import {
   type LiaisonOutcome,
   type LiaisonPost,
   type LiaisonProblem,
+  type LiaisonProblemStatus,
   type LiaisonTeam,
   type LiaisonUser,
 } from './model.js';
@@ -37,12 +38,7 @@ function publicProblem(value: LiaisonProblem): LiaisonProblem {
     startsAt: value.startsAt,
     deadline: value.deadline,
     publicContact: value.publicContact,
-    recorderUid: value.recorderUid,
-    reviewerUid: value.reviewerUid,
-    reviewedAt: value.reviewedAt,
     status: value.status,
-    ownerUid: value.ownerUid,
-    scope: value.scope,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   };
@@ -247,6 +243,69 @@ export function useProblemDetail({ api, problemId, user }: UseProblemDetailOptio
     return true;
   }
 
+  async function updatePost(postId: string, body: string): Promise<boolean> {
+    const updated = await run(
+      `post:${postId}`,
+      () =>
+        api.request<LiaisonPost>(
+          `/liaison/problems/${encodeURIComponent(problemId)}/posts/${encodeURIComponent(postId)}`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body }),
+          },
+        ),
+      '动态修改失败，请重试',
+    );
+    if (updated === null) return false;
+    setPosts((current) => current.map((post) => (post.id === postId ? updated : post)));
+    setFeedback('动态修改已保存');
+    return true;
+  }
+
+  async function hidePost(postId: string): Promise<void> {
+    const updated = await run(
+      `post:${postId}`,
+      () =>
+        api.request<LiaisonPost>(
+          `/liaison/problems/${encodeURIComponent(problemId)}/posts/${encodeURIComponent(postId)}/transitions`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ to: 'hidden' }),
+          },
+        ),
+      '动态隐藏失败，请重试',
+    );
+    if (updated === null) return;
+    setPosts((current) => current.filter((post) => post.id !== postId));
+    setFeedback('违规动态已隐藏');
+  }
+
+  async function removeMember(team: LiaisonTeam, memberUid: string): Promise<void> {
+    const removed = await run(
+      `member:${team.id}:${memberUid}`,
+      () =>
+        api.request<void>(
+          `/liaison/problems/${encodeURIComponent(problemId)}/teams/${encodeURIComponent(team.id)}/members/${encodeURIComponent(memberUid)}`,
+          { method: 'DELETE' },
+        ),
+      '成员移除失败，请重试',
+    );
+    if (removed === null) return;
+    setTeams((current) =>
+      current.map((candidate) =>
+        candidate.id === team.id
+          ? {
+              ...candidate,
+              members: candidate.members.filter((member) => member.memberUid !== memberUid),
+            }
+          : candidate,
+      ),
+    );
+    setFeedback(`已移除成员 ${memberUid}`);
+  }
+
   async function submitOutcome(input: OutcomeInput): Promise<boolean> {
     const created = await run(
       'outcome',
@@ -318,7 +377,7 @@ export function useProblemDetail({ api, problemId, user }: UseProblemDetailOptio
     setFeedback(decision === 'approve' ? '课题已批准发布' : '课题已驳回修改');
   }
 
-  async function transition(to: 'draft' | 'pending_review') {
+  async function transition(to: LiaisonProblemStatus) {
     if (!problem) return;
     const updated = await run(
       'transition',
@@ -335,7 +394,15 @@ export function useProblemDetail({ api, problemId, user }: UseProblemDetailOptio
     );
     if (updated === null) return;
     setProblem(keepSensitiveForMaintainer(updated));
-    setFeedback(to === 'pending_review' ? '课题已提交审核' : '课题已恢复为草稿');
+    const labels: Partial<Record<LiaisonProblemStatus, string>> = {
+      draft: '课题已恢复为草稿',
+      pending_review: '课题已提交审核',
+      open: '课题已重新开放',
+      paused: '课题已暂停',
+      closed: '课题已结项',
+      archived: '课题已归档',
+    };
+    setFeedback(labels[to] ?? '课题状态已更新');
   }
 
   return {
@@ -360,6 +427,9 @@ export function useProblemDetail({ api, problemId, user }: UseProblemDetailOptio
     requestJoin,
     confirmMembership,
     createPost,
+    updatePost,
+    hidePost,
+    removeMember,
     submitOutcome,
     adoptOutcome,
     saveProblem,

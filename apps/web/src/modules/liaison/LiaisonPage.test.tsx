@@ -8,13 +8,21 @@ import type { ApiClient } from '../../core/api/client.js';
 import { LiaisonPage } from './LiaisonPage.js';
 import type { LiaisonProblem } from './model.js';
 
-const student: UserContext = {
+const student: UserContext & {
+  policies: Array<{ action: string; resource: string; effect: 'allow' }>;
+} = {
   uid: 'demo-student',
   displayName: '普通同学',
   avatarUrl: null,
   baseRole: 'student',
   roles: [],
   tags: [],
+  policies: [
+    { action: 'liaison.problem.read', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.join', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.post', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.outcome.submit', resource: 'liaison_outcome', effect: 'allow' },
+  ],
 };
 
 const problem: LiaisonProblem = {
@@ -48,7 +56,12 @@ const pendingProblem = {
 };
 
 function page(items: LiaisonProblem[] = [problem]) {
-  return { items, page: 1, pageSize: 20, total: items.length };
+  return {
+    items: items.map((item) => ({ ...item, teamCount: 2 })),
+    page: 1,
+    pageSize: 20,
+    total: items.length,
+  };
 }
 
 function renderPage(client: Pick<ApiClient, 'request'>, user: UserContext = student) {
@@ -63,9 +76,6 @@ describe('LiaisonPage', () => {
   it('renders source, status, tags, deadline, expected outcome and team count', async () => {
     const request = vi.fn(async (path: string) => {
       if (path === '/liaison/problems?page=1&pageSize=20') return page();
-      if (path === '/liaison/problems/problem-energy/teams') {
-        return [{ id: 'team-a' }, { id: 'team-b' }];
-      }
       throw new Error(`Unexpected request: ${path}`);
     });
 
@@ -91,6 +101,23 @@ describe('LiaisonPage', () => {
     expect(within(card).getByRole('link', { name: '查看课题' })).toHaveClass(
       'secondary-action-link',
     );
+  });
+
+  it('uses API pagination metadata so records after the first 20 remain reachable', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === '/liaison/problems?page=1&pageSize=20') {
+        return { ...page(), total: 21 };
+      }
+      if (path === '/liaison/problems?page=2&pageSize=20') {
+        return page([{ ...problem, id: 'problem-21', title: '第二页课题' }]);
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const actor = userEvent.setup();
+    renderPage({ request } as Pick<ApiClient, 'request'>);
+    await actor.click(await screen.findByRole('button', { name: '下一页' }));
+    expect(await screen.findByText('第二页课题')).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith('/liaison/problems?page=2&pageSize=20');
   });
 
   it('uses explicit maintenance and review permissions instead of super-admin identity', async () => {
