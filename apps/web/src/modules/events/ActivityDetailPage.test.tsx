@@ -413,7 +413,10 @@ describe('ActivityDetailPage', () => {
     await user.click(screen.getByText('保存节点：筹备'));
     expect(request).toHaveBeenCalledWith(
       '/events/activities/activity-contracts/milestones/m-1',
-      expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"title":"更新筹备"') }),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: expect.stringContaining('"title":"更新筹备"'),
+      }),
     );
     expect(await screen.findByText('更新筹备')).toBeInTheDocument();
     await user.click(screen.getByText('删除节点：更新筹备'));
@@ -422,7 +425,10 @@ describe('ActivityDetailPage', () => {
     await user.clear(fixtureRound);
     await user.type(fixtureRound, '决赛');
     await user.click(screen.getByText('保存赛程：半决赛'));
-    expect(request).toHaveBeenCalledWith('/events/activities/activity-contracts/fixtures/f-1', expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"round":"决赛"') }));
+    expect(request).toHaveBeenCalledWith(
+      '/events/activities/activity-contracts/fixtures/f-1',
+      expect.objectContaining({ method: 'PATCH', body: expect.stringContaining('"round":"决赛"') }),
+    );
     expect(await screen.findByText('决赛')).toBeInTheDocument();
     await user.click(screen.getByText('删除赛程：决赛'));
     expect(screen.queryByRole('table', { name: '比赛预览' })).not.toBeInTheDocument();

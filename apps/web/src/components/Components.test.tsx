@@ -87,7 +87,9 @@ describe('shared module presentation primitives', () => {
     );
     expect(screen.queryByRole('list', { name: '经验条目' })).not.toBeInTheDocument();
 
-    rerender(<ResponsiveRecordList {...props} records={[]} state="error" errorMessage="加载失败" />);
+    rerender(
+      <ResponsiveRecordList {...props} records={[]} state="error" errorMessage="加载失败" />,
+    );
     expect(screen.getByRole('alert')).toHaveTextContent('加载失败');
     expect(screen.queryByRole('list', { name: '经验条目' })).not.toBeInTheDocument();
   });
@@ -196,7 +198,9 @@ describe('shared module presentation primitives', () => {
 
     const confirmTrigger = screen.getByRole('button', { name: '删除经验' });
     await user.click(confirmTrigger);
-    expect(screen.getByRole('alertdialog', { name: '删除经验' })).toHaveTextContent('删除后不可恢复。');
+    expect(screen.getByRole('alertdialog', { name: '删除经验' })).toHaveTextContent(
+      '删除后不可恢复。',
+    );
     await user.keyboard('{Escape}');
     expect(confirmTrigger).toHaveFocus();
   });

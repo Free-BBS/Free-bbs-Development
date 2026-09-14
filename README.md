@@ -8,6 +8,8 @@ FreeBBS 发展端是挂载在主站 `/development/` 路径下的独立业务子�
 
 平台 MVP 已经形成完整的 React Web、版本化 API、共享契约、内存/MySQL 数据模式、权限与 Tag、审计、测试和部署基线。经验库、信息与咨询、趣缘群体、活动、联络资源、体育代表队、财务治理及权限管理模块均已有可运行入口。
 
+统一模块框架进一步把信息、活动、联络揭榜和体育拆分为可直接刷新列表/详情路由；工作台保持简短概览，完整模块入口只在侧栏出现。数据库迁移 `008` 补齐各模块可读性字段，迁移 `009` 建立联络真实问题、并行团队、动态和版本化成果。实现细节见[统一模块框架技术说明](./docs/technical_design.md)。
+
 这些描述表示代码能力已经存在，不表示生产环境已经上线。主站真实身份联调、生产数据库、服务器首次引导、部署凭据、正式发布和线上验收仍需按交接指南重新核验。
 
 ## 五分钟本地预览
@@ -33,7 +35,11 @@ npm run dev
 npm run check
 npx playwright install chromium
 npx playwright test
+npm run test:mysql
+npm run test:e2e:production
 ```
+
+默认 E2E 使用 `memory + demo`；`test:mysql` 与 production E2E 需要本地或 CI 提供 MySQL。缺少 MySQL 时应把这两项报告为未验证，不能把内存模式结果当作生产数据库结果。
 
 ## 模块与责任边界
 
@@ -49,6 +55,7 @@ npx playwright test
 - [协作与交接指南](./docs/handoff.md)：新协作者和 Codex 的第一入口；
 - [文档索引](./docs/README.md)：按角色选择阅读路径；
 - [总体技术设计与开发分工](./docs/overall-technical-design.md)；
+- [统一模块框架技术说明](./docs/technical_design.md)：路由、迁移、联络审核、公私响应和扩展边界；
 - [本地开发与完整预览](./docs/local-development.md)；
 - [服务器部署与运维](./docs/server-deployment.md)；
 - [数据库与业务数据管理](./docs/data-administration.md)；

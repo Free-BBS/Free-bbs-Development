@@ -84,7 +84,10 @@ describe('focused information route adapters', () => {
     );
   });
   it('shows only announcements and requests only announcement data', async () => {
-    const request = vi.fn(async (_path: string) => [announcement]);
+    const request = vi.fn(async (path: string) => {
+      if (path !== '/information/announcements') throw new Error(`unexpected path: ${path}`);
+      return [announcement];
+    });
 
     renderRoutePage(<AnnouncementsPage client={clientFor(request)} user={student} />);
 
@@ -94,7 +97,10 @@ describe('focused information route adapters', () => {
   });
 
   it('shows only consultations and requests only consultation data', async () => {
-    const request = vi.fn(async (_path: string) => [consultation]);
+    const request = vi.fn(async (path: string) => {
+      if (path !== '/information/consultations') throw new Error(`unexpected path: ${path}`);
+      return [consultation];
+    });
 
     renderRoutePage(<ConsultationsPage client={clientFor(request)} user={student} />);
 
@@ -104,7 +110,10 @@ describe('focused information route adapters', () => {
   });
 
   it('keeps triage data and controls behind triage permission', async () => {
-    const request = vi.fn(async (_path: string) => [consultation]);
+    const request = vi.fn(async (path: string) => {
+      if (path !== '/information/consultations') throw new Error(`unexpected path: ${path}`);
+      return [consultation];
+    });
 
     const { rerender } = renderRoutePage(
       <TriagePage client={clientFor(request)} user={triageUser} />,

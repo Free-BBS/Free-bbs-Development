@@ -138,9 +138,7 @@ test('module disabling removes navigation and rejects the module API', async ({
 
     await page.goto('./dashboard');
     await expect(page.locator('.sidebar a[href="/development/liaison"]')).toHaveCount(0);
-    await expect(
-      page.getByTestId('dashboard-module-card').filter({ hasText: '联络资源' }),
-    ).toHaveCount(0);
+    await expect(page.getByTestId('dashboard-module-card')).toHaveCount(0);
 
     const disabledResponse = await request.get(`${apiRoot}/liaison/resources`, {
       headers: demoHeaders('demo-admin'),

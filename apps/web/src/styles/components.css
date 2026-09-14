@@ -1002,6 +1002,7 @@ code,
 }
 
 .module-page-actions button,
+.module-page-actions .primary-action-link,
 .detail-section-actions button,
 .filter-bar button,
 .editor-drawer button,
@@ -1014,6 +1015,31 @@ code,
   color: var(--action-primary-text);
   cursor: pointer;
   font-weight: 700;
+}
+
+.module-page-actions .primary-action-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.dashboard-recent-list {
+  display: grid;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-recent-list li {
+  display: grid;
+  gap: 4px;
+}
+
+.dashboard-recent-list span {
+  color: var(--color-muted);
+  font-size: 13px;
 }
 
 .editor-drawer-header button,

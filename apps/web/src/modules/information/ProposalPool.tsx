@@ -63,7 +63,7 @@ function errorMessage(error: unknown, fallback: string): string {
   return error instanceof ApiError ? error.message : fallback;
 }
 
-export function ProposalPool({ client, user: _user }: ProposalPoolProps) {
+export function ProposalPool({ client }: ProposalPoolProps) {
   const [proposals, setProposals] = useState<PublicProposal[]>([]);
   const [loading, setLoading] = useState(true);
   const [unavailable, setUnavailable] = useState(false);

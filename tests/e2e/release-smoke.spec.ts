@@ -42,6 +42,19 @@ test('rejects an invalid main-site token', async ({ request }) => {
   });
 });
 
+test('keeps the legacy clubs URL compatible in the production-shaped application', async ({
+  page,
+}) => {
+  await page.addInitScript(
+    ([key, token]) => window.localStorage.setItem(key, token),
+    ['free_bbs_auth_token', 'production-student-token'],
+  );
+
+  await page.goto('./clubs');
+  await expect(page).toHaveURL(/\/development\/interest-groups$/);
+  await expect(page.getByRole('heading', { name: '趣缘群体', exact: true }).first()).toBeVisible();
+});
+
 test('reports not ready after the production database becomes unavailable', async ({
   request,
 }, testInfo) => {

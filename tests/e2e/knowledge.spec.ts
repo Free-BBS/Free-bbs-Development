@@ -39,7 +39,7 @@ test('knowledge covers reader visibility and the complete manager lifecycle', as
   await page.getByLabel('经验标题').fill(title);
   await page.getByLabel('经验正文').fill('由真实界面创建的端到端经验草稿。');
   await page.getByRole('button', { name: '保存草稿' }).click();
-  await expect(page.getByRole('status')).toHaveText('草稿已创建');
+  await expect(page.getByRole('status').filter({ hasText: /^草稿已创建$/ })).toBeVisible();
 
   const createdCard = page.locator('.record-card').filter({ hasText: title });
   await createdCard.getByRole('button', { name: `编辑 ${title}` }).click();

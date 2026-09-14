@@ -2,75 +2,71 @@ import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { ModuleManifest } from '@freebbs-development/contracts';
 import type { ApiClient } from '../../core/api/client.js';
-import type { PresentationUser } from '../../core/permissions/Can.js';
-import { MODULE_MANIFESTS } from '../../app/module-manifests.js';
 import { DashboardPage } from './DashboardPage.js';
 
-const policyOnlyUser: PresentationUser = {
-  uid: 'policy-admin',
-  displayName: '权限管理员',
-  avatarUrl: null,
-  baseRole: 'student',
-  roles: [],
-  tags: [],
-  policies: [
-    { action: 'finance.record.read', effect: 'allow' },
-    { action: 'admin.manage', effect: 'allow' },
-  ],
-};
-
-function enabledModules(): ModuleManifest[] {
-  return MODULE_MANIFESTS.map((module) => ({ ...module, status: 'enabled' }));
+function renderDashboard(request: ReturnType<typeof vi.fn>) {
+  render(
+    <MemoryRouter>
+      <DashboardPage client={{ request } as unknown as ApiClient} />
+    </MemoryRouter>,
+  );
 }
 
 describe('DashboardPage', () => {
-  it('describes liaison as a real-problem collaboration module', async () => {
-    const request = vi.fn().mockResolvedValue(enabledModules());
-    render(
-      <MemoryRouter>
-        <DashboardPage client={{ request } as unknown as ApiClient} user={policyOnlyUser} />
-      </MemoryRouter>,
-    );
+  it('keeps the dashboard a concise overview instead of a second module navigation', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === '/information/announcements') {
+        return [
+          {
+            id: 'announcement-1',
+            title: '秋季场地开放安排',
+            status: 'published',
+            updatedAt: '2026-09-12T08:00:00.000Z',
+          },
+        ];
+      }
+      if (path === '/events/activities') {
+        return [
+          {
+            id: 'activity-1',
+            title: '马约翰杯',
+            status: 'published',
+            startsAt: '2026-10-10T08:00:00.000Z',
+          },
+        ];
+      }
+      throw new Error(`unexpected path: ${path}`);
+    });
 
-    const liaison = (await screen.findByRole('heading', { name: '联络资源' })).closest('a');
-    expect(liaison).toHaveTextContent('课题组与企业发布真实问题，同学组队协作并沉淀成果。');
-  });
+    renderDashboard(request);
 
-  it('hides governance from a policy-only administrator', async () => {
-    const request = vi.fn().mockResolvedValue(enabledModules());
-
-    render(
-      <MemoryRouter>
-        <DashboardPage client={{ request } as unknown as ApiClient} user={policyOnlyUser} />
-      </MemoryRouter>,
-    );
-
-    expect(screen.getByText('正在加载模块状态…')).toBeInTheDocument();
-    expect(await screen.findAllByTestId('dashboard-module-card')).toHaveLength(7);
-    expect(request).toHaveBeenCalledWith('/modules');
-    expect(screen.getByRole('link', { name: /经验库/ })).toHaveAttribute('href', '/knowledge');
-    expect(screen.getByText('财务治理')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '发展端工作台' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: '发展端工作台' })).toBeInTheDocument();
+    expect(
+      screen.getByText(/把组织经验、公共信息与协作进展放在同一个可靠入口/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: '查看近期活动' })).toHaveAttribute('href', '/events');
+    expect(screen.getByRole('link', { name: '查看近期活动' })).toHaveClass('primary-action-link');
+    expect(await screen.findByText('秋季场地开放安排')).toBeInTheDocument();
+    expect(screen.getByText('马约翰杯')).toBeInTheDocument();
+    expect(screen.getByRole('list', { name: '最近公开内容' })).toHaveClass('dashboard-recent-list');
+    expect(screen.getByRole('heading', { name: '行动提示' })).toBeInTheDocument();
+    expect(screen.queryByTestId('dashboard-module-card')).not.toBeInTheDocument();
     expect(screen.queryByText('权限与模块管理')).not.toBeInTheDocument();
+    expect(request.mock.calls.map(([path]) => path)).toEqual([
+      '/information/announcements',
+      '/events/activities',
+    ]);
   });
 
-  it('shows governance to a platform super administrator', async () => {
-    const request = vi.fn().mockResolvedValue(enabledModules());
-    const superAdmin: PresentationUser = {
-      ...policyOnlyUser,
-      uid: 'super-admin',
-      roles: ['platform.super_admin'],
-      policies: [],
-    };
+  it('keeps the overview and primary action available when recent content cannot load', async () => {
+    const request = vi.fn().mockRejectedValue(new Error('offline'));
 
-    render(
-      <MemoryRouter>
-        <DashboardPage client={{ request } as unknown as ApiClient} user={superAdmin} />
-      </MemoryRouter>,
-    );
+    renderDashboard(request);
 
-    expect(await screen.findAllByTestId('dashboard-module-card')).toHaveLength(8);
-    expect(screen.getByText('权限与模块管理')).toBeInTheDocument();
+    expect(await screen.findByRole('alert')).toHaveTextContent('最近内容暂时无法同步');
+    expect(screen.getByRole('link', { name: '查看近期活动' })).toHaveAttribute('href', '/events');
+    expect(screen.getByRole('heading', { name: '行动提示' })).toBeInTheDocument();
   });
 });

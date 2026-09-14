@@ -49,13 +49,7 @@ function AppShellRoute() {
 
 function DashboardRoute() {
   const auth = useAuth();
-  return (
-    <DashboardPage
-      key={auth.demoUser ?? auth.user?.uid}
-      client={auth.client}
-      user={auth.user as PresentationUser}
-    />
-  );
+  return <DashboardPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
 }
 
 function KnowledgeRoute() {

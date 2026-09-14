@@ -60,7 +60,7 @@ test('interest groups cover membership, support, archive and restore flows', asy
   await page.reload();
   const studentCard = page.locator('.workbench-card').filter({ hasText: editedName });
   await expect(studentCard.getByRole('button', { name: `编辑${editedName}` })).toHaveCount(0);
-  await expect(studentCard.getByText('公开活动')).toBeVisible();
+  await expect(studentCard.getByRole('heading', { name: '公开活动', exact: true })).toBeVisible();
   await studentCard.getByRole('button', { name: `加入${editedName}` }).click();
   await expect(page.getByRole('status')).toContainText('已提交');
   await studentCard.getByRole('button', { name: `撤回${editedName}申请` }).click();

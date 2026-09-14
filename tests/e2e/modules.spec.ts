@@ -43,6 +43,47 @@ test('navigates to every development module from the shell', async ({ page }) =>
   }
 });
 
+test('keeps the dashboard as the default landing page without a duplicate module card menu', async ({
+  page,
+}) => {
+  await page.goto('./');
+
+  await expect(page).toHaveURL(/\/development\/dashboard$/);
+  await expect(page.getByRole('heading', { name: '发展端工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '查看近期活动' })).toHaveAttribute(
+    'href',
+    '/development/events',
+  );
+  await expect(page.getByTestId('dashboard-module-card')).toHaveCount(0);
+  await expect(page.locator('.sidebar .module-nav a[href="/development/dashboard"]')).toHaveCount(
+    0,
+  );
+});
+
+test('keeps nested module routes inside the correct active shell', async ({ page }) => {
+  const nestedRoutes = [
+    ['/information/proposals/proposal-night-lighting', '信息与咨询', '/development/information'],
+    ['/events/activity-ma-john-cup', '活动', '/development/events'],
+    ['/liaison/problems/liaison-problem-lab-energy', '联络资源', '/development/liaison'],
+    ['/sports/team-basketball', '体育代表队', '/development/sports'],
+  ] as const;
+
+  for (const [route, shellTitle, navigationHref] of nestedRoutes) {
+    await page.goto(`.${route}`);
+    await expect(page.locator('.titlebar h1')).toHaveText(shellTitle);
+    await expect(
+      page.locator(`.sidebar .module-nav a[aria-current="page"][href="${navigationHref}"]`),
+    ).toBeVisible();
+  }
+});
+
+test('redirects the legacy clubs route to the interest-groups directory', async ({ page }) => {
+  await page.goto('./clubs');
+
+  await expect(page).toHaveURL(/\/development\/interest-groups$/);
+  await expect(page.getByRole('heading', { name: '趣缘群体', exact: true }).first()).toBeVisible();
+});
+
 test('lets an ordinary student submit a consultation', async ({ page }) => {
   const title = `E2E 咨询 ${Date.now()}`;
   await page.goto('./information/consultations');

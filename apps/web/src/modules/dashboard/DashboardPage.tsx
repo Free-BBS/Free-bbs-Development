@@ -1,110 +1,138 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
-import type { ModuleManifest } from '@freebbs-development/contracts';
-import {
-  MODULE_MANIFESTS,
-  visibleModuleManifests,
-  type ModuleStateOverrides,
-} from '../../app/module-manifests.js';
+import { DetailSection } from '../../components/DetailSection.js';
+import { ModulePageHeader } from '../../components/ModulePageHeader.js';
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
 
-import type { PresentationUser } from '../../core/permissions/Can.js';
 export interface DashboardPageProps {
   client?: Pick<ApiClient, 'request'>;
-  user: PresentationUser;
 }
 
-type LoadState = 'loading' | 'success' | 'error';
+interface RecentAnnouncement {
+  id: string;
+  status: string;
+  title: string;
+  updatedAt: string;
+}
 
-export function DashboardPage({ client, user }: DashboardPageProps) {
+interface RecentActivity {
+  id: string;
+  startsAt: string | null;
+  status: string;
+  title: string;
+}
+
+interface RecentItem {
+  id: string;
+  kind: '公告' | '活动';
+  timestamp: string | null;
+  title: string;
+}
+
+type LoadState = 'loading' | 'ready' | 'error';
+
+function sortTimestamp(item: RecentItem): number {
+  if (item.timestamp === null) return 0;
+  const timestamp = Date.parse(item.timestamp);
+  return Number.isNaN(timestamp) ? 0 : timestamp;
+}
+
+function formatDate(value: string | null): string {
+  if (value === null) return '时间待定';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '时间待定';
+  return new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium' }).format(date);
+}
+
+export function DashboardPage({ client }: DashboardPageProps) {
   const api = useMemo(() => client ?? createApiClient(), [client]);
   const [state, setState] = useState<LoadState>('loading');
-  const [modules, setModules] = useState<ModuleManifest[]>([]);
+  const [recentItems, setRecentItems] = useState<RecentItem[]>([]);
 
   useEffect(() => {
     let active = true;
     setState('loading');
-    void api
-      .request<ModuleManifest[]>('/modules')
-      .then((loaded) => {
+
+    void Promise.all([
+      api.request<RecentAnnouncement[]>('/information/announcements'),
+      api.request<RecentActivity[]>('/events/activities'),
+    ])
+      .then(([announcements, activities]) => {
         if (!active) return;
-        setModules(loaded);
-        setState('success');
+        const items: RecentItem[] = [
+          ...announcements
+            .filter((announcement) => announcement.status === 'published')
+            .map((announcement) => ({
+              id: `announcement:${announcement.id}`,
+              kind: '公告' as const,
+              timestamp: announcement.updatedAt,
+              title: announcement.title,
+            })),
+          ...activities
+            .filter((activity) => activity.status === 'published')
+            .map((activity) => ({
+              id: `activity:${activity.id}`,
+              kind: '活动' as const,
+              timestamp: activity.startsAt,
+              title: activity.title,
+            })),
+        ]
+          .sort((left, right) => sortTimestamp(right) - sortTimestamp(left))
+          .slice(0, 4);
+        setRecentItems(items);
+        setState('ready');
       })
       .catch(() => {
         if (!active) return;
-        setModules([]);
+        setRecentItems([]);
         setState('error');
       });
+
     return () => {
       active = false;
     };
   }, [api]);
 
-  const cards = useMemo(() => {
-    const statusById = new Map(modules.map((module) => [module.id, module.status]));
-    const states = Object.fromEntries(
-      MODULE_MANIFESTS.map((module) => [module.id, statusById.get(module.id) ?? 'disabled']),
-    ) as ModuleStateOverrides;
-    return visibleModuleManifests(user, states);
-  }, [modules, user]);
-
-  if (state === 'loading') {
-    return <p role="status">正在加载模块状态…</p>;
-  }
-
   return (
-    <section className="module-page" aria-labelledby="dashboard-heading">
-      <header className="page-section-header">
-        <div>
-          <h2 id="dashboard-heading">发展端工作台</h2>
-          <p>从这里进入九个业务模块，并查看当前启用状态。</p>
-        </div>
-      </header>
+    <section className="module-page" aria-label="发展端工作台">
+      <ModulePageHeader
+        title="发展端工作台"
+        description="把组织经验、公共信息与协作进展放在同一个可靠入口；完整模块导航保留在侧栏。"
+        kicker="OVERVIEW"
+        actions={
+          <Link className="primary-action-link" to="/events">
+            查看近期活动
+          </Link>
+        }
+      />
 
-      {state === 'error' ? (
-        <p role="alert">模块状态暂时无法同步，入口已安全停用，请稍后刷新。</p>
-      ) : null}
+      <div className="workbench-grid">
+        <DetailSection title="行动提示" description="只保留当前阶段最需要关注的协作动作。">
+          <ul>
+            <li>组织活动前先核对时间、地点、报名信息与筹备时间线。</li>
+            <li>遇到校园问题可提交咨询；真实课题通过联络中心代录后进入审核。</li>
+            <li>维护组织资料时写清负责人、适用范围和最近更新时间。</li>
+          </ul>
+        </DetailSection>
 
-      <div className="workbench-grid" aria-label="发展端模块">
-        {cards.map((module) => {
-          const enabled = module.status === 'enabled';
-          const content = (
-            <>
-              <span className="module-icon" aria-hidden="true">
-                <img src={module.icon} alt="" />
-              </span>
-              <h3>{module.name}</h3>
-              <p>{module.description}</p>
-              <span className="status-badge" data-status={enabled ? 'success' : 'warning'}>
-                {enabled ? '已启用' : '已停用'}
-              </span>
-            </>
-          );
-
-          return enabled ? (
-            <Link
-              className="workbench-card"
-              data-testid="dashboard-module-card"
-              key={module.id}
-              to={module.route}
-              aria-label={`${module.name}，已启用`}
-            >
-              {content}
-            </Link>
-          ) : (
-            <div
-              className="workbench-card"
-              data-testid="dashboard-module-card"
-              key={module.id}
-              aria-disabled="true"
-              aria-label={`${module.name}，已停用`}
-            >
-              {content}
-            </div>
-          );
-        })}
+        <DetailSection title="最近内容" description="来自公开公告和已发布活动。">
+          {state === 'loading' ? <p role="status">正在同步最近内容…</p> : null}
+          {state === 'error' ? <p role="alert">最近内容暂时无法同步，请稍后刷新。</p> : null}
+          {state === 'ready' && recentItems.length === 0 ? <p>暂时没有新的公开内容。</p> : null}
+          {state === 'ready' && recentItems.length > 0 ? (
+            <ul className="dashboard-recent-list" aria-label="最近公开内容">
+              {recentItems.map((item) => (
+                <li key={item.id}>
+                  <strong>{item.title}</strong>
+                  <span>
+                    {item.kind} · {formatDate(item.timestamp)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </DetailSection>
       </div>
     </section>
   );

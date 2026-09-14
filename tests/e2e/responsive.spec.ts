@@ -152,7 +152,9 @@ for (const viewport of viewports) {
         '/development/dashboard',
       );
     }
-    await expect(page.getByTestId('dashboard-module-card').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: '行动提示' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '最近内容' })).toBeVisible();
+    await expect(page.getByTestId('dashboard-module-card')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
 
     await page.getByLabel('Demo user').selectOption('demo-admin');
@@ -198,6 +200,25 @@ for (const viewport of viewports) {
     }
   });
 }
+
+test('mobile nested routes preserve their module shell without horizontal page overflow', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const nestedRoutes = [
+    ['/information/proposals/proposal-night-lighting', '信息与咨询'],
+    ['/events/activity-ma-john-cup', '活动'],
+    ['/liaison/problems/liaison-problem-lab-energy', '联络资源'],
+    ['/sports/team-basketball', '体育代表队'],
+  ] as const;
+
+  for (const [route, shellTitle] of nestedRoutes) {
+    await page.goto(`.${route}`);
+    await expect(page.locator('.titlebar h1')).toHaveText(shellTitle);
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 test('mobile dialog keeps an overflowing body scrollable and its footer reachable', async ({
   page,
 }) => {
