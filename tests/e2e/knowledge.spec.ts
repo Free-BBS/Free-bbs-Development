@@ -46,7 +46,7 @@ test('knowledge covers reader visibility and the complete manager lifecycle', as
   await page.getByLabel('编辑标题').fill(editedTitle);
   await page.getByLabel('编辑正文').fill('刷新后仍应保留的经验正文。');
   await page.getByRole('button', { name: '保存修改' }).click();
-  await expect(page.getByRole('status')).toHaveText('修改已保存');
+  await expect(page.getByRole('status').filter({ hasText: /^修改已保存$/ })).toBeVisible();
   await page.reload();
   await switchUser(page, 'demo-admin');
   await expect(page.locator('.record-card').filter({ hasText: editedTitle })).toContainText(

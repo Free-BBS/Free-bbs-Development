@@ -96,6 +96,28 @@ describe('liaison API', () => {
       .expect(400);
   });
 
+  it('rejects liaison times outside the MySQL DATETIME range at the request boundary', async () => {
+    const { app } = liaisonApp();
+    await request(app)
+      .post('/api/development/v1/liaison/problems')
+      .set(liaisonHeaders)
+      .send({
+        title: 'Out-of-range schedule',
+        summary: 'The timestamp is valid ISO but cannot be stored by MySQL.',
+        background: 'HTTP validation must reject it before service normalization.',
+        sourceType: 'lab',
+        sourceName: 'Campus data lab',
+        tags: ['data'],
+        expectedOutcome: 'A stable validation error',
+        constraints: '',
+        startsAt: '0999-01-01T00:00:00.000Z',
+        deadline: null,
+        publicContact: 'Public liaison desk',
+        internalContactNote: '',
+      })
+      .expect(400);
+  });
+
   it('lets anonymous callers read only public resources', async () => {
     const { app, store } = liaisonApp();
     await addResource(store, {

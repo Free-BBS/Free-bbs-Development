@@ -7,6 +7,7 @@ import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { nullableContentDateTime } from '../../core/validation/content-fields.js';
 import { LiaisonProblemService } from './problem-service.js';
 import { LiaisonService } from './service.js';
 
@@ -90,7 +91,6 @@ const problemStatus = z.enum([
   'archived',
 ]);
 const problemText = z.string().trim().min(1).max(20_000);
-const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const problemFields = {
   title: z.string().trim().min(1).max(255),
   summary: z.string().trim().min(1).max(500),
@@ -100,8 +100,8 @@ const problemFields = {
   tags: z.array(z.string().trim().min(1).max(64)).max(20),
   expectedOutcome: problemText,
   constraints: z.string().trim().max(20_000),
-  startsAt: nullableDateTime,
-  deadline: nullableDateTime,
+  startsAt: nullableContentDateTime,
+  deadline: nullableContentDateTime,
   publicContact: z.string().trim().min(1).max(500),
   internalContactNote: z.string().trim().max(20_000),
 };
