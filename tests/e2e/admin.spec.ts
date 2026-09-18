@@ -152,7 +152,9 @@ test('the production administrator exercises every governance section against My
     await page.getByRole('tab', { name: '系统状态' }).click();
     const statusPanel = page.getByRole('tabpanel', { name: '系统状态' });
     await expect(statusPanel).toContainText('mysql');
-    await expect(statusPanel).toContainText('7');
+    await expect(
+      statusPanel.getByText('已应用迁移', { exact: true }).locator('..').locator('dd'),
+    ).toHaveText(/^[1-9]\d*$/);
   } finally {
     await expectOk(
       await request.put(`${apiRoot}/admin/roles/${roleKey}/permissions`, {
