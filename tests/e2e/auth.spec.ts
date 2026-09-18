@@ -26,7 +26,7 @@ test('restores an authenticated demo session and can switch deterministic identi
   await expect(page.getByLabel('Demo user')).toHaveValue('demo-student');
 
   await page.getByLabel('Demo user').selectOption('demo-admin');
-  await expect(page.locator('.user-card')).toContainText('发展端管理员');
+  await expect(page.locator('.user-card')).toContainText('平台管理员');
   await expect(page.locator('.user-card')).toContainText('demo-admin');
 
   await page.getByLabel('Demo user').selectOption('demo-student');

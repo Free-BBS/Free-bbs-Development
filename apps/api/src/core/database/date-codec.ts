@@ -5,6 +5,10 @@ const ZONED_INSTANT =
 
 function validDate(date: Date, message: string): Date {
   if (Number.isNaN(date.getTime())) throw new TypeError(message);
+  // Check the normalized UTC instant, not the year written before an offset.
+  if (date.getUTCFullYear() < 1000 || date.getUTCFullYear() > 9999) {
+    throw new TypeError('UTC date-time is outside the MySQL DATETIME range');
+  }
   return date;
 }
 function daysInMonth(year: number, month: number): number {

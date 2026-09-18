@@ -13,11 +13,13 @@
   "dependencies": {
     "@freebbs-development/contracts": "0.1.0",
     "express": "^5.1.0",
+    "multer": "^2.4.0",
     "mysql2": "^3.14.0",
     "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.0",
+    "@types/multer": "^2.2.0",
     "@types/supertest": "^6.0.0",
     "supertest": "^7.1.0",
     "tsx": "^4.20.0"

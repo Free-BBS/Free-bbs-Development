@@ -1,4 +1,5 @@
 import type {
+  FestivalSubmissionStatus,
   ModuleId,
   PermissionAction,
   RoleKey,
@@ -15,10 +16,44 @@ export interface StoredRecord {
   updatedAt: string;
 }
 
-export type NewRecord<T extends StoredRecord> = Omit<T, 'id' | 'createdAt' | 'updatedAt'>;
+type DefaultedContentKeys<T> = Extract<
+  keyof T,
+  | 'tags'
+  | 'summary'
+  | 'maintainedAt'
+  | 'maintainerUid'
+  | 'dueAt'
+  | 'contactName'
+  | 'publicContact'
+  | 'registrationDeadline'
+  | 'capacity'
+  | 'contact'
+  | 'season'
+  | 'trainingSchedule'
+  | (T extends KnowledgeEntryRecord | ClubRecord ? 'category' : never)
+  | (T extends LiaisonProblemRecord
+      ? 'startsAt' | 'deadline' | 'reviewerUid' | 'reviewedAt' | 'reviewNote'
+      : never)
+  | (T extends FestivalSubmissionRecord ? 'reviewerUid' | 'reviewedAt' | 'reviewNote' : never)
+  | (T extends LiaisonPostRecord ? 'teamId' | 'hiddenAt' | 'hiddenByUid' : never)
+  | (T extends LiaisonOutcomeRecord
+      ? 'linkUrl' | 'attachmentRef' | 'adoptedAt' | 'adoptedByUid'
+      : never)
+>;
+export type NewRecord<T extends StoredRecord> = Pick<
+  StoredRecord,
+  'status' | 'ownerUid' | 'scope'
+> &
+  Omit<T, 'id' | 'createdAt' | 'updatedAt' | DefaultedContentKeys<T>> &
+  Partial<Pick<T, DefaultedContentKeys<T>>>;
 export type RecordPatch<T extends StoredRecord> = Partial<NewRecord<T>>;
 
 export interface ListFilters {
+  category?: string;
+  tag?: string;
+  season?: string;
+  organizationId?: string;
+  standingActivity?: boolean;
   status?: string;
   scopeType?: string;
   scopeId?: string;
@@ -55,6 +90,32 @@ export interface RecordRepository<T extends StoredRecord> {
   page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>>;
   update(id: string, patch: RecordPatch<T>): Promise<T | null>;
   delete(id: string): Promise<boolean>;
+}
+
+export interface ScopedRecordAccess {
+  all: boolean;
+  ids: string[];
+  deniedIds: string[];
+}
+
+export interface LiaisonProblemVisibility {
+  actorUid: string;
+  publicStatuses: LiaisonProblemStatus[];
+  read: ScopedRecordAccess;
+  maintain: ScopedRecordAccess;
+  review: ScopedRecordAccess;
+}
+
+export interface LiaisonProblemRepository extends RecordRepository<LiaisonProblemRecord> {
+  pageVisible(
+    filters: ListFilters | undefined,
+    request: PageRequest,
+    visibility: LiaisonProblemVisibility,
+  ): Promise<Page<LiaisonProblemRecord>>;
+}
+
+export interface LiaisonTeamRepository extends RecordRepository<LiaisonTeamRecord> {
+  countActiveByProblemIds(problemIds: readonly string[]): Promise<Record<string, number>>;
 }
 
 export interface SubjectRecord extends StoredRecord {
@@ -129,6 +190,11 @@ export interface AuditLogRecord extends StoredRecord {
 }
 
 export interface KnowledgeEntryRecord extends StoredRecord {
+  category: string;
+  tags: string[];
+  summary: string;
+  maintainedAt: string | null;
+  maintainerUid: string | null;
   type: 'workflow' | 'faq' | 'contact' | 'retrospective' | 'notice';
   title: string;
   body: string;
@@ -142,6 +208,7 @@ export interface AnnouncementRecord extends StoredRecord {
 }
 
 export interface ConsultationRecord extends StoredRecord {
+  dueAt: string | null;
   title: string;
   body: string;
   requesterUid: string;
@@ -150,6 +217,7 @@ export interface ConsultationRecord extends StoredRecord {
 }
 
 export interface ProposalRecord extends StoredRecord {
+  dueAt: string | null;
   title: string;
   problemDescription: string;
   proposedSolution: string;
@@ -163,6 +231,9 @@ export interface ProposalRecord extends StoredRecord {
 export type TechnicalSupportStatus = 'not_requested' | 'requested' | 'confirmed';
 
 export interface ClubRecord extends StoredRecord {
+  category: string;
+  contactName: string;
+  publicContact: string;
   name: string;
   description: string;
   organizationId?: SocialOrganizationId | null;
@@ -176,6 +247,9 @@ export interface ClubMembershipRecord extends StoredRecord {
 }
 
 export interface ActivityRecord extends StoredRecord {
+  registrationDeadline: string | null;
+  capacity: number | null;
+  contact: string;
   title: string;
   description: string;
   clubId?: string | null;
@@ -213,7 +287,23 @@ export interface ActivityRegistrationRecord extends StoredRecord {
   participantUid: string;
 }
 
+export interface FestivalSubmissionRecord extends StoredRecord {
+  title: string;
+  description: string;
+  authorName: string;
+  status: FestivalSubmissionStatus;
+  displayConsent: boolean;
+  mimeType: string;
+  sizeBytes: number;
+  storageKey: string;
+  reviewerUid: string | null;
+  reviewedAt: string | null;
+  reviewNote: string;
+}
+
 export interface SportsTeamRecord extends StoredRecord {
+  season: string;
+  trainingSchedule: string;
   name: string;
   description: string;
 }
@@ -234,6 +324,67 @@ export interface LiaisonResourceRecord extends StoredRecord {
   description: string;
   category: string;
   visibility: 'public' | 'organization' | 'restricted';
+}
+
+export type LiaisonProblemStatus =
+  'draft' | 'pending_review' | 'rejected' | 'open' | 'paused' | 'closed' | 'archived';
+
+export interface LiaisonProblemRecord extends StoredRecord {
+  status: LiaisonProblemStatus;
+  title: string;
+  summary: string;
+  background: string;
+  sourceType: 'lab' | 'company' | 'campus' | 'other';
+  sourceName: string;
+  tags: string[];
+  expectedOutcome: string;
+  constraints: string;
+  startsAt: string | null;
+  deadline: string | null;
+  publicContact: string;
+  internalContactNote: string;
+  recorderUid: string;
+  reviewerUid: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+}
+
+export interface LiaisonTeamRecord extends StoredRecord {
+  problemId: string;
+  name: string;
+  proposal: string;
+  maintainerUid: string;
+}
+
+export interface LiaisonTeamMemberRecord extends StoredRecord {
+  problemId: string;
+  teamId: string;
+  memberUid: string;
+  role: 'maintainer' | 'member';
+  joinedAt: string;
+}
+
+export interface LiaisonPostRecord extends StoredRecord {
+  problemId: string;
+  teamId: string | null;
+  authorUid: string;
+  kind: 'discussion' | 'progress';
+  body: string;
+  hiddenAt: string | null;
+  hiddenByUid: string | null;
+}
+
+export interface LiaisonOutcomeRecord extends StoredRecord {
+  problemId: string;
+  teamId: string;
+  version: number;
+  title: string;
+  description: string;
+  linkUrl: string | null;
+  attachmentRef: string | null;
+  submittedAt: string;
+  adoptedAt: string | null;
+  adoptedByUid: string | null;
 }
 
 export interface FinanceRecord extends StoredRecord {
@@ -271,9 +422,15 @@ export interface DevelopmentStore {
   activityMilestones: RecordRepository<ActivityMilestoneRecord>;
   competitionFixtures: RecordRepository<CompetitionFixtureRecord>;
   activityRegistrations: RecordRepository<ActivityRegistrationRecord>;
+  festivalSubmissions: RecordRepository<FestivalSubmissionRecord>;
   sportsTeams: RecordRepository<SportsTeamRecord>;
   sportsTeamMembers: RecordRepository<SportsTeamMemberRecord>;
   sportsCheckins: RecordRepository<SportsCheckinRecord>;
   liaisonResources: RecordRepository<LiaisonResourceRecord>;
+  liaisonProblems: LiaisonProblemRepository;
+  liaisonTeams: LiaisonTeamRepository;
+  liaisonTeamMembers: RecordRepository<LiaisonTeamMemberRecord>;
+  liaisonPosts: RecordRepository<LiaisonPostRecord>;
+  liaisonOutcomes: RecordRepository<LiaisonOutcomeRecord>;
   financeRecords: RecordRepository<FinanceRecord>;
 }

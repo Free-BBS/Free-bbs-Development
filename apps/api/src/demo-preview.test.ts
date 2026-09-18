@@ -14,6 +14,14 @@ const demoUserIds = [
   'demo-sports-director',
   'demo-captain',
   'demo-tuanwei-lead',
+  'demo-arts-member',
+  'demo-arts-director',
+  'demo-arts-lead',
+  'demo-sports-member',
+  'demo-liaison-director',
+  'demo-liaison-lead',
+  'demo-rights-director',
+  'demo-rights-lead',
 ] as const;
 
 function demoApp() {
@@ -32,6 +40,38 @@ function asDemo(app: ReturnType<typeof createApp>, uid: (typeof demoUserIds)[num
 }
 
 describe('integrated demo preview', () => {
+  it('resolves all twelve center ranks with scoped membership and arts-only festival review', async () => {
+    const app = demoApp();
+    for (const [center, organization] of [
+      ['arts', 'arts_center'],
+      ['sports', 'sports_center'],
+      ['liaison', 'liaison_center'],
+      ['rights', 'rights_development_center'],
+    ] as const) {
+      for (const rank of ['member', 'director', 'lead'] as const) {
+        const uid = `demo-${center}-${rank}`;
+        const roleCenter = center === 'rights' ? 'rights_development' : center;
+        const role = `${rank === 'lead' ? 'domain' : 'department'}.${roleCenter}_${rank}`;
+        const response = await request(app)
+          .get('/api/development/v1/me')
+          .set('X-Demo-User', uid)
+          .expect(200);
+        expect(response.body.data.roles).toEqual([role]);
+        expect(response.body.data.tags).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              key: `social_org.${organization}`,
+              scope: { type: 'social_organization', id: organization },
+            }),
+          ]),
+        );
+        const review = await request(app)
+          .get('/api/development/v1/events/festival/submissions?view=review')
+          .set('X-Demo-User', uid);
+        expect(review.status).toBe(center === 'arts' ? 200 : 403);
+      }
+    }
+  });
   it('loads the representative identity matrix with governed roles and captain tag', async () => {
     const app = demoApp();
     const expected = new Map<string, { role?: string; tag?: string }>([

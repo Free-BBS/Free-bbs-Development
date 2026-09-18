@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 
+import { ModulePageHeader } from '../../components/ModulePageHeader.js';
 import { createApiClient, type ApiClient } from '../../core/api/client.js';
 import { ADMIN_SECTIONS, AdminSectionNav, type AdminSectionId } from './AdminSectionNav.js';
 import { AuditLogsSection } from './sections/AuditLogsSection.js';
@@ -37,14 +38,12 @@ export function AdminPage({ client: suppliedClient }: AdminPageProps = {}) {
   const current = ADMIN_SECTIONS.find(({ id }) => id === active);
 
   return (
-    <main className="module-page admin-governance-page" aria-labelledby="admin-title">
-      <header className="page-heading admin-page-heading">
-        <div>
-          <p className="eyebrow">GOVERNANCE DESK</p>
-          <h2 id="admin-title">治理管理台</h2>
-        </div>
-        <p>集中管理主站身份映射、角色与 Tag 权限、模块责任制，并核对全量审计轨迹。</p>
-      </header>
+    <main className="module-page admin-governance-page" aria-label="治理管理台">
+      <ModulePageHeader
+        kicker="GOVERNANCE DESK"
+        title="治理管理台"
+        description="集中管理主站身份映射、角色与 Tag 权限、模块责任制，并核对全量审计轨迹。"
+      />
       <AdminSectionNav active={active} onChange={setActive} />
       <div
         id={`admin-panel-${active}`}

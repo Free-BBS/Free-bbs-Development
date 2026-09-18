@@ -4,6 +4,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import type { ModuleManifest } from '@freebbs-development/contracts';
 
 import freeBbsEmblem from '../assets/freebbs-emblem-v2.png';
+import learningIcon from '../assets/icons/learning.svg';
 import { DemoUserSwitcher } from '../core/auth/DemoUserSwitcher.js';
 import { useAuth } from '../core/auth/AuthProvider.js';
 import type { PresentationUser } from '../core/permissions/Can.js';
@@ -50,33 +51,39 @@ function ModuleNavigation({
 
   return (
     <nav ref={navigationRef} className={className} aria-label={label}>
-      {visibleModuleManifests(user, moduleStates).map((module) => {
-        const content = (
-          <>
-            <span className="module-icon" aria-hidden="true">
-              <img src={module.icon} alt="" />
-            </span>
-            <span className="module-copy">
-              <span className="module-name">{module.name}</span>
-              <span className="module-owner" aria-hidden="true">
-                {module.ownerTeam}
+      {visibleModuleManifests(user, moduleStates)
+        .filter((module) => module.id !== 'dashboard')
+        .map((module) => {
+          const content = (
+            <>
+              <span className="module-icon" aria-hidden="true">
+                <img src={module.icon} alt="" />
               </span>
-            </span>
-          </>
-        );
+              <span className="module-copy">
+                <span className="module-name">{module.name}</span>
+              </span>
+            </>
+          );
 
-        return (
-          <div data-testid="module-navigation-item" key={module.id}>
-            <NavLink
-              className={({ isActive }) => `module-link${isActive ? ' active' : ''}`}
-              end
-              to={module.route}
-            >
-              {content}
-            </NavLink>
-          </div>
-        );
-      })}
+          return (
+            <div data-testid="module-navigation-item" key={module.id}>
+              <NavLink
+                className={({ isActive }) => `module-link${isActive ? ' active' : ''}`}
+                to={module.route}
+              >
+                {content}
+              </NavLink>
+            </div>
+          );
+        })}
+      <a className="module-link learning-return-link" href="/world">
+        <span className="module-icon" aria-hidden="true">
+          <img src={learningIcon} alt="" />
+        </span>
+        <span className="module-copy">
+          <span className="module-name">返回学习端</span>
+        </span>
+      </a>
     </nav>
   );
 }
@@ -86,6 +93,21 @@ function AuthState({ children }: { children: ReactNode }) {
     <main className="auth-state">
       <div>{children}</div>
     </main>
+  );
+}
+
+function PreviewDenied() {
+  useEffect(() => {
+    if (window.location.pathname.startsWith('/development/')) {
+      window.location.replace('/development');
+    }
+  }, []);
+
+  return (
+    <AuthState>
+      <p>正在返回主站…</p>
+      <a href="/development">返回主站施工页</a>
+    </AuthState>
   );
 }
 
@@ -119,6 +141,10 @@ export function AppShell({ children, moduleStates }: AppShellProps) {
         <a href={auth.loginUrl}>登录主站</a>
       </AuthState>
     );
+  }
+
+  if (auth.status === 'denied') {
+    return <PreviewDenied />;
   }
 
   if (auth.status === 'error') {
@@ -162,8 +188,8 @@ export function AppShell({ children, moduleStates }: AppShellProps) {
           <NavLink className="brand" to="/dashboard" aria-label="FREE BBS">
             <img className="brand-mark" src={freeBbsEmblem} alt="FREE BBS" />
             <span className="brand-copy">
-              <span className="brand-name">FREE</span>
-              <span className="brand-subtitle">BBS</span>
+              <span className="brand-name">FREE BBS</span>
+              <span className="brand-subtitle">发展平台</span>
             </span>
           </NavLink>
 
@@ -197,7 +223,6 @@ export function AppShell({ children, moduleStates }: AppShellProps) {
           <header className="titlebar">
             <div>
               <h1>{module.name}</h1>
-              <p>{module.description}</p>
             </div>
             <div className="titlebar-actions">
               <button

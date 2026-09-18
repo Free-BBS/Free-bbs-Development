@@ -104,7 +104,7 @@ export function PermissionBindingEditor({
         添加权限绑定
       </button>
       {bindings.length ? (
-        <ul className="record-list">
+        <ul className="record-list responsive-record-list">
           {bindings.map((binding, index) => (
             <li
               key={`${binding.action}:${binding.resource}:${binding.scope.type}:${binding.scope.id}`}

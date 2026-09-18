@@ -76,7 +76,11 @@ export function AuditLogsSection({ client }: { client: AdminClient }) {
         <h3 id="audit-heading">审计日志</h3>
         <p>按操作人、动作、资源和时间范围查询不可变更的治理记录。</p>
       </header>
-      <form className="panel admin-audit-filters" aria-label="审计筛选" onSubmit={submit}>
+      <form
+        className="panel admin-audit-filters filter-bar"
+        aria-label="审计筛选"
+        onSubmit={submit}
+      >
         <label>
           操作人 UID
           <input
@@ -127,7 +131,7 @@ export function AuditLogsSection({ client }: { client: AdminClient }) {
       </form>
       <SectionState loading={loading} error={error} onRetry={() => void load(logs.page)}>
         {logs.items.length ? (
-          <ol className="record-list audit-list">
+          <ol className="record-list responsive-record-list audit-list">
             {logs.items.map((entry) => (
               <li key={entry.id} className="record-card">
                 <div>

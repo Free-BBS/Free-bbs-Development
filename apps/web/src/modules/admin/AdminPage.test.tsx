@@ -44,16 +44,31 @@ describe('AdminPage shell', () => {
     });
 
     render(<AdminPage />);
-    expect(screen.getByRole('heading', { name: '治理管理台' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '治理管理台' }).closest('header')).toHaveClass(
+      'module-page-header',
+    );
     expect(await screen.findByText('uid-1001')).toBeInTheDocument();
     expect(screen.getByRole('tabpanel', { name: '用户与授权' })).toBeInTheDocument();
+    expect(screen.getByRole('search')).toHaveClass('filter-bar');
+    expect(screen.getByRole('list')).toHaveClass('responsive-record-list');
+  });
+
+  it('uses the shared loading state while governance data is pending', () => {
+    mockRequest.mockImplementation(() => new Promise(() => undefined));
+
+    render(<AdminPage />);
+
+    expect(screen.getByRole('status')).toHaveClass('async-state');
   });
 
   it('keeps a restricted or failed section recoverable', async () => {
     mockRequest.mockRejectedValue({ status: 403, message: '仅平台最高管理员可访问' });
     render(<AdminPage />);
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('仅平台最高管理员可访问');
+    expect((await screen.findByRole('alert')).closest('[data-state]')).toHaveAttribute(
+      'data-state',
+      'error',
+    );
     expect(screen.getByRole('button', { name: '重试' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '系统状态' })).toBeInTheDocument();
   });

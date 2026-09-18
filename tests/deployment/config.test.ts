@@ -53,7 +53,7 @@ describe('deployment configuration', () => {
       scripts: Record<string, string>;
     };
     expect(packageJson.scripts['test:mysql']).toBe(
-      'npm run db:migrate && npm run db:migrate && vitest run apps/api/src/core/database/mysql.integration.test.ts',
+      'npm run build:contracts && npm run db:migrate && npm run db:migrate && vitest run apps/api/src/core/database/mysql.integration.test.ts',
     );
 
     const workflow = configuration('.github/workflows/ci.yml');
@@ -94,7 +94,7 @@ describe('deployment configuration', () => {
     expect(nginx).toContain('proxy_set_header Authorization $http_authorization;');
     expect(hostLocations).not.toMatch(/\bserver\s*{/);
     expect(hostLocations).not.toMatch(/\blisten\s+/);
-    expect(hostLocations).toMatch(/location\s+=\s+\/development\s*{/);
+    expect(hostLocations).not.toMatch(/location\s+=\s+\/development\s*{/);
     expect(hostLocations).toMatch(/location\s+\/development\/\s*{/);
     expect(hostLocations).toMatch(/location\s+\/api\/development\/v1\/\s*{/);
   });
@@ -161,6 +161,7 @@ describe('deployment configuration', () => {
     expect(installer).toContain('/usr/local/sbin/deploy-freebbs-development');
     expect(installer).toContain('-m 0640');
     expect(environment).toContain('DATA_MODE=mysql');
+    expect(environment).toContain('DEVELOPMENT_PREVIEW_UIDS=');
     expect(backupService).toContain('ReadWritePaths=/var/backups/freebbs-development');
     expect(backupService).toContain('EnvironmentFile=/etc/freebbs-development/backup.env');
     expect(backupTimer).toContain('Persistent=true');

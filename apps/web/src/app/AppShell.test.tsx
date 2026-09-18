@@ -42,7 +42,7 @@ function authenticatedAuth(overrides: Record<string, unknown> = {}) {
     authMode: 'main',
     demoUser: 'demo-student',
     setDemoUser: vi.fn(),
-    loginUrl: '/login?returnTo=%2Fdevelopment%2Fdashboard',
+    loginUrl: '/login?next=%2Fdevelopment%2Fdashboard',
     ...overrides,
   };
 }
@@ -65,6 +65,26 @@ describe('module state loader', () => {
 });
 
 describe('AppShell', () => {
+  it('places the learning return link at the end of desktop and mobile navigation', () => {
+    mockUseAuth.mockReturnValue(authenticatedAuth());
+    renderShell('/events');
+
+    for (const name of ['主要导航', '移动导航']) {
+      const navigation = screen.getByRole('navigation', { name });
+      const links = within(navigation).getAllByRole('link');
+      expect(links.at(-1)).toHaveAttribute('href', '/world');
+      expect(links.at(-1)).toHaveAccessibleName('返回学习端');
+    }
+  });
+
+  it('sends a preview-denied identity back to the main-site construction page', () => {
+    mockUseAuth.mockReturnValue({ ...authenticatedAuth(), status: 'denied', user: null });
+    renderShell('/events');
+    expect(screen.getByRole('link', { name: '返回主站施工页' })).toHaveAttribute(
+      'href',
+      '/development',
+    );
+  });
   it('hides the dashboard and protected modules while keeping the dashboard brand target', () => {
     mockUseAuth.mockReturnValue(authenticatedAuth());
 
@@ -76,12 +96,12 @@ describe('AppShell', () => {
     expect(items.map((item) => item.querySelector('.module-name')?.textContent)).toEqual([
       '经验库',
       '信息与咨询',
-      '趣缘群体',
-      '活动',
-      '联络资源',
+      '资源',
       '体育代表队',
+      '活动',
+      '趣缘群体',
     ]);
-    expect(within(navigation).queryByText('工作台')).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole('link', { name: '工作台' })).not.toBeInTheDocument();
     expect(within(navigation).queryByText('财务治理')).not.toBeInTheDocument();
     expect(within(navigation).queryByText('权限与模块管理')).not.toBeInTheDocument();
     expect(within(navigation).getByRole('link', { name: '经验库' })).toHaveAttribute(
@@ -114,6 +134,31 @@ describe('AppShell', () => {
         value: originalScrollIntoView,
       });
     }
+  });
+
+  it('marks the information module active for nested routes', () => {
+    mockUseAuth.mockReturnValue(authenticatedAuth());
+
+    renderShell('/information/triage');
+
+    const navigation = screen.getByRole('navigation', { name: '主要导航' });
+    expect(within(navigation).getByRole('link', { name: '信息与咨询' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
+    expect(screen.getByRole('navigation', { name: '移动导航' })).toHaveTextContent('信息与咨询');
+  });
+
+  it('does not mark information active for an unrelated route prefix', () => {
+    mockUseAuth.mockReturnValue(authenticatedAuth());
+
+    renderShell('/information-archive');
+
+    expect(
+      within(screen.getByRole('navigation', { name: '主要导航' })).getByRole('link', {
+        name: '信息与咨询',
+      }),
+    ).not.toHaveAttribute('aria-current', 'page');
   });
 
   it('omits a disabled module from navigation', () => {
@@ -157,14 +202,14 @@ describe('AppShell', () => {
       ...authenticatedAuth(),
       status: 'unauthenticated',
       user: null,
-      loginUrl: '/login?returnTo=%2Fdevelopment%2Fknowledge',
+      loginUrl: '/login?next=%2Fdevelopment%2Fknowledge',
     });
 
     renderShell('/knowledge');
 
     expect(screen.getByRole('link', { name: '登录主站' })).toHaveAttribute(
       'href',
-      '/login?returnTo=%2Fdevelopment%2Fknowledge',
+      '/login?next=%2Fdevelopment%2Fknowledge',
     );
   });
 

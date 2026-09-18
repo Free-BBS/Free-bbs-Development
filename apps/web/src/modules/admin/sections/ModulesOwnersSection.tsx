@@ -213,7 +213,7 @@ export function ModulesOwnersSection({ client }: { client: AdminClient }) {
                 添加负责人
               </button>
               {owners.length ? (
-                <ul className="record-list">
+                <ul className="record-list responsive-record-list">
                   {owners.map((owner, index) => (
                     <li key={`${owner.ownerType}:${owner.ownerId}`} className="record-card">
                       <div>

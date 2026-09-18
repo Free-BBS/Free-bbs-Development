@@ -24,24 +24,27 @@ test('events covers approval, registration, support and archive lifecycles', asy
   request,
 }, testInfo) => {
   test.setTimeout(90_000);
-  const suffix = `${testInfo.workerIndex}-${testInfo.retry}`;
+  const suffix = `${testInfo.workerIndex}-${testInfo.retry}-${Date.now()}`;
   const title = `E2E 活动 ${suffix}`;
   const editedTitle = `${title} 已编辑`;
   page.on('dialog', (dialog) => dialog.accept());
 
   await page.goto('./events');
   await switchUser(page, 'demo-admin');
-  const create = page.getByRole('heading', { name: '创建活动草稿' }).locator('..');
+  await page.getByRole('button', { name: '创建活动' }).click();
+  const create = page.getByRole('dialog', { name: '创建活动草稿' });
   await create.getByLabel('新活动名称').fill(title);
   await create.getByLabel('新活动介绍').fill('端到端活动草稿。');
   await create.getByRole('button', { name: '保存草稿' }).click();
   await expect(page.getByRole('status')).toHaveText('活动草稿已创建');
 
   const card = page.locator('.workbench-card').filter({ hasText: title });
+  await card.getByText('管理活动', { exact: true }).click();
   await card.getByRole('button', { name: `编辑${title}` }).click();
-  await card.getByLabel('活动名称').fill(editedTitle);
-  await card.getByLabel('活动介绍').fill('刷新后仍保留的活动介绍。');
-  await card.getByRole('button', { name: '保存活动' }).click();
+  const editor = page.getByRole('dialog', { name: '编辑活动' });
+  await editor.getByLabel('活动名称').fill(editedTitle);
+  await editor.getByLabel('活动介绍').fill('刷新后仍保留的活动介绍。');
+  await editor.getByRole('button', { name: '保存活动' }).click();
   await expect(page.getByRole('status')).toHaveText('活动内容已保存');
   await page.reload();
   await switchUser(page, 'demo-admin');

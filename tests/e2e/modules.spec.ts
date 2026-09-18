@@ -7,14 +7,14 @@ const adminHeaders = {
 };
 
 const modules = [
-  ['/knowledge', 'General'],
-  ['/information', '公开信息'],
-  ['/interest-groups', '趣缘群体'],
-  ['/events', '活动'],
-  ['/liaison', '联络资源'],
-  ['/sports', '体育代表队'],
-  ['/finance', '财务治理'],
-  ['/admin', '治理管理台'],
+  ['/knowledge', '/knowledge', 'General'],
+  ['/information', '/information/announcements', '公开信息'],
+  ['/interest-groups', '/interest-groups', '趣缘群体'],
+  ['/events', '/events', '活动'],
+  ['/liaison', '/liaison', '真实问题揭榜'],
+  ['/sports', '/sports', '体育代表队'],
+  ['/finance', '/finance', '财务治理'],
+  ['/admin', '/admin', '治理管理台'],
 ] as const;
 
 async function openAdmin(page: Page) {
@@ -34,18 +34,61 @@ test('navigates to every development module from the shell', async ({ page }) =>
   await expect(page.getByLabel('Demo user')).toHaveValue('demo-admin');
   await expect(page.locator('.user-card')).toContainText('demo-admin');
 
-  for (const [route, heading] of modules) {
+  for (const [route, destination, heading] of modules) {
     const link = page.locator(`.sidebar .module-nav a[href="/development${route}"]`);
     await expect(link).toBeVisible();
     await link.click();
-    await expect(page).toHaveURL(new RegExp(`/development${route}$`));
+    await expect(page).toHaveURL(new RegExp(`/development${destination}$`));
     await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
   }
+
+  await expect(page.locator('.sidebar .module-nav a[href="/world"]')).toHaveText('返回学习端');
+});
+
+test('keeps the dashboard as the default landing page without a duplicate module card menu', async ({
+  page,
+}) => {
+  await page.goto('./');
+
+  await expect(page).toHaveURL(/\/development\/dashboard$/);
+  await expect(page.getByRole('heading', { name: '发展端工作台', exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: '查看近期活动' })).toHaveAttribute(
+    'href',
+    '/development/events',
+  );
+  await expect(page.getByTestId('dashboard-module-card')).toHaveCount(0);
+  await expect(page.locator('.sidebar .module-nav a[href="/development/dashboard"]')).toHaveCount(
+    0,
+  );
+});
+
+test('keeps nested module routes inside the correct active shell', async ({ page }) => {
+  const nestedRoutes = [
+    ['/information/proposals/proposal-night-lighting', '信息与咨询', '/development/information'],
+    ['/events/activity-ma-john-cup', '活动', '/development/events'],
+    ['/liaison/problems/liaison-problem-lab-energy', '资源', '/development/liaison'],
+    ['/sports/team-basketball', '体育代表队', '/development/sports'],
+  ] as const;
+
+  for (const [route, shellTitle, navigationHref] of nestedRoutes) {
+    await page.goto(`.${route}`);
+    await expect(page.locator('.titlebar h1')).toHaveText(shellTitle);
+    await expect(
+      page.locator(`.sidebar .module-nav a[aria-current="page"][href="${navigationHref}"]`),
+    ).toBeVisible();
+  }
+});
+
+test('redirects the legacy clubs route to the interest-groups directory', async ({ page }) => {
+  await page.goto('./clubs');
+
+  await expect(page).toHaveURL(/\/development\/interest-groups$/);
+  await expect(page.getByRole('heading', { name: '趣缘群体', exact: true }).first()).toBeVisible();
 });
 
 test('lets an ordinary student submit a consultation', async ({ page }) => {
   const title = `E2E 咨询 ${Date.now()}`;
-  await page.goto('./information');
+  await page.goto('./information/consultations');
 
   await expect(page.getByRole('heading', { name: '提交咨询' })).toBeVisible();
   await page.getByLabel('咨询标题').fill(title);

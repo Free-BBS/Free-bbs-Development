@@ -159,7 +159,7 @@ describe('MySQL store mappings and binding', () => {
 
     const [sql, values] = pool.execute.mock.calls[0] ?? [];
     expect(sql).toContain(String.raw`ESCAPE '\\'`);
-    expect(values).toEqual([String.raw`%50\%\_\\done%`]);
+    expect(values).toEqual([String.raw`%50\%\_\\done%`, String.raw`50%_\done`]);
   });
 
   it('rejects invalid page requests before querying MySQL', async () => {

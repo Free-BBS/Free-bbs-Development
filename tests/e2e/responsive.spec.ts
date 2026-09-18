@@ -14,38 +14,40 @@ const responsiveMatrixTimeout = 90_000;
 
 const routes: readonly {
   path: string;
+  destination?: string;
   heading: string;
   primaryAction: (page: Page) => Locator;
 }[] = [
   {
     path: 'knowledge',
     heading: 'General',
-    primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
+    primaryAction: (page) => page.getByRole('button', { name: '新建经验' }),
   },
   {
     path: 'information',
     heading: '公开信息',
-    primaryAction: (page) => page.getByRole('button', { name: '提交咨询' }),
+    destination: 'information/announcements',
+    primaryAction: (page) => page.getByRole('button', { name: '保存公告草稿' }),
   },
   {
     path: 'interest-groups',
     heading: '趣缘群体',
-    primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
+    primaryAction: (page) => page.getByRole('button', { name: '新建趣缘群体' }),
   },
   {
     path: 'events',
     heading: '活动',
-    primaryAction: (page) => page.getByRole('button', { name: '保存草稿' }),
+    primaryAction: (page) => page.getByRole('button', { name: '创建活动' }),
   },
   {
     path: 'liaison',
-    heading: '联络资源',
-    primaryAction: (page) => page.getByRole('button', { name: '创建资源' }),
+    heading: '真实问题揭榜',
+    primaryAction: (page) => page.getByRole('button', { name: '代录问题' }),
   },
   {
     path: 'sports',
     heading: '体育代表队',
-    primaryAction: (page) => page.getByRole('button', { name: '创建队伍草稿' }),
+    primaryAction: (page) => page.getByRole('link', { name: '查看队伍详情' }).first(),
   },
   {
     path: 'finance',
@@ -93,6 +95,7 @@ async function expectLongTextWraps(target: Locator, value: string) {
     const cardRect = card.getBoundingClientRect();
     const containerRect = containingBlock.getBoundingClientRect();
     const targetRect = element.getBoundingClientRect();
+    const lineHeight = Number.parseFloat(getComputedStyle(element).lineHeight);
     const fragments = Array.from(element.getClientRects()).filter(
       (rect) => rect.width > 0 && rect.height > 0,
     );
@@ -112,6 +115,11 @@ async function expectLongTextWraps(target: Locator, value: string) {
       ),
       targetRectHeight: targetRect.height,
       targetRectWidth: targetRect.width,
+      targetClientWidth: element.clientWidth,
+      targetScrollWidth: element.scrollWidth,
+      wrapsAcrossLines:
+        fragments.length > 1 ||
+        (Number.isFinite(lineHeight) && targetRect.height > lineHeight * 1.5),
     };
   });
 
@@ -120,9 +128,9 @@ async function expectLongTextWraps(target: Locator, value: string) {
   expect(metrics.containerRectWidth).toBeGreaterThan(0);
   expect(metrics.targetRectWidth).toBeGreaterThan(0);
   expect(metrics.targetRectHeight).toBeGreaterThan(0);
-  expect(metrics.fragmentCount).toBeGreaterThan(1);
+  expect(metrics.wrapsAcrossLines).toBe(true);
   expect(metrics.fragmentsContained).toBe(true);
-  expect(metrics.containerScrollWidth).toBeLessThanOrEqual(metrics.containerClientWidth + 1);
+  expect(metrics.targetScrollWidth).toBeLessThanOrEqual(metrics.targetClientWidth + 1);
   expect(metrics.documentFits).toBe(true);
 }
 
@@ -144,7 +152,9 @@ for (const viewport of viewports) {
         '/development/dashboard',
       );
     }
-    await expect(page.getByTestId('dashboard-module-card').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: '行动提示' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: '最近内容' })).toBeVisible();
+    await expect(page.getByTestId('dashboard-module-card')).toHaveCount(0);
     await expectNoHorizontalOverflow(page);
 
     await page.getByLabel('Demo user').selectOption('demo-admin');
@@ -154,7 +164,7 @@ for (const viewport of viewports) {
     for (const route of routes) {
       const routeLink = page.locator(`${viewport.navigation} a[href="/development/${route.path}"]`);
       await routeLink.click();
-      await expect(page).toHaveURL(new RegExp(`/development/${route.path}$`));
+      await expect(page).toHaveURL(new RegExp(`/development/${route.destination ?? route.path}$`));
       await page.waitForLoadState('networkidle');
       await expect(
         page.getByRole('heading', { name: route.heading, exact: true }).first(),
@@ -177,7 +187,7 @@ for (const viewport of viewports) {
 
       if (route.path === 'sports') {
         await expectLongTextWraps(
-          page.locator('.workbench-card code').first(),
+          page.locator('.workbench-card p').first(),
           `SCOPE${'A'.repeat(512)}`,
         );
       }
@@ -190,6 +200,25 @@ for (const viewport of viewports) {
     }
   });
 }
+
+test('mobile nested routes preserve their module shell without horizontal page overflow', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const nestedRoutes = [
+    ['/information/proposals/proposal-night-lighting', '信息与咨询'],
+    ['/events/activity-ma-john-cup', '活动'],
+    ['/liaison/problems/liaison-problem-lab-energy', '资源'],
+    ['/sports/team-basketball', '体育代表队'],
+  ] as const;
+
+  for (const [route, shellTitle] of nestedRoutes) {
+    await page.goto(`.${route}`);
+    await expect(page.locator('.titlebar h1')).toHaveText(shellTitle);
+    await expectNoHorizontalOverflow(page);
+  }
+});
+
 test('mobile dialog keeps an overflowing body scrollable and its footer reachable', async ({
   page,
 }) => {

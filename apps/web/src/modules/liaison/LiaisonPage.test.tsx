@@ -1,141 +1,332 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { UserContext } from '@freebbs-development/contracts';
-import { ApiError, type ApiClient } from '../../core/api/client.js';
+import type { ApiClient } from '../../core/api/client.js';
 import { LiaisonPage } from './LiaisonPage.js';
+import type { LiaisonProblem } from './model.js';
 
-const student: UserContext = {
+const student: UserContext & {
+  policies: Array<{ action: string; resource: string; effect: 'allow' }>;
+} = {
   uid: 'demo-student',
   displayName: '普通同学',
   avatarUrl: null,
   baseRole: 'student',
   roles: [],
   tags: [],
-};
-
-const admin = {
-  ...student,
-  uid: 'demo-admin',
   policies: [
-    {
-      action: 'liaison.resource.*',
-      resource: 'liaison_resource',
-      effect: 'allow' as const,
-    },
+    { action: 'liaison.problem.read', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.join', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.post', resource: 'liaison_problem', effect: 'allow' },
+    { action: 'liaison.problem.outcome.submit', resource: 'liaison_outcome', effect: 'allow' },
   ],
 };
 
-const resource = {
-  id: 'resource-1',
-  name: '校友联络邮箱',
-  description: '用于校友合作事项的初次联系。',
-  category: 'alumni',
-  visibility: 'public' as const,
-  status: 'active' as 'active' | 'archived',
-  ownerUid: 'demo-admin',
+const problem: LiaisonProblem = {
+  id: 'problem-energy',
+  title: '校园能耗数据可视化',
+  summary: '把匿名化能耗指标转化为可理解的交互展示。',
+  background: '课题组希望验证校园数据叙事方案。',
+  sourceType: 'lab' as const,
+  sourceName: '校园计算实验室',
+  tags: ['数据可视化', '前端'],
+  expectedOutcome: '可运行原型与设计说明。',
+  constraints: '只使用匿名化数据。',
+  startsAt: '2026-10-01T00:00:00.000Z',
+  deadline: '2026-11-15T00:00:00.000Z',
+  publicContact: '联络中心公开咨询台',
+  recorderUid: 'demo-liaison-member',
+  reviewerUid: 'demo-tuanwei-lead',
+  reviewedAt: '2026-09-20T08:00:00.000Z',
+  status: 'open' as const,
+  ownerUid: 'demo-liaison-member',
   scope: { type: 'public', id: '*' },
-  createdAt: '2026-07-22T00:00:00.000Z',
-  updatedAt: '2026-07-22T00:00:00.000Z',
+  createdAt: '2026-09-18T08:00:00.000Z',
+  updatedAt: '2026-09-20T08:00:00.000Z',
 };
 
+const pendingProblem = {
+  ...problem,
+  id: 'problem-pending',
+  title: '待审核校企课题',
+  status: 'pending_review' as const,
+};
+
+function page(items: LiaisonProblem[] = [problem]) {
+  return {
+    items: items.map((item) => ({ ...item, teamCount: 2 })),
+    page: 1,
+    pageSize: 20,
+    total: items.length,
+  };
+}
+
+function renderPage(client: Pick<ApiClient, 'request'>, user: UserContext = student) {
+  return render(
+    <MemoryRouter>
+      <LiaisonPage client={client} user={user} />
+    </MemoryRouter>,
+  );
+}
+
 describe('LiaisonPage', () => {
-  it('distinguishes loading, empty and error states for resources', async () => {
-    const successClient = {
-      request: vi.fn().mockResolvedValue([resource]),
-    } as unknown as ApiClient;
-    const successView = render(<LiaisonPage client={successClient} user={student} />);
-    expect(screen.getByText('正在加载联络资源…')).toBeInTheDocument();
-    expect(await screen.findByText('校友联络邮箱')).toBeInTheDocument();
-    successView.unmount();
-
-    const emptyClient = { request: vi.fn().mockResolvedValue([]) } as unknown as ApiClient;
-    const emptyView = render(<LiaisonPage client={emptyClient} user={student} />);
-    expect(await screen.findByText('当前范围内没有联络资源')).toBeInTheDocument();
-    emptyView.unmount();
-
-    const errorClient = {
-      request: vi.fn().mockRejectedValue(new Error('offline')),
-    } as unknown as ApiClient;
-    render(<LiaisonPage client={errorClient} user={student} />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('暂时无法加载联络资源');
-  });
-
-  it('shows a clear permission state when restricted resources return 403', async () => {
+  it('renders source, status, tags, deadline, expected outcome and team count', async () => {
     const request = vi.fn(async (path: string) => {
-      if (path === '/liaison/resources') return [resource];
-      throw new ApiError(403, 'forbidden', 'Restricted liaison permission is required', null);
+      if (path === '/liaison/problems?page=1&pageSize=20') return page();
+      throw new Error(`Unexpected request: ${path}`);
     });
-    const user = userEvent.setup();
-    render(<LiaisonPage client={{ request } as unknown as ApiClient} user={student} />);
 
-    await screen.findByText('校友联络邮箱');
-    await user.click(screen.getByRole('button', { name: '查询受限资源' }));
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      '你没有查看该范围受限联络资源的权限',
+    renderPage({ request } as Pick<ApiClient, 'request'>);
+
+    expect(await screen.findByRole('heading', { name: '真实问题揭榜' })).toBeInTheDocument();
+    const card = screen.getByRole('article', { name: problem.title });
+    expect(card).toHaveTextContent('课题组 · 校园计算实验室');
+    expect(card).toHaveTextContent('进行中');
+    expect(card).toHaveTextContent('数据可视化');
+    expect(card).toHaveTextContent('截止时间');
+    expect(card).toHaveTextContent(
+      new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(
+        new Date(problem.deadline!),
+      ),
     );
-    expect(screen.queryByText(/Restricted liaison/)).not.toBeInTheDocument();
+    expect(card).toHaveTextContent('可运行原型与设计说明。');
+    expect(card).toHaveTextContent('2 个参与团队');
+    expect(within(card).getByRole('link', { name: '查看课题' })).toHaveAttribute(
+      'href',
+      '/liaison/problems/problem-energy',
+    );
+    expect(within(card).getByRole('link', { name: '查看课题' })).toHaveClass(
+      'secondary-action-link',
+    );
   });
 
-  it('lets authorized maintainers create and archive resources with a refresh after each write', async () => {
-    const resources = [resource];
+  it('uses API pagination metadata so records after the first 20 remain reachable', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path === '/liaison/problems?page=1&pageSize=20') {
+        return { ...page(), total: 21 };
+      }
+      if (path === '/liaison/problems?page=2&pageSize=20') {
+        return page([{ ...problem, id: 'problem-21', title: '第二页课题' }]);
+      }
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const actor = userEvent.setup();
+    renderPage({ request } as Pick<ApiClient, 'request'>);
+    await actor.click(await screen.findByRole('button', { name: '下一页' }));
+    expect(await screen.findByText('第二页课题')).toBeInTheDocument();
+    expect(request).toHaveBeenCalledWith('/liaison/problems?page=2&pageSize=20');
+  });
+
+  it('uses explicit maintenance and review permissions instead of super-admin identity', async () => {
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/liaison/problems?')) return page([pendingProblem]);
+      if (path === '/liaison/problems/problem-pending/teams') return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const superAdmin = { ...student, uid: 'demo-admin', roles: ['platform.super_admin'] };
+    const view = renderPage({ request } as Pick<ApiClient, 'request'>, superAdmin as UserContext);
+    await screen.findByText(pendingProblem.title);
+    expect(screen.queryByRole('button', { name: '代录问题' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '批准发布' })).not.toBeInTheDocument();
+
+    const reviewer = {
+      ...student,
+      uid: 'reviewer',
+      policies: [
+        {
+          action: 'liaison.problem.review',
+          resource: 'liaison_problem',
+          effect: 'allow' as const,
+        },
+      ],
+    };
+    view.rerender(
+      <MemoryRouter>
+        <LiaisonPage client={{ request } as Pick<ApiClient, 'request'>} user={reviewer} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('button', { name: '批准发布' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '驳回修改' })).toBeInTheDocument();
+
+    const maintainer = {
+      ...student,
+      uid: 'maintainer',
+      policies: [
+        {
+          action: 'liaison.problem.create',
+          resource: 'liaison_problem',
+          effect: 'allow' as const,
+        },
+      ],
+    };
+    view.rerender(
+      <MemoryRouter>
+        <LiaisonPage client={{ request } as Pick<ApiClient, 'request'>} user={maintainer} />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole('button', { name: '代录问题' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '批准发布' })).not.toBeInTheDocument();
+  });
+
+  it('validates proxy entry and keeps form data after a recoverable error', async () => {
     const request = vi.fn(async (path: string, init?: RequestInit) => {
-      const method = init?.method ?? 'GET';
-      if (path === '/liaison/resources' && method === 'GET') return [...resources];
-      if (path === '/liaison/resources' && method === 'POST') {
-        const input = JSON.parse(String(init?.body)) as Record<string, unknown>;
-        const created = { ...resource, id: 'resource-2', ...input };
-        resources.push(created as typeof resource);
-        return created;
+      if (path.startsWith('/liaison/problems?') && init === undefined) return page([]);
+      if (path === '/liaison/problems' && init?.method === 'POST') throw new Error('offline');
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const maintainer = {
+      ...student,
+      policies: [
+        { action: 'liaison.problem.create', resource: 'liaison_problem', effect: 'allow' as const },
+      ],
+    };
+    const user = userEvent.setup();
+    renderPage({ request } as Pick<ApiClient, 'request'>, maintainer);
+
+    await user.click(await screen.findByRole('button', { name: '代录问题' }));
+    await user.click(screen.getByRole('button', { name: '保存课题草稿' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('请填写问题标题');
+
+    await user.type(screen.getByLabelText('问题标题'), '无障碍页面检查');
+    await user.type(screen.getByLabelText('简短摘要'), '制作轻量检查原型。');
+    await user.type(screen.getByLabelText('背景说明'), '企业希望共同验证无障碍流程。');
+    await user.type(screen.getByLabelText('来源名称'), '校企合作伙伴');
+    await user.type(screen.getByLabelText('预期成果'), '检查清单与原型。');
+    await user.type(screen.getByLabelText('公开对接方式'), '联络中心公开咨询台');
+    await user.click(screen.getByRole('button', { name: '保存课题草稿' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('保存失败');
+    expect(screen.getByLabelText('问题标题')).toHaveValue('无障碍页面检查');
+  });
+
+  it('ignores a stale board response after the active user changes', async () => {
+    let resolveOld: ((value: ReturnType<typeof page>) => void) | undefined;
+    const old = new Promise<ReturnType<typeof page>>((resolve) => {
+      resolveOld = resolve;
+    });
+    const newProblem = { ...problem, id: 'problem-new', title: '新身份可见课题' };
+    let listCalls = 0;
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/liaison/problems?')) {
+        listCalls += 1;
+        return listCalls === 1 ? old : page([newProblem]);
       }
-      if (path === '/liaison/resources/resource-1/transitions' && method === 'POST') {
-        resources[0] = { ...resources[0], status: 'archived' };
-        return resources[0];
+      if (path === '/liaison/problems/problem-new/teams') return [];
+      if (path === '/liaison/problems/problem-energy/teams') return [];
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const view = renderPage({ request } as Pick<ApiClient, 'request'>, student);
+    view.rerender(
+      <MemoryRouter>
+        <LiaisonPage
+          client={{ request } as Pick<ApiClient, 'request'>}
+          user={{ ...student, uid: 'another-student' }}
+        />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText(newProblem.title)).toBeInTheDocument();
+    resolveOld?.(page());
+    await Promise.resolve();
+    expect(screen.queryByText(problem.title)).not.toBeInTheDocument();
+  });
+
+  it('keeps review errors in an alert and allows a successful retry', async () => {
+    let reviews = 0;
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/liaison/problems?')) return page([pendingProblem]);
+      if (path === '/liaison/problems/problem-pending/teams') return [];
+      if (path === '/liaison/problems/problem-pending/review' && init?.method === 'POST') {
+        reviews += 1;
+        if (reviews === 1) throw new Error('offline');
+        return { ...pendingProblem, status: 'open' as const };
       }
-      throw new Error(`Unexpected request: ${method} ${path}`);
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const reviewer = {
+      ...student,
+      uid: 'reviewer',
+      policies: [
+        { action: 'liaison.problem.review', resource: 'liaison_problem', effect: 'allow' as const },
+      ],
+    };
+    const user = userEvent.setup();
+    renderPage({ request } as Pick<ApiClient, 'request'>, reviewer);
+
+    await user.click(await screen.findByRole('button', { name: '批准发布' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('审核失败，请重试');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '批准发布' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: '批准发布' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('课题已批准发布');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('announces a successful generation-safe refresh after a board error', async () => {
+    let listCalls = 0;
+    const request = vi.fn(async (path: string) => {
+      if (path.startsWith('/liaison/problems?')) {
+        listCalls += 1;
+        if (listCalls === 1) throw new Error('offline');
+        return page([]);
+      }
+      throw new Error(`Unexpected request: ${path}`);
     });
     const user = userEvent.setup();
-    render(<LiaisonPage client={{ request } as unknown as ApiClient} user={admin} />);
+    renderPage({ request } as Pick<ApiClient, 'request'>);
 
-    await screen.findByText('校友联络邮箱');
-    expect(screen.getByRole('heading', { name: '维护联络资源' })).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: '创建资源' }));
-    expect(screen.getByText('资源名称不能为空')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: '重新加载问题榜' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('问题榜已刷新');
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 
-    await user.type(screen.getByLabelText('资源名称'), '场地合作联系人');
-    await user.type(screen.getByLabelText('资源说明'), '用于校内活动场地协调。');
-    await user.type(screen.getByLabelText('资源分类'), 'venue');
-    await user.click(screen.getByRole('button', { name: '创建资源' }));
+  it('does not publish stale create feedback after the active user changes during refresh', async () => {
+    let resolveCreateRefresh: ((value: ReturnType<typeof page>) => void) | undefined;
+    const createRefresh = new Promise<ReturnType<typeof page>>((resolve) => {
+      resolveCreateRefresh = resolve;
+    });
+    let listCalls = 0;
+    const request = vi.fn(async (path: string, init?: RequestInit) => {
+      if (path.startsWith('/liaison/problems?')) {
+        listCalls += 1;
+        if (listCalls === 2) return createRefresh;
+        return page([]);
+      }
+      if (path === '/liaison/problems' && init?.method === 'POST') return problem;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    const maintainer = {
+      ...student,
+      uid: 'maintainer',
+      policies: [
+        { action: 'liaison.problem.create', resource: 'liaison_problem', effect: 'allow' as const },
+      ],
+    };
+    const user = userEvent.setup();
+    const view = renderPage({ request } as Pick<ApiClient, 'request'>, maintainer);
+    await user.click(await screen.findByRole('button', { name: '代录问题' }));
+    await user.type(screen.getByLabelText('问题标题'), '身份切换中的草稿');
+    await user.type(screen.getByLabelText('简短摘要'), '验证反馈不会跨身份显示。');
+    await user.type(screen.getByLabelText('背景说明'), '公开背景。');
+    await user.type(screen.getByLabelText('来源名称'), '校园实验室');
+    await user.type(screen.getByLabelText('预期成果'), '一个原型。');
+    await user.type(screen.getByLabelText('公开对接方式'), '公开咨询台');
+    await user.click(screen.getByRole('button', { name: '保存课题草稿' }));
+    await vi.waitFor(() => expect(listCalls).toBe(2));
 
-    expect(await screen.findByRole('status')).toHaveTextContent('联络资源已创建');
-    expect(request).toHaveBeenCalledWith(
-      '/liaison/resources',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({
-          name: '场地合作联系人',
-          description: '用于校内活动场地协调。',
-          category: 'venue',
-          visibility: 'public',
-          status: 'active',
-          scope: { type: 'public', id: '*' },
-        }),
-      }),
+    view.rerender(
+      <MemoryRouter>
+        <LiaisonPage
+          client={{ request } as Pick<ApiClient, 'request'>}
+          user={{ ...student, uid: 'another-student' }}
+        />
+      </MemoryRouter>,
     );
-    expect(await screen.findByText('场地合作联系人')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: '归档 校友联络邮箱' }));
-    expect(await screen.findByRole('status')).toHaveTextContent('联络资源已归档');
-    expect(request).toHaveBeenCalledWith(
-      '/liaison/resources/resource-1/transitions',
-      expect.objectContaining({
-        method: 'POST',
-        body: JSON.stringify({ to: 'archived' }),
-      }),
-    );
-    expect(
-      request.mock.calls.filter(([path, init]) => path === '/liaison/resources' && !init),
-    ).toHaveLength(3);
+    await vi.waitFor(() => expect(listCalls).toBe(3));
+    resolveCreateRefresh?.(page([problem]));
+    await Promise.resolve();
+    expect(screen.queryByText('问题草稿已保存')).not.toBeInTheDocument();
   });
 });

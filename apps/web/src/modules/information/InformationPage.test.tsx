@@ -34,6 +34,7 @@ const announcement = {
   updatedAt: '2026-07-22T00:00:00.000Z',
 };
 const consultation = {
+  dueAt: null,
   id: 'consultation-1',
   title: '活动场地咨询',
   body: '希望了解申请入口。',
@@ -225,13 +226,18 @@ describe('InformationPage', () => {
     await user.click(screen.getByRole('button', { name: '处理 活动场地咨询' }));
     await user.type(screen.getByLabelText('负责人 UID'), 'demo-admin');
     await user.type(screen.getByLabelText('咨询回复'), '请在服务台提交材料。');
+    await user.type(screen.getByLabelText('计划完成时间'), '2026-09-20T16:00');
     await user.click(screen.getByRole('button', { name: '保存处理信息' }));
     expect(await screen.findByText('请在服务台提交材料。')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '开始处理 活动场地咨询' }));
     expect(await screen.findByText('处理中')).toBeInTheDocument();
+    const expectedDueAt = new Date('2026-09-20T16:00').toISOString();
     expect(request).toHaveBeenCalledWith(
       '/information/consultations/consultation-1/handling',
-      expect.objectContaining({ method: 'PATCH' }),
+      expect.objectContaining({
+        method: 'PATCH',
+        body: expect.stringContaining(`"dueAt":"${expectedDueAt}"`),
+      }),
     );
   });
 

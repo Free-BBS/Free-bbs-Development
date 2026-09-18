@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEMO_CENTER_USERS, organizationById } from '@freebbs-development/contracts';
 
 import { queryMemoryAuditLogs } from './audit-query.js';
 import { encodeDateOnly, encodeUtcDateTime } from './date-codec.js';
@@ -24,8 +25,15 @@ import type {
   ConsultationRecord,
   DevelopmentStore,
   FinanceRecord,
+  FestivalSubmissionRecord,
   KnowledgeEntryRecord,
+  LiaisonOutcomeRecord,
+  LiaisonPostRecord,
+  LiaisonProblemRecord,
+  LiaisonProblemVisibility,
   LiaisonResourceRecord,
+  LiaisonTeamMemberRecord,
+  LiaisonTeamRecord,
   ListFilters,
   ModuleOwnerRecord,
   ModuleRecord,
@@ -70,10 +78,16 @@ interface MemoryState {
   activityMilestones: ActivityMilestoneRecord[];
   competitionFixtures: CompetitionFixtureRecord[];
   activityRegistrations: ActivityRegistrationRecord[];
+  festivalSubmissions: FestivalSubmissionRecord[];
   sportsTeams: SportsTeamRecord[];
   sportsTeamMembers: SportsTeamMemberRecord[];
   sportsCheckins: SportsCheckinRecord[];
   liaisonResources: LiaisonResourceRecord[];
+  liaisonProblems: LiaisonProblemRecord[];
+  liaisonTeams: LiaisonTeamRecord[];
+  liaisonTeamMembers: LiaisonTeamMemberRecord[];
+  liaisonPosts: LiaisonPostRecord[];
+  liaisonOutcomes: LiaisonOutcomeRecord[];
   financeRecords: FinanceRecord[];
 }
 
@@ -82,6 +96,21 @@ interface StateHolder {
   current: MemoryState;
   transactionTail: Promise<void>;
 }
+
+function missingReferenceError(message: string): Error {
+  return Object.assign(new Error(message), {
+    code: 'ER_NO_REFERENCED_ROW_2',
+    errno: 1452,
+  });
+}
+
+function referencedRowError(message: string): Error {
+  return Object.assign(new Error(message), {
+    code: 'ER_ROW_IS_REFERENCED_2',
+    errno: 1451,
+  });
+}
+
 async function withWriteLock<T>(holder: StateHolder, operation: () => Promise<T>): Promise<T> {
   const previous = holder.transactionTail;
   let release: () => void = () => {};
@@ -108,36 +137,90 @@ const searchFields: Record<CollectionName, string[]> = {
   modules: ['moduleId', 'name', 'description'],
   moduleOwners: ['moduleId', 'ownerType', 'ownerId'],
   auditLogs: ['actorUid', 'action', 'resourceType', 'resourceId'],
-  knowledge: ['title', 'body'],
+  knowledge: ['title', 'body', 'category', 'summary'],
   announcements: ['title', 'body'],
   consultations: ['title', 'body', 'requesterUid', 'assigneeUid', 'reply'],
   proposals: ['title', 'problemDescription', 'proposedSolution', 'category', 'submitterUid'],
-  clubs: ['name', 'description', 'technicalSupportNote'],
+  clubs: [
+    'name',
+    'description',
+    'technicalSupportNote',
+    'category',
+    'contactName',
+    'publicContact',
+  ],
   clubMemberships: ['clubId', 'memberUid'],
-  activities: ['title', 'description', 'technicalSupportNote'],
+  activities: ['title', 'description', 'technicalSupportNote', 'location', 'contact'],
   activityMilestones: ['activityId', 'title', 'type', 'description'],
   competitionFixtures: ['activityId', 'round', 'participantA', 'participantB', 'location'],
   activityRegistrations: ['activityId', 'participantUid'],
-  sportsTeams: ['name', 'description'],
+  festivalSubmissions: ['title', 'description', 'authorName'],
+  sportsTeams: ['name', 'description', 'season', 'trainingSchedule'],
   sportsTeamMembers: ['teamId', 'memberUid'],
   sportsCheckins: ['teamId', 'memberUid'],
   liaisonResources: ['name', 'description', 'category'],
+  liaisonProblems: [
+    'title',
+    'summary',
+    'background',
+    'sourceName',
+    'expectedOutcome',
+    'constraints',
+    'publicContact',
+  ],
+  liaisonTeams: ['problemId', 'name', 'proposal', 'maintainerUid'],
+  liaisonTeamMembers: ['problemId', 'teamId', 'memberUid'],
+  liaisonPosts: ['problemId', 'teamId', 'authorUid', 'body'],
+  liaisonOutcomes: ['problemId', 'teamId', 'title', 'description', 'linkUrl'],
   financeRecords: ['title', 'kind'],
 };
 
 function collectionDefaults(collection: CollectionName): Record<string, unknown> {
   switch (collection) {
+    case 'festivalSubmissions':
+      return { reviewerUid: null, reviewedAt: null, reviewNote: '' };
     case 'knowledge':
-      return { audience: 'general', organizationId: null };
+      return {
+        audience: 'general',
+        organizationId: null,
+        category: 'general',
+        tags: [],
+        summary: '',
+        maintainedAt: null,
+        maintainerUid: null,
+      };
+    case 'consultations':
+    case 'proposals':
+      return { dueAt: null };
+    case 'sportsTeams':
+      return { season: '', trainingSchedule: '' };
     case 'clubs':
-      return { organizationId: null };
+      return { organizationId: null, category: 'general', contactName: '', publicContact: '' };
     case 'activities':
       return {
+        registrationDeadline: null,
+        capacity: null,
+        contact: '',
         endsAt: null,
         location: '',
         organizationId: null,
         standingActivity: false,
       };
+    case 'liaisonProblems':
+      return {
+        summary: '',
+        tags: [],
+        startsAt: null,
+        deadline: null,
+        publicContact: '',
+        reviewerUid: null,
+        reviewedAt: null,
+        reviewNote: null,
+      };
+    case 'liaisonPosts':
+      return { teamId: null, hiddenAt: null, hiddenByUid: null };
+    case 'liaisonOutcomes':
+      return { linkUrl: null, attachmentRef: null, adoptedAt: null, adoptedByUid: null };
     case 'financeRecords':
       return {
         organizationId: null,
@@ -152,7 +235,26 @@ function collectionDefaults(collection: CollectionName): Record<string, unknown>
 
 function normalizedValues<T extends object>(value: T): T {
   const result = structuredClone(value) as Record<string, unknown>;
-  for (const key of ['expiresAt', 'startsAt', 'endsAt', 'occursAt', 'scheduledAt', 'reviewedAt']) {
+  // Undefined means omitted, not a request to erase defaults or existing values.
+  for (const key of Object.keys(result)) {
+    if (result[key] === undefined) delete result[key];
+  }
+  for (const key of [
+    'expiresAt',
+    'startsAt',
+    'endsAt',
+    'occursAt',
+    'scheduledAt',
+    'reviewedAt',
+    'maintainedAt',
+    'dueAt',
+    'registrationDeadline',
+    'deadline',
+    'joinedAt',
+    'submittedAt',
+    'adoptedAt',
+    'hiddenAt',
+  ]) {
     if (!Object.hasOwn(result, key) || result[key] === null || result[key] === undefined) continue;
     const encoded = encodeUtcDateTime(result[key] as string);
     result[key] = encoded?.toISOString() ?? null;
@@ -160,10 +262,22 @@ function normalizedValues<T extends object>(value: T): T {
   if (typeof result.checkinDate === 'string')
     result.checkinDate = encodeDateOnly(result.checkinDate);
   if (
+    Object.hasOwn(result, 'sizeBytes') &&
+    (!Number.isSafeInteger(result.sizeBytes) || (result.sizeBytes as number) < 1)
+  ) {
+    throw new TypeError('sizeBytes must be a positive safe integer');
+  }
+  if (
     typeof result.amountCents === 'number' &&
     (!Number.isSafeInteger(result.amountCents) || result.amountCents < 0)
   ) {
     throw new TypeError('amountCents must be a non-negative safe integer');
+  }
+  if (
+    Object.hasOwn(result, 'version') &&
+    (!Number.isSafeInteger(result.version) || (result.version as number) < 1)
+  ) {
+    throw new TypeError('version must be a positive safe integer');
   }
   return result as T;
 }
@@ -200,10 +314,16 @@ function createEmptyState(): MemoryState {
     activityMilestones: [],
     competitionFixtures: [],
     activityRegistrations: [],
+    festivalSubmissions: [],
     sportsTeams: [],
     sportsTeamMembers: [],
     sportsCheckins: [],
     liaisonResources: [],
+    liaisonProblems: [],
+    liaisonTeams: [],
+    liaisonTeamMembers: [],
+    liaisonPosts: [],
+    liaisonOutcomes: [],
     financeRecords: [],
   };
 }
@@ -430,6 +550,55 @@ function createDemoState(): MemoryState {
       scope: { type: 'social_organization', id: 'tuanwei' },
     }),
   ];
+  for (const profile of DEMO_CENTER_USERS) {
+    const suffix = profile.uid.slice('demo-'.length);
+    const existing = state.subjects.find(({ uid }) => uid === profile.uid);
+    if (existing) existing.displayName = profile.displayName;
+    else
+      state.subjects.push(
+        stored(`subject-${suffix}`, {
+          uid: profile.uid,
+          displayName: profile.displayName,
+          avatarUrl: null,
+          status: 'active',
+          ownerUid: 'demo-admin',
+          scope: publicScope,
+        }),
+      );
+    if (
+      !state.roleAssignments.some(
+        ({ subjectUid, roleKey }) => subjectUid === profile.uid && roleKey === profile.role,
+      )
+    ) {
+      state.roleAssignments.push(
+        stored(`assignment-${suffix}`, {
+          subjectUid: profile.uid,
+          roleKey: profile.role,
+          expiresAt: null,
+          status: 'active',
+          ownerUid: 'demo-admin',
+          scope: publicScope,
+        }),
+      );
+    }
+    const organization = organizationById(profile.organizationId);
+    if (
+      !state.tagAssignments.some(
+        ({ subjectUid, tagKey }) => subjectUid === profile.uid && tagKey === organization.tagKey,
+      )
+    ) {
+      state.tagAssignments.push(
+        stored(`tag-${suffix}-organization`, {
+          subjectUid: profile.uid,
+          tagKey: organization.tagKey,
+          expiresAt: null,
+          status: 'active',
+          ownerUid: 'demo-admin',
+          scope: { type: 'social_organization', id: profile.organizationId },
+        }),
+      );
+    }
+  }
   state.tagPermissions = BUILT_IN_TAG_PERMISSIONS.map((definition, index) =>
     stored<TagPermissionRecord>(`tag-permission-governance-${index}`, {
       ...definition,
@@ -463,6 +632,11 @@ function createDemoState(): MemoryState {
 
   state.knowledge = [
     stored('knowledge-workflow', {
+      category: '活动指南',
+      tags: ['十月预告', '活动流程'],
+      summary: '十月活动立项、审批和复盘速查。',
+      maintainedAt: '2026-10-01T00:00:00.000Z',
+      maintainerUid: 'demo-admin',
       type: 'workflow',
       title: '活动立项与复盘流程',
       body: '从立项、审批到复盘的标准步骤。',
@@ -473,6 +647,11 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('knowledge-faq', {
+      category: '部门交接',
+      tags: ['十月预告', '交接'],
+      summary: '秋季部门账号、资料与联系人交接说明。',
+      maintainedAt: '2026-10-01T00:00:00.000Z',
+      maintainerUid: 'demo-admin',
       type: 'faq',
       title: '部门交接常见问题',
       body: '集中说明账号、资料和联系人交接。',
@@ -483,6 +662,11 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('knowledge-sports-handover', {
+      category: '代表队管理',
+      tags: ['十月预告', '代表队'],
+      summary: '秋季代表队训练、招募和赛事交接清单。',
+      maintainedAt: '2026-10-01T00:00:00.000Z',
+      maintainerUid: 'demo-sports-lead',
       type: 'workflow',
       title: '体育中心代表队交接清单',
       body: '整理代表队联系人、训练安排、报名节点、常见问题与年度复盘。',
@@ -511,6 +695,7 @@ function createDemoState(): MemoryState {
   ];
   state.consultations = [
     stored('consultation-venue', {
+      dueAt: '2026-10-08T10:00:00.000Z',
       title: '活动场地申请',
       body: '请问教学楼公共空间如何申请？',
       requesterUid: 'demo-student',
@@ -521,6 +706,7 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('consultation-rights', {
+      dueAt: '2026-10-10T10:00:00.000Z',
       title: '校园权益建议',
       body: '希望延长公共讨论空间开放时间。',
       requesterUid: 'demo-student',
@@ -533,6 +719,7 @@ function createDemoState(): MemoryState {
   ];
   state.proposals = [
     stored('proposal-night-lighting', {
+      dueAt: '2026-10-15T10:00:00.000Z',
       title: '校园夜间照明优化',
       problemDescription: '部分公共活动区域夜间照明不足，影响同学通行与活动。',
       proposedSolution: '梳理重点点位并与相关部门共同推进照明巡检和补充。',
@@ -548,6 +735,9 @@ function createDemoState(): MemoryState {
   ];
   state.clubs = [
     stored('club-music', {
+      category: '文艺交流',
+      contactName: '音乐俱乐部联络员',
+      publicContact: '每周五学生活动中心排练室',
       name: '校园音乐俱乐部',
       description: '排练、分享与小型演出。',
       organizationId: 'liaison_center',
@@ -558,6 +748,9 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('club-running', {
+      category: '体育户外',
+      contactName: '跑团联络员',
+      publicContact: '每周三东大操场集合点',
       name: '自由跑团',
       description: '每周轻松跑与训练交流。',
       organizationId: 'liaison_center',
@@ -586,6 +779,9 @@ function createDemoState(): MemoryState {
   ];
   state.activities = [
     stored('activity-orientation', {
+      registrationDeadline: '2026-09-04T10:00:00.000Z',
+      capacity: 120,
+      contact: '联络中心活动咨询台',
       title: '新生社群见面会',
       description: '一次认识各趣缘群体的开放活动。',
       clubId: null,
@@ -601,6 +797,9 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('activity-night-run', {
+      registrationDeadline: '2026-09-11T10:00:00.000Z',
+      capacity: 60,
+      contact: '跑团联络员（东大操场集合点）',
       title: '校园夜跑',
       description: '五公里轻松跑。',
       clubId: 'club-running',
@@ -616,6 +815,9 @@ function createDemoState(): MemoryState {
       scope: publicScope,
     }),
     stored('activity-ma-john-cup', {
+      registrationDeadline: '2026-10-08T10:00:00.000Z',
+      capacity: 240,
+      contact: '体育中心赛事咨询台',
       title: '马约翰杯',
       description: '学院代表队参加的常设综合体育赛事，集中展示赛程与比赛进展。',
       clubId: null,
@@ -713,6 +915,8 @@ function createDemoState(): MemoryState {
   ];
   state.sportsTeams = [
     stored('team-basketball', {
+      season: '2026秋季',
+      trainingSchedule: '每周二、四 18:00–20:00，篮球馆',
       name: '院篮球队',
       description: '学院篮球代表队。',
       status: 'active',
@@ -720,6 +924,8 @@ function createDemoState(): MemoryState {
       scope: { type: 'sports_team', id: 'team-basketball' },
     }),
     stored('team-badminton', {
+      season: '2026秋季',
+      trainingSchedule: '每周三 18:00–20:00，羽毛球馆',
       name: '院羽毛球队',
       description: '学院羽毛球代表队。',
       status: 'active',
@@ -781,6 +987,147 @@ function createDemoState(): MemoryState {
       scope: { type: 'organization', id: 'freebbs' },
     }),
   ];
+  state.liaisonProblems = [
+    stored('liaison-problem-lab-energy', {
+      title: '校园能耗数据可视化',
+      summary: '把匿名化能耗指标转化为同学可理解的交互展示。',
+      background: '校内课题组希望验证面向校园公共空间的数据叙事方案。',
+      sourceType: 'lab',
+      sourceName: '校园计算实验室',
+      tags: ['数据可视化', '前端', '校园治理'],
+      expectedOutcome: '可运行原型、设计说明和一次公开演示。',
+      constraints: '只能使用匿名化样例数据，不得上传原始敏感数据。',
+      startsAt: '2026-10-01T00:00:00.000Z',
+      deadline: '2026-11-15T00:00:00.000Z',
+      publicContact: '联络中心公开咨询台',
+      internalContactNote: '演示数据由联络中心线下转交。',
+      recorderUid: 'demo-liaison-member',
+      reviewerUid: 'demo-tuanwei-lead',
+      reviewedAt: '2026-09-20T08:00:00.000Z',
+      reviewNote: '已确认公开范围与匿名化要求。',
+      status: 'open',
+      ownerUid: 'demo-liaison-member',
+      scope: publicScope,
+    }),
+    stored('liaison-problem-company-accessibility', {
+      title: '公共服务页面无障碍检查工具',
+      summary: '为常见校园服务页面制作轻量的可访问性检查原型。',
+      background: '合作企业希望与同学共同验证前端无障碍检查流程。',
+      sourceType: 'company',
+      sourceName: '校企联合创新伙伴',
+      tags: ['无障碍', 'Web', '工具开发'],
+      expectedOutcome: '检查清单、命令行原型和示例报告。',
+      constraints: '首期只分析公开页面，不采集账号或个人信息。',
+      startsAt: '2026-10-10T00:00:00.000Z',
+      deadline: null,
+      publicContact: '联络中心公开咨询台',
+      internalContactNote: '企业联系人信息由联络中心保管。',
+      recorderUid: 'demo-liaison-member',
+      reviewerUid: 'demo-admin',
+      reviewedAt: '2026-09-22T08:00:00.000Z',
+      reviewNote: '公开内容已脱敏。',
+      status: 'open',
+      ownerUid: 'demo-liaison-member',
+      scope: publicScope,
+    }),
+  ];
+  state.liaisonTeams = [
+    stored('liaison-team-energy-story', {
+      problemId: 'liaison-problem-lab-energy',
+      name: '数据叙事队',
+      proposal: '先建立公共指标卡片，再制作可解释的趋势视图。',
+      maintainerUid: 'demo-student',
+      status: 'active',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+    stored('liaison-team-energy-map', {
+      problemId: 'liaison-problem-lab-energy',
+      name: '空间可视化队',
+      proposal: '使用匿名化建筑指标制作校园能耗地图原型。',
+      maintainerUid: 'demo-captain',
+      status: 'active',
+      ownerUid: 'demo-captain',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+  ];
+  state.liaisonTeamMembers = [
+    stored('liaison-member-energy-story', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-story',
+      memberUid: 'demo-student',
+      role: 'maintainer',
+      joinedAt: '2026-10-02T08:00:00.000Z',
+      status: 'active',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_team', id: 'liaison-team-energy-story' },
+    }),
+    stored('liaison-member-energy-map', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-map',
+      memberUid: 'demo-captain',
+      role: 'maintainer',
+      joinedAt: '2026-10-03T08:00:00.000Z',
+      status: 'active',
+      ownerUid: 'demo-captain',
+      scope: { type: 'liaison_team', id: 'liaison-team-energy-map' },
+    }),
+  ];
+  state.liaisonPosts = [
+    stored('liaison-post-energy-question', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: null,
+      authorUid: 'demo-student',
+      kind: 'discussion',
+      body: '公开样例数据会提供哪些时间粒度？',
+      hiddenAt: null,
+      hiddenByUid: null,
+      status: 'visible',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+    stored('liaison-post-energy-story-progress', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-story',
+      authorUid: 'demo-student',
+      kind: 'progress',
+      body: '已完成指标卡片的信息层级草图。',
+      hiddenAt: null,
+      hiddenByUid: null,
+      status: 'visible',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+    stored('liaison-post-energy-map-progress', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-map',
+      authorUid: 'demo-captain',
+      kind: 'progress',
+      body: '已完成地图底图和匿名化样例数据接入。',
+      hiddenAt: null,
+      hiddenByUid: null,
+      status: 'visible',
+      ownerUid: 'demo-captain',
+      scope: { type: 'liaison_problem', id: 'liaison-problem-lab-energy' },
+    }),
+  ];
+  state.liaisonOutcomes = [
+    stored('liaison-outcome-energy-story-v1', {
+      problemId: 'liaison-problem-lab-energy',
+      teamId: 'liaison-team-energy-story',
+      version: 1,
+      title: '能耗指标叙事原型',
+      description: '包含关键指标卡片、趋势解释和公开演示说明。',
+      linkUrl: 'https://example.invalid/freebbs/energy-story',
+      attachmentRef: null,
+      submittedAt: '2026-10-20T08:00:00.000Z',
+      adoptedAt: '2026-10-22T08:00:00.000Z',
+      adoptedByUid: 'demo-liaison-member',
+      status: 'adopted',
+      ownerUid: 'demo-student',
+      scope: { type: 'liaison_team', id: 'liaison-team-energy-story' },
+    }),
+  ];
   state.financeRecords = [
     stored('finance-orientation-budget', {
       title: '新生见面会预算',
@@ -821,12 +1168,17 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
 
   async create(input: NewRecord<T>): Promise<T> {
     return withWriteLock(this.holder, async () => {
-      const conflictMessage = this.conflictMessage(input);
+      const normalizedInput = normalizedValues(input);
+      const recordInput = {
+        ...collectionDefaults(this.collection),
+        ...normalizedInput,
+      } as NewRecord<T>;
+      this.assertLiaisonReferences(recordInput);
+      const conflictMessage = this.conflictMessage(recordInput);
       if (conflictMessage !== undefined) throw new RecordConflictError(conflictMessage);
       const now = new Date().toISOString();
       const record = {
-        ...collectionDefaults(this.collection),
-        ...normalizedValues(input),
+        ...recordInput,
         id: randomUUID(),
         createdAt: now,
         updatedAt: now,
@@ -852,14 +1204,51 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
   }
 
   async list(filters: ListFilters = {}): Promise<T[]> {
+    return this.filteredRecords(filters);
+  }
+
+  async countActiveByProblemIds(problemIds: readonly string[]): Promise<Record<string, number>> {
+    if (this.collection !== 'liaisonTeams') {
+      throw new Error('Team aggregation requires the liaison team repository');
+    }
+    const requested = new Set(problemIds);
+    if (requested.size > 100) throw new RangeError('At most 100 problem ids may be aggregated');
+    const counts: Record<string, number> = {};
+    for (const team of this.records() as unknown as LiaisonTeamRecord[]) {
+      if (team.status !== 'active' || !requested.has(team.problemId)) continue;
+      counts[team.problemId] = (counts[team.problemId] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  private filteredRecords(filters: ListFilters = {}): T[] {
     const query = filters.query?.trim().toLocaleLowerCase();
     return this.records()
       .filter((record) => !filters.status || record.status === filters.status)
       .filter((record) => !filters.scopeType || record.scope.type === filters.scopeType)
       .filter((record) => !filters.scopeId || record.scope.id === filters.scopeId)
       .filter((record) => {
+        const fields = record as unknown as Record<string, unknown>;
+        return (
+          ['category', 'season', 'organizationId', 'standingActivity'].every(
+            (key) =>
+              filters[key as keyof ListFilters] === undefined ||
+              fields[key] === filters[key as keyof ListFilters],
+          ) &&
+          (filters.tag === undefined ||
+            (Array.isArray(fields.tags) && fields.tags.includes(filters.tag)))
+        );
+      })
+      .filter((record) => {
         if (!query) return true;
         const searchable = record as unknown as Record<string, unknown>;
+        // Search each decoded tag, never JSON syntax or separators between tags.
+        if (
+          (this.collection === 'knowledge' || this.collection === 'liaisonProblems') &&
+          Array.isArray(searchable.tags) &&
+          searchable.tags.some((tag) => String(tag).toLocaleLowerCase().includes(query))
+        )
+          return true;
         return searchFields[this.collection]
           .map((key) => String(searchable[key] ?? ''))
           .join(' ')
@@ -885,6 +1274,27 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
     };
   }
 
+  async pageVisible(
+    filters: ListFilters | undefined,
+    request: PageRequest,
+    visibility: LiaisonProblemVisibility,
+  ): Promise<Page<LiaisonProblemRecord>> {
+    if (this.collection !== 'liaisonProblems') {
+      throw new Error('Authorized liaison pagination requires the liaison problem repository');
+    }
+    validatePageRequest(request);
+    const records = (this.filteredRecords(filters) as unknown as LiaisonProblemRecord[]).filter(
+      (problem) => liaisonProblemIsVisible(problem, visibility),
+    );
+    const offset = (request.page - 1) * request.pageSize;
+    return {
+      items: records.slice(offset, offset + request.pageSize),
+      page: request.page,
+      pageSize: request.pageSize,
+      total: records.length,
+    };
+  }
+
   async update(id: string, patch: RecordPatch<T>): Promise<T | null> {
     return withWriteLock(this.holder, async () => {
       const records = this.records();
@@ -893,10 +1303,11 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       const existing = records[index];
       if (!existing) return null;
       const normalizedPatch = normalizedValues(patch);
-      const conflictMessage = this.conflictMessage(
-        { ...existing, ...normalizedPatch } as NewRecord<T>,
-        existing.id,
-      );
+      if (Object.keys(normalizedPatch).length === 0) return structuredClone(existing);
+      this.assertReferencedKeyUpdateAllowed(existing, normalizedPatch);
+      const candidate = { ...existing, ...normalizedPatch } as NewRecord<T>;
+      this.assertLiaisonReferences(candidate);
+      const conflictMessage = this.conflictMessage(candidate, existing.id);
       if (conflictMessage !== undefined) throw new RecordConflictError(conflictMessage);
       const updated = {
         ...existing,
@@ -915,9 +1326,131 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
       const records = this.records();
       const index = records.findIndex((record) => record.id === id);
       if (index === -1) return false;
+      const existing = records[index];
+      if (!existing) return false;
+      this.assertDeleteAllowed(existing);
       records.splice(index, 1);
       return true;
     });
+  }
+
+  private assertLiaisonReferences(input: NewRecord<T>): void {
+    const state = this.holder.current;
+    const candidate = input as unknown as Record<string, unknown>;
+    const subjectExists = (uid: unknown): boolean =>
+      typeof uid === 'string' && state.subjects.some((subject) => subject.uid === uid);
+    const nullableSubjectExists = (uid: unknown): boolean => uid === null || subjectExists(uid);
+    const problemExists = (problemId: unknown): boolean =>
+      typeof problemId === 'string' &&
+      state.liaisonProblems.some((problem) => problem.id === problemId);
+    const matchingTeamExists = (problemId: unknown, teamId: unknown): boolean =>
+      typeof problemId === 'string' &&
+      typeof teamId === 'string' &&
+      state.liaisonTeams.some((team) => team.id === teamId && team.problemId === problemId);
+
+    switch (this.collection) {
+      case 'liaisonProblems':
+        if (
+          !subjectExists(candidate.recorderUid) ||
+          !nullableSubjectExists(candidate.reviewerUid)
+        ) {
+          throw missingReferenceError('Liaison problem references a missing subject');
+        }
+        break;
+      case 'liaisonTeams':
+        if (!problemExists(candidate.problemId)) {
+          throw missingReferenceError('Liaison team references a missing problem');
+        }
+        if (!subjectExists(candidate.maintainerUid)) {
+          throw missingReferenceError('Liaison team references a missing maintainer');
+        }
+        break;
+      case 'liaisonTeamMembers':
+        if (!matchingTeamExists(candidate.problemId, candidate.teamId)) {
+          throw missingReferenceError('Liaison membership references a missing matching team');
+        }
+        if (!subjectExists(candidate.memberUid)) {
+          throw missingReferenceError('Liaison membership references a missing subject');
+        }
+        break;
+      case 'liaisonPosts':
+        if (!problemExists(candidate.problemId)) {
+          throw missingReferenceError('Liaison post references a missing problem');
+        }
+        if (
+          candidate.teamId !== null &&
+          !matchingTeamExists(candidate.problemId, candidate.teamId)
+        ) {
+          throw missingReferenceError('Liaison post references a missing matching team');
+        }
+        if (!subjectExists(candidate.authorUid) || !nullableSubjectExists(candidate.hiddenByUid)) {
+          throw missingReferenceError('Liaison post references a missing subject');
+        }
+        break;
+      case 'liaisonOutcomes':
+        if (!matchingTeamExists(candidate.problemId, candidate.teamId)) {
+          throw missingReferenceError('Liaison outcome references a missing matching team');
+        }
+        if (!nullableSubjectExists(candidate.adoptedByUid)) {
+          throw missingReferenceError('Liaison outcome references a missing adopter');
+        }
+        break;
+    }
+  }
+
+  private assertDeleteAllowed(record: T): void {
+    const state = this.holder.current;
+    if (this.collection === 'liaisonProblems') {
+      const problemId = record.id;
+      if (
+        state.liaisonTeams.some((team) => team.problemId === problemId) ||
+        state.liaisonPosts.some((post) => post.problemId === problemId)
+      ) {
+        throw referencedRowError('Liaison problem is still referenced');
+      }
+    }
+    if (this.collection === 'liaisonTeams') {
+      const teamId = record.id;
+      if (
+        state.liaisonTeamMembers.some((member) => member.teamId === teamId) ||
+        state.liaisonPosts.some((post) => post.teamId === teamId) ||
+        state.liaisonOutcomes.some((outcome) => outcome.teamId === teamId)
+      ) {
+        throw referencedRowError('Liaison team is still referenced');
+      }
+    }
+    if (this.collection === 'subjects') {
+      const uid = (record as unknown as SubjectRecord).uid;
+      if (
+        state.liaisonProblems.some(
+          (problem) => problem.recorderUid === uid || problem.reviewerUid === uid,
+        ) ||
+        state.liaisonTeams.some((team) => team.maintainerUid === uid) ||
+        state.liaisonTeamMembers.some((member) => member.memberUid === uid) ||
+        state.liaisonPosts.some((post) => post.authorUid === uid || post.hiddenByUid === uid) ||
+        state.liaisonOutcomes.some((outcome) => outcome.adoptedByUid === uid)
+      ) {
+        throw referencedRowError('Subject is still referenced by liaison records');
+      }
+    }
+  }
+
+  private assertReferencedKeyUpdateAllowed(record: T, patch: RecordPatch<T>): void {
+    const values = patch as Record<string, unknown>;
+    if (
+      this.collection === 'liaisonTeams' &&
+      Object.hasOwn(values, 'problemId') &&
+      values.problemId !== (record as unknown as LiaisonTeamRecord).problemId
+    ) {
+      this.assertDeleteAllowed(record);
+    }
+    if (
+      this.collection === 'subjects' &&
+      Object.hasOwn(values, 'uid') &&
+      values.uid !== (record as unknown as SubjectRecord).uid
+    ) {
+      this.assertDeleteAllowed(record);
+    }
   }
 
   private hasAssignmentConflict(input: NewRecord<T>, excludeId?: string): boolean {
@@ -1009,6 +1542,46 @@ class MemoryRepository<T extends StoredRecord> implements RecordRepository<T> {
         return 'Registration already exists';
       }
     }
+    if (this.collection === 'liaisonTeamMembers') {
+      const candidate = input as unknown as {
+        problemId: string;
+        teamId: string;
+        memberUid: string;
+      };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return (
+            current.problemId === candidate.problemId &&
+            current.teamId === candidate.teamId &&
+            current.memberUid === candidate.memberUid
+          );
+        })
+      ) {
+        return 'Liaison team membership already exists';
+      }
+    }
+    if (this.collection === 'liaisonOutcomes') {
+      const candidate = input as unknown as {
+        problemId: string;
+        teamId: string;
+        version: number;
+      };
+      if (
+        this.records().some((record) => {
+          if (record.id === excludeId) return false;
+          const current = record as unknown as typeof candidate;
+          return (
+            current.problemId === candidate.problemId &&
+            current.teamId === candidate.teamId &&
+            current.version === candidate.version
+          );
+        })
+      ) {
+        return 'Liaison outcome version already exists';
+      }
+    }
     if (this.collection === 'sportsCheckins') {
       const candidate = input as unknown as {
         teamId: string;
@@ -1074,10 +1647,16 @@ function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStor
     activityMilestones: repository('activityMilestones'),
     competitionFixtures: repository('competitionFixtures'),
     activityRegistrations: repository('activityRegistrations'),
+    festivalSubmissions: repository('festivalSubmissions'),
     sportsTeams: repository('sportsTeams'),
     sportsTeamMembers: repository('sportsTeamMembers'),
     sportsCheckins: repository('sportsCheckins'),
     liaisonResources: repository('liaisonResources'),
+    liaisonProblems: repository('liaisonProblems'),
+    liaisonTeams: repository('liaisonTeams'),
+    liaisonTeamMembers: repository('liaisonTeamMembers'),
+    liaisonPosts: repository('liaisonPosts'),
+    liaisonOutcomes: repository('liaisonOutcomes'),
     financeRecords: repository('financeRecords'),
   };
   return store;
@@ -1090,6 +1669,24 @@ function validatePageRequest(request: PageRequest): void {
   if (!Number.isInteger(request.pageSize) || request.pageSize < 1 || request.pageSize > 100) {
     throw new RangeError('pageSize must be an integer between 1 and 100');
   }
+}
+
+function scopedAccessAllows(access: LiaisonProblemVisibility['read'], id: string): boolean {
+  if (access.deniedIds.includes(id)) return false;
+  return access.all || access.ids.includes(id);
+}
+
+function liaisonProblemIsVisible(
+  problem: LiaisonProblemRecord,
+  visibility: LiaisonProblemVisibility,
+): boolean {
+  if (!scopedAccessAllows(visibility.read, problem.id)) return false;
+  return (
+    visibility.publicStatuses.includes(problem.status) ||
+    problem.ownerUid === visibility.actorUid ||
+    scopedAccessAllows(visibility.maintain, problem.id) ||
+    (problem.status === 'pending_review' && scopedAccessAllows(visibility.review, problem.id))
+  );
 }
 
 export interface MemoryStoreOptions {

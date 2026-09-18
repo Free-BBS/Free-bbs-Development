@@ -30,8 +30,15 @@ import type {
   ConsultationRecord,
   DevelopmentStore,
   FinanceRecord,
+  FestivalSubmissionRecord,
   KnowledgeEntryRecord,
+  LiaisonOutcomeRecord,
+  LiaisonPostRecord,
+  LiaisonProblemRecord,
+  LiaisonProblemVisibility,
   LiaisonResourceRecord,
+  LiaisonTeamMemberRecord,
+  LiaisonTeamRecord,
   ListFilters,
   ModuleOwnerRecord,
   ModuleRecord,
@@ -95,6 +102,15 @@ const field = (
 
 const booleanField = (key: string, column: string) =>
   field(key, column, { encode: (value) => (value ? 1 : 0), decode: (value) => Boolean(value) });
+const defaultedField = (key: string, column: string, fallback: unknown) =>
+  field(key, column, {
+    encode: (value) => value ?? fallback,
+    decode: (value) => value ?? fallback,
+  });
+const tagsField = field('tags', 'tags', {
+  encode: (value) => JSON.stringify(value ?? []),
+  decode: (value) => (typeof value === 'string' ? (JSON.parse(value) as string[]) : (value ?? [])),
+});
 const utcDateTimeField = (key: string, column: string) =>
   field(key, column, {
     encode: (value) => encodeUtcDateTime(value as string | Date | null | undefined),
@@ -109,6 +125,11 @@ const safeIntegerField = (key: string, column: string) =>
   field(key, column, {
     encode: (value) => safeInteger(value),
     decode: (value) => safeInteger(value),
+  });
+const positiveIntegerField = (key: string, column: string) =>
+  field(key, column, {
+    encode: (value) => positiveInteger(value, key),
+    decode: (value) => positiveInteger(value, key),
   });
 const jsonField = (key: string, column: string) =>
   field(key, column, {
@@ -126,8 +147,32 @@ function safeInteger(value: unknown): number {
   }
   return number;
 }
+function positiveInteger(value: unknown, key: string): number {
+  const number =
+    typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : (value as number);
+  if (!Number.isSafeInteger(number) || number < 1) {
+    throw new TypeError(`${key} must be a positive safe integer`);
+  }
+  return number;
+}
 
 const definitions = {
+  festivalSubmissions: {
+    table: 'festival_submissions',
+    fields: [
+      field('title', 'title'),
+      field('description', 'description'),
+      field('authorName', 'author_name'),
+      booleanField('displayConsent', 'display_consent'),
+      field('mimeType', 'mime_type'),
+      positiveIntegerField('sizeBytes', 'size_bytes'),
+      field('storageKey', 'storage_key'),
+      defaultedField('reviewerUid', 'reviewer_uid', null),
+      utcDateTimeField('reviewedAt', 'reviewed_at'),
+      defaultedField('reviewNote', 'review_note', ''),
+    ],
+    searchColumns: ['title', 'description', 'author_name'],
+  },
   subjects: {
     table: 'subjects',
     fields: [
@@ -232,6 +277,11 @@ const definitions = {
   knowledge: {
     table: 'knowledge_entries',
     fields: [
+      defaultedField('category', 'category', 'general'),
+      tagsField,
+      defaultedField('summary', 'summary', ''),
+      utcDateTimeField('maintainedAt', 'maintained_at'),
+      defaultedField('maintainerUid', 'maintainer_uid', null),
       field('type', 'entry_type'),
       field('title', 'title'),
       field('body', 'body'),
@@ -241,7 +291,7 @@ const definitions = {
       }),
       field('organizationId', 'organization_id'),
     ],
-    searchColumns: ['title', 'body'],
+    searchColumns: ['title', 'body', 'category', 'summary'],
   },
   announcements: {
     table: 'announcements',
@@ -251,6 +301,7 @@ const definitions = {
   consultations: {
     table: 'consultations',
     fields: [
+      utcDateTimeField('dueAt', 'due_at'),
       field('title', 'title'),
       field('body', 'body'),
       field('requesterUid', 'requester_uid'),
@@ -262,6 +313,7 @@ const definitions = {
   proposals: {
     table: 'proposals',
     fields: [
+      utcDateTimeField('dueAt', 'due_at'),
       field('title', 'title'),
       field('problemDescription', 'problem_description'),
       field('proposedSolution', 'proposed_solution'),
@@ -282,13 +334,23 @@ const definitions = {
   clubs: {
     table: 'clubs',
     fields: [
+      defaultedField('category', 'category', 'general'),
+      defaultedField('contactName', 'contact_name', ''),
+      defaultedField('publicContact', 'public_contact', ''),
       field('name', 'name'),
       field('description', 'description'),
       field('technicalSupportStatus', 'technical_support_status'),
       field('technicalSupportNote', 'technical_support_note'),
       field('organizationId', 'organization_id'),
     ],
-    searchColumns: ['name', 'description', 'technical_support_note'],
+    searchColumns: [
+      'name',
+      'description',
+      'technical_support_note',
+      'category',
+      'contact_name',
+      'public_contact',
+    ],
   },
   clubMemberships: {
     table: 'club_memberships',
@@ -299,6 +361,9 @@ const definitions = {
   activities: {
     table: 'activities',
     fields: [
+      utcDateTimeField('registrationDeadline', 'registration_deadline'),
+      defaultedField('capacity', 'capacity', null),
+      defaultedField('contact', 'contact', ''),
       field('title', 'title'),
       field('description', 'description'),
       field('clubId', 'club_id'),
@@ -313,7 +378,7 @@ const definitions = {
       field('technicalSupportStatus', 'technical_support_status'),
       field('technicalSupportNote', 'technical_support_note'),
     ],
-    searchColumns: ['title', 'description', 'technical_support_note'],
+    searchColumns: ['title', 'description', 'technical_support_note', 'location', 'contact'],
   },
   activityMilestones: {
     table: 'activity_milestones',
@@ -349,8 +414,13 @@ const definitions = {
   },
   sportsTeams: {
     table: 'sports_teams',
-    fields: [field('name', 'name'), field('description', 'description')],
-    searchColumns: ['name', 'description'],
+    fields: [
+      field('name', 'name'),
+      field('description', 'description'),
+      defaultedField('season', 'season', ''),
+      defaultedField('trainingSchedule', 'training_schedule', ''),
+    ],
+    searchColumns: ['name', 'description', 'season', 'training_schedule'],
   },
   sportsTeamMembers: {
     table: 'sports_team_members',
@@ -377,6 +447,88 @@ const definitions = {
       field('visibility', 'visibility'),
     ],
     searchColumns: ['name', 'description', 'category'],
+  },
+  liaisonProblems: {
+    table: 'liaison_problems',
+    fields: [
+      field('title', 'title'),
+      defaultedField('summary', 'summary', ''),
+      field('background', 'background'),
+      field('sourceType', 'source_type'),
+      field('sourceName', 'source_name'),
+      tagsField,
+      field('expectedOutcome', 'expected_outcome'),
+      field('constraints', 'constraints_text'),
+      utcDateTimeField('startsAt', 'starts_at'),
+      utcDateTimeField('deadline', 'deadline'),
+      defaultedField('publicContact', 'public_contact', ''),
+      field('internalContactNote', 'internal_contact_note'),
+      field('recorderUid', 'recorder_uid'),
+      field('reviewerUid', 'reviewer_uid'),
+      utcDateTimeField('reviewedAt', 'reviewed_at'),
+      field('reviewNote', 'review_note'),
+    ],
+    searchColumns: [
+      'title',
+      'summary',
+      'background',
+      'source_name',
+      'expected_outcome',
+      'constraints_text',
+      'public_contact',
+    ],
+  },
+  liaisonTeams: {
+    table: 'liaison_teams',
+    fields: [
+      field('problemId', 'problem_id'),
+      field('name', 'name'),
+      field('proposal', 'proposal'),
+      field('maintainerUid', 'maintainer_uid'),
+    ],
+    searchColumns: ['problem_id', 'name', 'proposal', 'maintainer_uid'],
+  },
+  liaisonTeamMembers: {
+    table: 'liaison_team_members',
+    conflictMessage: 'Liaison team membership already exists',
+    fields: [
+      field('problemId', 'problem_id'),
+      field('teamId', 'team_id'),
+      field('memberUid', 'member_uid'),
+      field('role', 'member_role'),
+      utcDateTimeField('joinedAt', 'joined_at'),
+    ],
+    searchColumns: ['problem_id', 'team_id', 'member_uid'],
+  },
+  liaisonPosts: {
+    table: 'liaison_posts',
+    fields: [
+      field('problemId', 'problem_id'),
+      field('teamId', 'team_id'),
+      field('authorUid', 'author_uid'),
+      field('kind', 'post_kind'),
+      field('body', 'body'),
+      utcDateTimeField('hiddenAt', 'hidden_at'),
+      field('hiddenByUid', 'hidden_by_uid'),
+    ],
+    searchColumns: ['problem_id', 'team_id', 'author_uid', 'body'],
+  },
+  liaisonOutcomes: {
+    table: 'liaison_outcomes',
+    conflictMessage: 'Liaison outcome version already exists',
+    fields: [
+      field('problemId', 'problem_id'),
+      field('teamId', 'team_id'),
+      positiveIntegerField('version', 'version'),
+      field('title', 'title'),
+      field('description', 'description'),
+      field('linkUrl', 'link_url'),
+      field('attachmentRef', 'attachment_ref'),
+      utcDateTimeField('submittedAt', 'submitted_at'),
+      utcDateTimeField('adoptedAt', 'adopted_at'),
+      field('adoptedByUid', 'adopted_by_uid'),
+    ],
+    searchColumns: ['problem_id', 'team_id', 'title', 'description', 'link_url'],
   },
   financeRecords: {
     table: 'finance_records',
@@ -418,6 +570,27 @@ function buildWhere(
 ): { where: string; values: SqlValue[] } {
   const clauses: string[] = [];
   const values: SqlValue[] = [];
+  for (const key of ['category', 'season', 'organizationId', 'standingActivity'] as const) {
+    if (filters[key] === undefined) continue;
+    const mapped = definition.fields.find((candidate) => candidate.key === key);
+    if (!mapped) {
+      clauses.push('1 = 0');
+      continue;
+    }
+    // Match the application's exact string equality, independent of table collation.
+    clauses.push(
+      key === 'standingActivity'
+        ? `${mapped.column} = ?`
+        : `CAST(${mapped.column} AS BINARY) = CAST(? AS BINARY)`,
+    );
+    values.push(filters[key]!);
+  }
+  if (filters.tag !== undefined) {
+    if (definition.fields.some(({ key }) => key === 'tags')) {
+      clauses.push('JSON_CONTAINS(tags, ?)');
+      values.push(JSON.stringify(filters.tag));
+    } else clauses.push('1 = 0');
+  }
   if (filters.status) {
     clauses.push('status = ?');
     values.push(filters.status);
@@ -431,14 +604,65 @@ function buildWhere(
     values.push(filters.scopeId);
   }
   if (filters.query?.trim() && definition.searchColumns.length > 0) {
-    clauses.push(
-      `LOWER(CONCAT_WS(' ', ${definition.searchColumns.join(', ')})) LIKE ? ESCAPE '\\\\'`,
-    );
-    values.push(`%${escapeLikeQuery(filters.query.trim().toLocaleLowerCase())}%`);
+    const query = filters.query.trim().toLocaleLowerCase();
+    const textMatch = `LOWER(CONCAT_WS(' ', ${definition.searchColumns.join(', ')})) LIKE ? ESCAPE '\\\\'`;
+    values.push(`%${escapeLikeQuery(query)}%`);
+    if (definition.table === 'knowledge_entries' || definition.table === 'liaison_problems') {
+      // JSON_TABLE unescapes values; LOCATE treats punctuation as literal characters.
+      const tagAlias =
+        definition.table === 'knowledge_entries' ? 'knowledge_tags' : 'liaison_problem_tags';
+      clauses.push(
+        `(${textMatch} OR EXISTS (SELECT 1 FROM JSON_TABLE(tags, '$[*]' COLUMNS (tag_value VARCHAR(80) PATH '$')) AS ${tagAlias} WHERE LOCATE(CAST(? AS BINARY), CAST(LOWER(${tagAlias}.tag_value) AS BINARY)) > 0))`,
+      );
+      values.push(query);
+    } else clauses.push(textMatch);
   }
   return {
     where: clauses.length > 0 ? ` WHERE ${clauses.join(' AND ')}` : '',
     values,
+  };
+}
+
+function buildScopedRecordAccess(access: LiaisonProblemVisibility['read']): {
+  clause: string;
+  values: SqlValue[];
+} {
+  const allowedIds = [...new Set(access.ids)];
+  const deniedIds = [...new Set(access.deniedIds)];
+  const clauses: string[] = [];
+  const values: SqlValue[] = [];
+  if (!access.all) {
+    if (allowedIds.length === 0) return { clause: '1 = 0', values };
+    clauses.push(`id IN (${allowedIds.map(() => '?').join(', ')})`);
+    values.push(...allowedIds);
+  }
+  if (deniedIds.length > 0) {
+    clauses.push(`id NOT IN (${deniedIds.map(() => '?').join(', ')})`);
+    values.push(...deniedIds);
+  }
+  return { clause: clauses.length === 0 ? '1 = 1' : clauses.join(' AND '), values };
+}
+
+function buildLiaisonProblemVisibilityWhere(visibility: LiaisonProblemVisibility): {
+  clause: string;
+  values: SqlValue[];
+} {
+  const read = buildScopedRecordAccess(visibility.read);
+  const maintain = buildScopedRecordAccess(visibility.maintain);
+  const review = buildScopedRecordAccess(visibility.review);
+  const statuses = [...new Set(visibility.publicStatuses)];
+  const publicClause =
+    statuses.length === 0 ? '1 = 0' : `status IN (${statuses.map(() => '?').join(', ')})`;
+  return {
+    clause: `(${read.clause}) AND (${publicClause} OR owner_uid = ? OR (${maintain.clause}) OR (status = ? AND (${review.clause})))`,
+    values: [
+      ...read.values,
+      ...statuses,
+      visibility.actorUid,
+      ...maintain.values,
+      'pending_review',
+      ...review.values,
+    ],
   };
 }
 
@@ -530,6 +754,23 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
     return rows.map((row) => this.decode(row));
   }
 
+  async countActiveByProblemIds(problemIds: readonly string[]): Promise<Record<string, number>> {
+    if (this.definition.table !== 'liaison_teams') {
+      throw new Error('Team aggregation requires the liaison team repository');
+    }
+    const requested = [...new Set(problemIds)];
+    if (requested.length > 100) throw new RangeError('At most 100 problem ids may be aggregated');
+    if (requested.length === 0) return {};
+    const placeholders = requested.map(() => '?').join(', ');
+    const [rows] = await this.executor.execute<RowDataPacket[]>(
+      `SELECT problem_id, COUNT(*) AS total FROM liaison_teams WHERE status = ? AND problem_id IN (${placeholders}) GROUP BY problem_id`,
+      ['active', ...requested],
+    );
+    return Object.fromEntries(
+      rows.map((row) => [String(row.problem_id), Number(row.total)] as const),
+    );
+  }
+
   async page(filters: ListFilters | undefined, request: PageRequest): Promise<Page<T>> {
     validatePageRequest(request);
     const { where, values } = buildWhere(this.definition, filters ?? {});
@@ -550,12 +791,43 @@ class MySqlRepository<T extends StoredRecord> implements RecordRepository<T> {
       total,
     };
   }
+
+  async pageVisible(
+    filters: ListFilters | undefined,
+    request: PageRequest,
+    visibility: LiaisonProblemVisibility,
+  ): Promise<Page<LiaisonProblemRecord>> {
+    if (this.definition.table !== 'liaison_problems') {
+      throw new Error('Authorized liaison pagination requires the liaison problem repository');
+    }
+    validatePageRequest(request);
+    const base = buildWhere(this.definition, filters ?? {});
+    const authorized = buildLiaisonProblemVisibilityWhere(visibility);
+    const where = `${base.where}${base.where === '' ? ' WHERE ' : ' AND '}${authorized.clause}`;
+    const values = [...base.values, ...authorized.values];
+    const [countRows] = await this.executor.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS total FROM ${this.definition.table}${where}`,
+      values,
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+    const offset = (request.page - 1) * request.pageSize;
+    const [rows] = await this.executor.query<RowDataPacket[]>(
+      `SELECT * FROM ${this.definition.table}${where} ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`,
+      [...values, request.pageSize, offset],
+    );
+    return {
+      items: rows.map((row) => this.decode(row)) as unknown as LiaisonProblemRecord[],
+      page: request.page,
+      pageSize: request.pageSize,
+      total,
+    };
+  }
   async update(id: string, patch: RecordPatch<T>): Promise<T | null> {
     const patchRecord = patch as Record<string, unknown>;
     const assignments: string[] = [];
     const values: SqlValue[] = [];
     for (const { key, column, encode } of this.definition.fields) {
-      if (!Object.hasOwn(patchRecord, key)) continue;
+      if (!Object.hasOwn(patchRecord, key) || patchRecord[key] === undefined) continue;
       assignments.push(`${column} = ?`);
       values.push(toSqlValue(encode ? encode(patchRecord[key]) : patchRecord[key]));
     }
@@ -652,6 +924,7 @@ function buildMySqlStore(executor: Executor, pool: Pool, inTransaction: boolean)
     clubs: repository<ClubRecord>(definitions.clubs),
     clubMemberships: repository<ClubMembershipRecord>(definitions.clubMemberships),
     activities: repository<ActivityRecord>(definitions.activities),
+    festivalSubmissions: repository<FestivalSubmissionRecord>(definitions.festivalSubmissions),
     activityMilestones: repository<ActivityMilestoneRecord>(definitions.activityMilestones),
     competitionFixtures: repository<CompetitionFixtureRecord>(definitions.competitionFixtures),
     activityRegistrations: repository<ActivityRegistrationRecord>(
@@ -661,6 +934,11 @@ function buildMySqlStore(executor: Executor, pool: Pool, inTransaction: boolean)
     sportsTeamMembers: repository<SportsTeamMemberRecord>(definitions.sportsTeamMembers),
     sportsCheckins: repository<SportsCheckinRecord>(definitions.sportsCheckins),
     liaisonResources: repository<LiaisonResourceRecord>(definitions.liaisonResources),
+    liaisonProblems: repository<LiaisonProblemRecord>(definitions.liaisonProblems),
+    liaisonTeams: repository<LiaisonTeamRecord>(definitions.liaisonTeams),
+    liaisonTeamMembers: repository<LiaisonTeamMemberRecord>(definitions.liaisonTeamMembers),
+    liaisonPosts: repository<LiaisonPostRecord>(definitions.liaisonPosts),
+    liaisonOutcomes: repository<LiaisonOutcomeRecord>(definitions.liaisonOutcomes),
     financeRecords: repository<FinanceRecord>(definitions.financeRecords),
   };
   return store;

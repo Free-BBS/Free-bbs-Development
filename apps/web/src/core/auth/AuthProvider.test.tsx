@@ -42,6 +42,7 @@ function RaceConsumer() {
 function AuthConsumer() {
   const auth = useAuth();
   if (auth.status === 'loading') return <p>Loading</p>;
+  if (auth.status === 'denied') return <p>Preview denied</p>;
   if (auth.status === 'unauthenticated') return <a href={auth.loginUrl}>Main site login</a>;
   if (auth.status === 'error') return <p role="alert">{auth.error?.message}</p>;
   if (auth.user === null) return null;
@@ -152,11 +153,51 @@ describe('AuthProvider', () => {
         <AuthConsumer />
       </AuthProvider>,
     );
-    expect(mainSiteLoginHref()).toBe('/login?returnTo=%2Fdevelopment%2F');
+    expect(mainSiteLoginHref()).toBe('/login?next=%2Fdevelopment%2F');
     expect(await screen.findByRole('link', { name: 'Main site login' })).toHaveAttribute(
       'href',
-      '/login?returnTo=%2Fdevelopment%2F',
+      '/login?next=%2Fdevelopment%2F',
     );
+  });
+
+  it('maps a denied preview identity to a distinct state', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn()
+        .mockResolvedValue(
+          jsonResponse(403, { error: { code: 'preview_access_denied', message: 'Not on list' } }),
+        ),
+    );
+    render(
+      <AuthProvider client={new ApiClient({ authMode: 'main' })}>
+        <AuthConsumer />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText('Preview denied')).toBeInTheDocument();
+  });
+
+  it('drops the development identity when another tab signs out of the main site', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, STUDENT))
+      .mockResolvedValueOnce(
+        jsonResponse(401, { error: { code: 'missing_identity', message: 'Login required' } }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <AuthProvider client={new ApiClient({ authMode: 'main' })}>
+        <AuthConsumer />
+      </AuthProvider>,
+    );
+    expect(await screen.findByText('Lin Student')).toBeInTheDocument();
+
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'free_bbs_auth_token' }));
+    });
+
+    expect(await screen.findByRole('link', { name: 'Main site login' })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('preserves an encoded development return location and fails closed for an external path', () => {
@@ -166,9 +207,9 @@ describe('AuthProvider', () => {
         search: '?filter=pending',
         hash: '#record-x',
       }),
-    ).toBe('/login?returnTo=%2Fdevelopment%2Fevents%3Ffilter%3Dpending%23record-x');
+    ).toBe('/login?next=%2Fdevelopment%2Fevents%3Ffilter%3Dpending%23record-x');
     expect(mainSiteLoginHref({ pathname: '//evil.example', search: '', hash: '' })).toBe(
-      '/login?returnTo=%2Fdevelopment%2F',
+      '/login?next=%2Fdevelopment%2F',
     );
   });
   it('renders the complete demo allowlist only in demo mode and reloads after switching', async () => {
@@ -187,7 +228,7 @@ describe('AuthProvider', () => {
         <AuthConsumer />
       </AuthProvider>,
     );
-    const switcher = await screen.findByRole('combobox', { name: 'Demo user' });
+    const switcher = await screen.findByRole('combobox', { name: '预览身份 / Demo user' });
     expect(screen.getAllByRole('option').map((option) => option.getAttribute('value'))).toEqual(
       DEMO_USER_IDS,
     );
@@ -221,7 +262,7 @@ describe('AuthProvider', () => {
     );
 
     await userEvent.selectOptions(
-      screen.getByRole('combobox', { name: 'Demo user' }),
+      screen.getByRole('combobox', { name: '预览身份 / Demo user' }),
       'demo-admin',
     );
     resolveAdmin(jsonResponse(200, { ...STUDENT, uid: 'demo-admin', displayName: 'Demo admin' }));
@@ -243,7 +284,9 @@ describe('AuthProvider', () => {
       </AuthProvider>,
     );
     expect(await screen.findByText('Lin Student')).toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Demo user' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('combobox', { name: '预览身份 / Demo user' }),
+    ).not.toBeInTheDocument();
   });
 });
 

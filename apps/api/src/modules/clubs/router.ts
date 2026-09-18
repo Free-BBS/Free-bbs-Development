@@ -7,6 +7,7 @@ import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { clubReadabilitySchema, contentCategory } from '../../core/validation/content-fields.js';
 import { ClubsService } from './service.js';
 
 import type { Request, Response } from 'express';
@@ -25,6 +26,7 @@ const scope = z.object({ type: identifier.regex(/^[a-z][a-z0-9_]*$/), id: identi
 const status = z.enum(['draft', 'active', 'archived']);
 const querySchema = z
   .object({
+    category: contentCategory.optional(),
     status: status.optional(),
     scopeType: identifier.regex(/^[a-z][a-z0-9_]*$/).optional(),
     scopeId: identifier.optional(),
@@ -34,6 +36,7 @@ const querySchema = z
   .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
 const createSchema = z
   .object({
+    ...clubReadabilitySchema.shape,
     name: z.string().trim().min(1).max(200),
     description: z.string().trim().min(1).max(20_000),
     status: z.literal('draft').default('draft'),
@@ -42,6 +45,7 @@ const createSchema = z
   .strict();
 const patchSchema = z
   .object({
+    ...clubReadabilitySchema.partial().shape,
     id: identifier,
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().min(1).max(20_000).optional(),
@@ -50,7 +54,12 @@ const patchSchema = z
   .strict()
   .refine(
     (value) =>
-      value.name !== undefined || value.description !== undefined || value.scope !== undefined,
+      value.category !== undefined ||
+      value.contactName !== undefined ||
+      value.publicContact !== undefined ||
+      value.name !== undefined ||
+      value.description !== undefined ||
+      value.scope !== undefined,
   );
 const routeSchema = z.object({ clubId: identifier }).strict();
 const membershipRouteSchema = z.object({ clubId: identifier, id: identifier }).strict();

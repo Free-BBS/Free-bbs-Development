@@ -32,17 +32,21 @@ test('interest groups cover membership, support, archive and restore flows', asy
   await page.goto('./interest-groups');
   await expect(page.getByRole('heading', { name: '趣缘群体', level: 2 })).toBeVisible();
   await switchUser(page, 'demo-admin');
-  const create = page.getByRole('heading', { name: '创建趣缘群体草稿' }).locator('..');
-  await create.getByLabel('名称').fill(name);
-  await create.getByLabel('介绍').fill('端到端俱乐部草稿。');
-  await create.getByRole('button', { name: '保存草稿' }).click();
+  await page.getByRole('button', { name: '新建趣缘群体' }).click();
+  await page.getByLabel('名称').fill(name);
+  await page.getByLabel('介绍').fill('端到端俱乐部草稿。');
+  await page.getByLabel('类别').fill('运动健康');
+  await page.getByLabel('公开联系人').fill('club@example.test');
+  await page.getByRole('button', { name: '保存草稿' }).click();
   await expect(page.getByRole('status')).toHaveText('趣缘群体草稿已创建');
 
   const card = page.locator('.workbench-card').filter({ hasText: name });
+  await expect(card).toContainText('运动健康');
+  await expect(card).toContainText('club@example.test');
   await card.getByRole('button', { name: `编辑${name}` }).click();
-  await card.getByLabel('名称').fill(editedName);
-  await card.getByLabel('介绍').fill('刷新后仍保留的俱乐部介绍。');
-  await card.getByRole('button', { name: '保存' }).click();
+  await page.getByLabel('名称').fill(editedName);
+  await page.getByLabel('介绍').fill('刷新后仍保留的俱乐部介绍。');
+  await page.getByRole('button', { name: '保存' }).click();
   await expect(page.getByRole('status')).toHaveText('趣缘群体信息已保存');
 
   const list = await request.get(`${apiRoot}/interest-groups`, { headers: headers('demo-admin') });
@@ -55,6 +59,8 @@ test('interest groups cover membership, support, archive and restore flows', asy
   await switchUser(page, 'demo-student');
   await page.reload();
   const studentCard = page.locator('.workbench-card').filter({ hasText: editedName });
+  await expect(studentCard.getByRole('button', { name: `编辑${editedName}` })).toHaveCount(0);
+  await expect(studentCard.getByRole('heading', { name: '公开活动', exact: true })).toBeVisible();
   await studentCard.getByRole('button', { name: `加入${editedName}` }).click();
   await expect(page.getByRole('status')).toContainText('已提交');
   await studentCard.getByRole('button', { name: `撤回${editedName}申请` }).click();

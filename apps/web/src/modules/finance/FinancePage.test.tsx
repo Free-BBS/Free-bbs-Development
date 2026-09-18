@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -60,6 +60,29 @@ describe('FinancePage', () => {
     vi.useRealTimers();
   });
 
+  it('uses the shared module shell for filtering, async states, records and actions', async () => {
+    mockRequest.mockResolvedValueOnce([existingRecord]);
+
+    render(<FinancePage user={financeLead} />);
+
+    const heading = screen.getByRole('heading', { name: '财务治理' });
+    expect(heading.closest('header')).toHaveClass('module-page-header');
+    const filters = screen.getByRole('search', { name: '筛选财务记录' });
+    expect(filters).toHaveClass('filter-bar');
+    const list = await screen.findByRole('list', { name: '财务记录' });
+    expect(list).toHaveClass('responsive-record-list');
+    expect(within(list).getByText('待审批')).toHaveClass('status-badge');
+    expect(screen.getByRole('button', { name: '批准' }).parentElement).toHaveClass(
+      'module-page-actions',
+    );
+
+    await userEvent.type(screen.getByLabelText('搜索财务记录'), '没有这条记录');
+    expect(screen.getByText('没有匹配的财务记录').closest('[data-state]')).toHaveAttribute(
+      'data-state',
+      'empty',
+    );
+  });
+
   it('displays integer-cent amounts and creates an exact-cent draft before refreshing', async () => {
     const created = {
       ...existingRecord,
@@ -106,7 +129,10 @@ describe('FinancePage', () => {
   it('distinguishes empty, validation and restricted states', async () => {
     mockRequest.mockResolvedValueOnce([]);
     const { rerender } = render(<FinancePage user={financeLead} />);
-    expect(await screen.findByText('暂无财务记录')).toBeInTheDocument();
+    expect((await screen.findByText('暂无财务记录')).closest('[data-state]')).toHaveAttribute(
+      'data-state',
+      'empty',
+    );
 
     await userEvent.type(screen.getByLabelText('记录标题'), '错误金额');
     await userEvent.clear(screen.getByLabelText('金额（元）'));
@@ -118,7 +144,10 @@ describe('FinancePage', () => {
     mockRequest.mockReset();
     mockRequest.mockRejectedValueOnce({ status: 403, message: 'forbidden' });
     rerender(<FinancePage key="restricted" user={financeLead} />);
-    expect(await screen.findByText('暂无财务访问权限')).toBeInTheDocument();
+    expect((await screen.findByText('暂无财务访问权限')).closest('[data-state]')).toHaveAttribute(
+      'data-state',
+      'error',
+    );
   });
 
   it('gates draft creation by the exact live scope with deny precedence', async () => {
@@ -258,7 +287,9 @@ describe('FinancePage', () => {
     await userEvent.click(await screen.findByRole('button', { name: '归档' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('页面保留服务端已确认状态');
     expect(current.status).toBe('approved');
-    expect(screen.getByText(/已批准/)).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('list', { name: '财务记录' })).getByText(/已批准/),
+    ).toBeInTheDocument();
 
     rejectArchive = false;
     await userEvent.click(screen.getByRole('button', { name: '归档' }));

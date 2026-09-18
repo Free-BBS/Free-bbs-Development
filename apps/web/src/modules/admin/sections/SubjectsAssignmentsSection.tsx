@@ -303,7 +303,7 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
         <div className="admin-two-column">
           <section className="panel" aria-labelledby="subject-directory-heading">
             <h4 id="subject-directory-heading">用户目录</h4>
-            <form className="admin-filter-row" role="search" onSubmit={filterSubjects}>
+            <form className="admin-filter-row filter-bar" role="search" onSubmit={filterSubjects}>
               <label>
                 搜索用户
                 <input
@@ -323,7 +323,7 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
               <button type="submit">筛选用户</button>
             </form>
             {subjects.items.length ? (
-              <ul className="record-list">
+              <ul className="record-list responsive-record-list">
                 {subjects.items.map((item) => (
                   <li key={item.id} className="record-card">
                     <div>
@@ -401,7 +401,7 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
           <section className="panel">
             <h4>角色授权记录</h4>
             {roleAssignments.items.length ? (
-              <ul className="record-list">
+              <ul className="record-list responsive-record-list">
                 {roleAssignments.items.map((assignment) => (
                   <li key={assignment.id} className="record-card">
                     <div>
@@ -483,7 +483,7 @@ export function SubjectsAssignmentsSection({ client }: { client: AdminClient }) 
               </button>
             </form>
             {tagAssignments.items.length ? (
-              <ul className="record-list">
+              <ul className="record-list responsive-record-list">
                 {tagAssignments.items.map((assignment) => (
                   <li key={assignment.id} className="record-card">
                     <div>

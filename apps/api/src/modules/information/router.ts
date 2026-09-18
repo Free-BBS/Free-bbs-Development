@@ -7,6 +7,7 @@ import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { contentCategory, nullableContentDateTime } from '../../core/validation/content-fields.js';
 import { PROPOSAL_STATUSES, ProposalService } from './proposal-service.js';
 import { InformationService } from './service.js';
 
@@ -49,7 +50,11 @@ const consultationQuerySchema = z
   .strict()
   .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
 const proposalQuerySchema = z
-  .object({ status: proposalStatus.optional(), ...listQueryFields })
+  .object({
+    status: proposalStatus.optional(),
+    category: contentCategory.optional(),
+    ...listQueryFields,
+  })
   .strict()
   .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
 const announcementCreateSchema = z
@@ -76,11 +81,15 @@ const transitionAnnouncementSchema = z.object({ to: announcementStatus }).strict
 const transitionConsultationSchema = z.object({ to: consultationStatus }).strict();
 const consultationHandlingSchema = z
   .object({
+    dueAt: nullableContentDateTime.optional(),
     assigneeUid: identifier.nullable().optional(),
     reply: z.string().trim().max(20_000).nullable().optional(),
   })
   .strict()
-  .refine((value) => value.assigneeUid !== undefined || value.reply !== undefined);
+  .refine(
+    (value) =>
+      value.assigneeUid !== undefined || value.reply !== undefined || value.dueAt !== undefined,
+  );
 const consultationPatchSchema = z
   .object({
     id: identifier,
@@ -91,6 +100,7 @@ const consultationPatchSchema = z
   .refine((value) => value.title !== undefined || value.body !== undefined);
 const proposalCreateSchema = z
   .object({
+    dueAt: nullableContentDateTime.default(null),
     title,
     problemDescription: body,
     proposedSolution: body,
@@ -99,6 +109,7 @@ const proposalCreateSchema = z
   .strict();
 const proposalMaintenanceSchema = z
   .object({
+    dueAt: nullableContentDateTime.optional(),
     category: z.string().trim().min(1).max(80).optional(),
     status: proposalStatus.optional(),
     assigneeUid: identifier.nullable().optional(),
@@ -108,6 +119,7 @@ const proposalMaintenanceSchema = z
   .strict()
   .refine(
     (value) =>
+      value.dueAt !== undefined ||
       value.category !== undefined ||
       value.status !== undefined ||
       value.assigneeUid !== undefined ||

@@ -137,7 +137,7 @@ describe('ClubsPage', () => {
     const card = await screen.findByRole('article', { name: '自由跑团' });
     expect(within(card).getByRole('button', { name: '编辑自由跑团' })).toBeInTheDocument();
     expect(within(card).getByRole('button', { name: '归档自由跑团' })).toBeInTheDocument();
-    expect(within(card).getByText('new-member')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: '批准 new-member' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '校园夜跑' })).toHaveAttribute(
       'href',
       '/development/events',
@@ -158,16 +158,57 @@ describe('ClubsPage', () => {
       ),
     );
   });
-  it('does not present an empty membership state when the membership request fails', async () => {
+  it('keeps public clubs and activities available when one membership request fails', async () => {
+    const secondClub = { ...club, id: 'club-reading', name: '阅读社' };
     const request = vi.fn(async (path: string) => {
-      if (path === '/interest-groups') return [club];
-      if (path === '/events/activities') return [];
+      if (path === '/interest-groups') return [club, secondClub];
+      if (path === '/events/activities')
+        return [
+          {
+            id: 'activity-reading',
+            title: '读书会',
+            clubId: secondClub.id,
+            startsAt: null,
+            status: 'published',
+          },
+        ];
       if (path === '/interest-groups/club-running/memberships') throw new Error('会员服务不可用');
+      if (path === '/interest-groups/club-reading/memberships') return [];
       throw new Error(`Unexpected request: ${path}`);
     });
 
     renderPage({ request: request as DevelopmentApi['request'] }, student);
-    expect(await screen.findByRole('alert')).toHaveTextContent('会员服务不可用');
-    expect(screen.queryByRole('button', { name: '加入自由跑团' })).not.toBeInTheDocument();
+    const unavailableCard = await screen.findByRole('article', { name: '自由跑团' });
+    const availableCard = await screen.findByRole('article', { name: '阅读社' });
+    expect(within(unavailableCard).getByText('会员状态暂不可用')).toBeInTheDocument();
+    expect(within(availableCard).getByRole('button', { name: '加入阅读社' })).toBeInTheDocument();
+    expect(within(availableCard).getByText('读书会')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('disables an in-flight transition so repeated activation cannot duplicate it', async () => {
+    let resolveTransition!: (value: unknown) => void;
+    const transitionPending = new Promise((resolve) => {
+      resolveTransition = resolve;
+    });
+    const request = vi.fn((path: string) => {
+      if (path === '/interest-groups') return Promise.resolve([club]);
+      if (path === '/events/activities') return Promise.resolve([]);
+      if (path === '/interest-groups/club-running/memberships') return Promise.resolve([]);
+      if (path.endsWith('/transitions')) return transitionPending;
+      throw new Error(`Unexpected request: ${path}`);
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const user = userEvent.setup();
+    renderPage({ request: request as DevelopmentApi['request'] }, maintainer);
+
+    const archive = await screen.findByRole('button', { name: '归档自由跑团' });
+    await user.click(archive);
+    expect(archive).toBeDisabled();
+    await user.click(archive);
+    expect(
+      request.mock.calls.filter(([path]) => String(path).endsWith('/transitions')),
+    ).toHaveLength(1);
+    resolveTransition({ ...club, status: 'archived' });
   });
 });

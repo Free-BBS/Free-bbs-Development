@@ -23,6 +23,20 @@ async function openAdmin(page: Page) {
   await page.locator('.sidebar .module-nav a[href="/development/admin"]').click();
   await expect(page).toHaveURL(/\/development\/admin$/);
 }
+
+test('ordinary students cannot see governed modules and are redirected from administration', async ({
+  page,
+}) => {
+  await page.goto('./dashboard');
+  await expect(page.locator('.user-card')).toContainText('demo-student');
+  await expect(page.locator('.sidebar a[href="/development/finance"]')).toHaveCount(0);
+  await expect(page.locator('.sidebar a[href="/development/admin"]')).toHaveCount(0);
+
+  await page.goto('./admin');
+  await expect(page).toHaveURL(/\/development\/dashboard$/);
+  await expect(page.getByRole('heading', { name: '发展端工作台' })).toBeVisible();
+});
+
 test('a captain can check in their own team but is denied across teams', async ({
   page,
   request,
@@ -36,10 +50,12 @@ test('a captain can check in their own team but is denied across teams', async (
 
   const ownTeam = page.getByRole('article', { name: '院篮球队' });
   const otherTeam = page.getByRole('article', { name: '院羽毛球队' });
-  await expect(ownTeam.getByRole('form', { name: '院篮球队签到' })).toBeVisible();
   await expect(otherTeam.getByRole('form')).toHaveCount(0);
+  await ownTeam.getByRole('link', { name: '查看队伍详情' }).click();
+  await expect(page).toHaveURL(/\/development\/sports\/team-basketball$/);
 
-  const checkinForm = ownTeam.getByRole('form', { name: '院篮球队签到' });
+  const checkinForm = page.getByRole('form', { name: '训练签到' });
+  await expect(checkinForm).toBeVisible();
   await checkinForm.getByLabel('成员 UID').fill('demo-captain');
   await checkinForm.getByLabel('签到日期').fill('2026-07-22');
   await checkinForm.getByRole('button', { name: '记录签到' }).click();
@@ -122,9 +138,7 @@ test('module disabling removes navigation and rejects the module API', async ({
 
     await page.goto('./dashboard');
     await expect(page.locator('.sidebar a[href="/development/liaison"]')).toHaveCount(0);
-    await expect(
-      page.getByTestId('dashboard-module-card').filter({ hasText: '联络资源' }),
-    ).toHaveCount(0);
+    await expect(page.getByTestId('dashboard-module-card')).toHaveCount(0);
 
     const disabledResponse = await request.get(`${apiRoot}/liaison/resources`, {
       headers: demoHeaders('demo-admin'),
@@ -228,7 +242,7 @@ test('governs subjects, expiring grants, binding replacement and audit filters',
 
     await openAdmin(page);
     const directory = page.getByRole('tabpanel', { name: '用户与授权' });
-    await expect(directory).toContainText('共 8 位用户');
+    await expect(directory).toContainText('共 16 位用户');
     await directory.getByLabel('搜索用户').fill('demo-student');
     await directory.getByRole('button', { name: '筛选用户' }).click();
     await expect(directory).toContainText('共 1 位用户');

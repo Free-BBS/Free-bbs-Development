@@ -7,6 +7,7 @@ import { authorize } from '../../core/authorization/authorize.js';
 import type { AuthorizationContext } from '../../core/authorization/policy.js';
 import type { DevelopmentStore } from '../../core/database/types.js';
 import { HttpError } from '../../core/errors/http-error.js';
+import { activityReadabilitySchema } from '../../core/validation/content-fields.js';
 import { ActivityDetailService } from './detail-service.js';
 import { EventsService } from './service.js';
 
@@ -44,6 +45,11 @@ const organizationId = z.enum([
 const nullableDateTime = z.string().datetime({ offset: true }).nullable();
 const querySchema = z
   .object({
+    organizationId: organizationId.optional(),
+    standingActivity: z
+      .enum(['true', 'false'])
+      .transform((value) => value === 'true')
+      .optional(),
     status: status.optional(),
     scopeType: identifier.regex(/^[a-z][a-z0-9_]*$/).optional(),
     scopeId: identifier.optional(),
@@ -53,6 +59,7 @@ const querySchema = z
   .refine((value) => (value.scopeType === undefined) === (value.scopeId === undefined));
 const createSchema = z
   .object({
+    ...activityReadabilitySchema.shape,
     title: z.string().trim().min(1).max(200),
     description: z.string().trim().min(1).max(20_000),
     clubId: identifier.nullable().default(null),
@@ -67,6 +74,7 @@ const createSchema = z
   .strict();
 const patchSchema = z
   .object({
+    ...activityReadabilitySchema.partial().shape,
     id: identifier,
     title: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().min(1).max(20_000).optional(),
@@ -81,6 +89,9 @@ const patchSchema = z
   .strict()
   .refine(
     (value) =>
+      value.registrationDeadline !== undefined ||
+      value.capacity !== undefined ||
+      value.contact !== undefined ||
       value.title !== undefined ||
       value.description !== undefined ||
       value.clubId !== undefined ||

@@ -11,8 +11,12 @@ export type AuthHeaders = Readonly<Record<string, string | string[] | undefined>
 export type AuthenticationResult =
   | { status: 200; user: AuthorizationContext }
   | {
-      status: 401 | 503;
-      code: 'missing_identity' | 'invalid_identity' | 'identity_provider_unavailable';
+      status: 401 | 403 | 503;
+      code:
+        | 'missing_identity'
+        | 'invalid_identity'
+        | 'preview_access_denied'
+        | 'identity_provider_unavailable';
       message: string;
     };
 
@@ -20,6 +24,7 @@ export interface AuthMiddlewareOptions {
   authClient: AuthClient;
   mode: 'main' | 'demo';
   store?: DevelopmentStore;
+  allowedUids?: readonly string[];
   now?: () => Date;
 }
 
@@ -91,6 +96,7 @@ function emptyAuthorizationContext(identity: UserContext): AuthorizationContext 
 }
 
 export function createAuthMiddleware(options: AuthMiddlewareOptions) {
+  const allowedUids = options.allowedUids && new Set(options.allowedUids);
   return async (headers: AuthHeaders): Promise<AuthenticationResult> => {
     const credential = readCredential(headers, options.mode);
     if (!credential.ok) {
@@ -103,6 +109,13 @@ export function createAuthMiddleware(options: AuthMiddlewareOptions) {
       const identity = await options.authClient.introspect(credential.value);
       if (identity === null) {
         return { status: 401, code: 'invalid_identity', message: 'Authentication is invalid' };
+      }
+      if (options.mode === 'main' && allowedUids && !allowedUids.has(identity.uid)) {
+        return {
+          status: 403,
+          code: 'preview_access_denied',
+          message: 'Development preview is not available for this account',
+        };
       }
       const now = (options.now ?? (() => new Date()))();
       if (options.store === undefined) {

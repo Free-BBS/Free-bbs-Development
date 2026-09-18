@@ -115,6 +115,11 @@ test('the production administrator exercises every governance section against My
       ['free_bbs_auth_token', 'production-admin-token'],
     );
     await page.goto('./admin');
+    await expect(
+      page.getByRole('main', { name: '治理管理台' }).locator(':scope > header'),
+    ).toHaveClass(/module-page-header/);
+    await expect(page.getByRole('search')).toHaveClass(/filter-bar/);
+    await expect(page.getByRole('list').first()).toHaveClass(/responsive-record-list/);
 
     const sections = [
       '用户与授权',
@@ -147,7 +152,9 @@ test('the production administrator exercises every governance section against My
     await page.getByRole('tab', { name: '系统状态' }).click();
     const statusPanel = page.getByRole('tabpanel', { name: '系统状态' });
     await expect(statusPanel).toContainText('mysql');
-    await expect(statusPanel).toContainText('7');
+    await expect(
+      statusPanel.getByText('已应用迁移', { exact: true }).locator('..').locator('dd'),
+    ).toHaveText(/^[1-9]\d*$/);
   } finally {
     await expectOk(
       await request.put(`${apiRoot}/admin/roles/${roleKey}/permissions`, {

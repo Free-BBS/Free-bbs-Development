@@ -12,6 +12,34 @@ import { MainSiteAuthClient } from './main-site-auth-client.js';
 import type { AuthClient } from './auth-client.js';
 
 describe('authentication middleware', () => {
+  it('denies a main-site identity outside the preview list before creating a subject', async () => {
+    const store = createMemoryStore({ seed: false });
+    const authenticate = createAuthMiddleware({
+      authClient: {
+        introspect: async (token) => ({
+          uid: token === 'allowed' ? 'u_allowed' : 'u_other',
+          displayName: 'Main user',
+          avatarUrl: null,
+          baseRole: 'student',
+          roles: [],
+          tags: [],
+        }),
+      },
+      mode: 'main',
+      store,
+      allowedUids: ['u_allowed'],
+    });
+
+    await expect(authenticate({ authorization: 'Bearer denied' })).resolves.toMatchObject({
+      status: 403,
+      code: 'preview_access_denied',
+    });
+    expect(await store.subjects.list({ query: 'u_other' })).toEqual([]);
+    await expect(authenticate({ authorization: 'Bearer allowed' })).resolves.toMatchObject({
+      status: 200,
+      user: { uid: 'u_allowed' },
+    });
+  });
   it('returns 401 for a missing bearer token without calling the provider', async () => {
     const introspect = vi.fn<AuthClient['introspect']>();
     const authenticate = createAuthMiddleware({ authClient: { introspect }, mode: 'main' });

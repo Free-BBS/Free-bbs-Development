@@ -212,6 +212,17 @@ describe('memory DevelopmentStore', () => {
     expect(await store.activities.list()).toHaveLength(3);
     expect(await store.sportsTeams.list()).toHaveLength(2);
     expect(await store.liaisonResources.list()).toHaveLength(2);
+    expect(await store.liaisonProblems.list()).toHaveLength(2);
+    expect(await store.liaisonTeams.list()).toHaveLength(2);
+    expect(await store.liaisonTeamMembers.list()).toHaveLength(2);
+    expect(await store.liaisonPosts.list()).toHaveLength(3);
+    expect(await store.liaisonOutcomes.list()).toMatchObject([
+      {
+        problemId: 'liaison-problem-lab-energy',
+        version: 1,
+        status: 'adopted',
+      },
+    ]);
     expect(await store.financeRecords.list()).toHaveLength(2);
   });
 });

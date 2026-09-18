@@ -12,13 +12,14 @@ import type { UserContext } from '@freebbs-development/contracts';
 import {
   ApiClient,
   ApiError,
+  AUTH_TOKEN_STORAGE_KEY,
   createApiClient,
   isDemoUserId,
   type AuthMode,
   type DemoUserId,
 } from '../api/client.js';
 
-export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'error';
+export type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated' | 'denied' | 'error';
 
 export interface AuthContextValue {
   status: AuthStatus;
@@ -53,7 +54,7 @@ export function mainSiteLoginHref(location?: ReturnLocation): string {
       ? `${pathname}${activeLocation?.search ?? ''}${activeLocation?.hash ?? ''}`
       : '/development/';
 
-  return `/login?returnTo=${encodeURIComponent(returnTo)}`;
+  return `/login?next=${encodeURIComponent(returnTo)}`;
 }
 
 function asError(value: unknown): Error {
@@ -85,6 +86,14 @@ export function AuthProvider({ children, client }: AuthProviderProps) {
         setStatus('unauthenticated');
         return;
       }
+      if (
+        caught instanceof ApiError &&
+        caught.status === 403 &&
+        caught.code === 'preview_access_denied'
+      ) {
+        setStatus('denied');
+        return;
+      }
       setError(asError(caught));
       setStatus('error');
     }
@@ -96,6 +105,15 @@ export function AuthProvider({ children, client }: AuthProviderProps) {
       requestGeneration.current += 1;
     };
   }, [reload]);
+
+  useEffect(() => {
+    if (activeClient.authMode !== 'main') return;
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === AUTH_TOKEN_STORAGE_KEY || event.key === null) void reload();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [activeClient.authMode, reload]);
 
   const setDemoUser = useCallback(
     (userId: string) => {
