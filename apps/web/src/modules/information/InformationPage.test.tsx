@@ -231,11 +231,12 @@ describe('InformationPage', () => {
     expect(await screen.findByText('请在服务台提交材料。')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: '开始处理 活动场地咨询' }));
     expect(await screen.findByText('处理中')).toBeInTheDocument();
+    const expectedDueAt = new Date('2026-09-20T16:00').toISOString();
     expect(request).toHaveBeenCalledWith(
       '/information/consultations/consultation-1/handling',
       expect.objectContaining({
         method: 'PATCH',
-        body: expect.stringContaining('"dueAt":"2026-09-20T08:00:00.000Z"'),
+        body: expect.stringContaining(`"dueAt":"${expectedDueAt}"`),
       }),
     );
   });

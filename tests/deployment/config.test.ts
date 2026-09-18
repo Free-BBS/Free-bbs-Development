@@ -53,7 +53,7 @@ describe('deployment configuration', () => {
       scripts: Record<string, string>;
     };
     expect(packageJson.scripts['test:mysql']).toBe(
-      'npm run db:migrate && npm run db:migrate && vitest run apps/api/src/core/database/mysql.integration.test.ts',
+      'npm run build:contracts && npm run db:migrate && npm run db:migrate && vitest run apps/api/src/core/database/mysql.integration.test.ts',
     );
 
     const workflow = configuration('.github/workflows/ci.yml');

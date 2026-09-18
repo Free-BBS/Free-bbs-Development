@@ -20,7 +20,7 @@
     "test:workflows": "node --test tests/workflows/release-workflows.test.mjs",
     "test:e2e:production": "playwright test --config playwright.production.config.ts",
     "db:migrate": "node scripts/migrate.mjs",
-    "test:mysql": "npm run db:migrate && npm run db:migrate && vitest run apps/api/src/core/database/mysql.integration.test.ts",
+    "test:mysql": "npm run build:contracts && npm run db:migrate && npm run db:migrate && vitest run apps/api/src/core/database/mysql.integration.test.ts",
     "db:seed": "node scripts/seed.mjs",
     "admin:bootstrap": "node scripts/admin-bootstrap.mjs",
     "typecheck": "npm run build:contracts && npm run typecheck -ws --if-present",
