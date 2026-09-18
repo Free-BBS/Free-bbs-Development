@@ -15,6 +15,10 @@ const publicScope = { type: 'public', id: '*' } as const;
 let handle: MySqlStoreHandle;
 
 async function cleanCreatedRecords(): Promise<void> {
+  await handle.pool.execute(
+    'DELETE FROM activity_registrations WHERE activity_id IN (SELECT id FROM activities WHERE owner_uid = ?)',
+    [runId],
+  );
   for (const table of [
     'audit_logs',
     'liaison_outcomes',
@@ -285,6 +289,7 @@ integration('real MySQL 8 store integration', () => {
   it('matches memory reference and RESTRICT semantics for liaison aggregates', async () => {
     const memberUid = `${runId}-member`;
     const participantUid = `${runId}-participant`;
+    const missingProblemId = `missing-${randomUUID()}`;
     const stores = [createMemoryStore({ seed: false }), handle.store];
     for (const store of stores) {
       if (store !== handle.store) {
@@ -301,7 +306,7 @@ integration('real MySQL 8 store integration', () => {
       }
       await expect(
         store.liaisonTeams.create({
-          problemId: `${runId}-missing-problem`,
+          problemId: missingProblemId,
           name: 'Orphan team',
           proposal: 'Must fail',
           maintainerUid: memberUid,
