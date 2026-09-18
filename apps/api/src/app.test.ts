@@ -7,6 +7,35 @@ import { createMemoryStore } from './core/database/memory-store.js';
 import { createApp } from './app.js';
 
 describe('development API core', () => {
+  it('protects main-mode identity and module metadata with the production preview list', async () => {
+    const app = createApp({
+      store: createMemoryStore({ seed: false }),
+      authMode: 'main',
+      previewAllowedUids: ['u_allowed'],
+      authClient: {
+        introspect: async (token) => ({
+          uid: token === 'allowed' ? 'u_allowed' : 'u_other',
+          displayName: 'Main user',
+          avatarUrl: null,
+          baseRole: 'student',
+          roles: [],
+          tags: [],
+        }),
+      },
+    });
+    await request(app)
+      .get('/api/development/v1/me')
+      .set('Authorization', 'Bearer denied')
+      .expect(403);
+    await request(app)
+      .get('/api/development/v1/modules')
+      .set('Authorization', 'Bearer denied')
+      .expect(403);
+    await request(app)
+      .get('/api/development/v1/me')
+      .set('Authorization', 'Bearer allowed')
+      .expect(200);
+  });
   it('returns a minimal health envelope without database secrets', async () => {
     const app = createApp({ store: createMemoryStore(), databaseMode: 'memory' });
     const response = await request(app).get('/api/development/v1/health').expect(200);

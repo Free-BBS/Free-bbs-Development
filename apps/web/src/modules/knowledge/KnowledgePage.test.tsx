@@ -1,5 +1,11 @@
-import { render, screen, within } from '@testing-library/react';
+import { render as renderView, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
+import type { ReactNode } from 'react';
+
+function render(ui: ReactNode) {
+  return renderView(<MemoryRouter>{ui}</MemoryRouter>);
+}
 import { describe, expect, it, vi } from 'vitest';
 
 import type { UserContext } from '@freebbs-development/contracts';
@@ -28,6 +34,18 @@ const draft = {
 };
 
 describe('KnowledgePage', () => {
+  it('offers a linked preview without rendering the full long body on the directory', async () => {
+    const entry = { ...draft, summary: '简短摘要', body: '完整正文'.repeat(150) };
+    const request = vi.fn().mockResolvedValue([entry]);
+    render(<KnowledgePage client={{ request } as unknown as ApiClient} user={admin} />);
+    expect(await screen.findByRole('link', { name: '活动复盘模板' })).toHaveAttribute(
+      'href',
+      '/knowledge/knowledge-1',
+    );
+    expect(screen.getByText('简短摘要')).toBeInTheDocument();
+    expect(screen.queryByText(entry.body)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '编辑 活动复盘模板' })).toBeInTheDocument();
+  });
   it('searches title, summary, tags and body, and edits readability metadata in a drawer', async () => {
     const entry = {
       ...draft,

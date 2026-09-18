@@ -1,5 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { render as renderView, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
+import type { ReactNode } from 'react';
+
+function render(ui: ReactNode) {
+  return renderView(<MemoryRouter>{ui}</MemoryRouter>);
+}
 import { describe, expect, it, vi } from 'vitest';
 
 import type { UserContext } from '@freebbs-development/contracts';

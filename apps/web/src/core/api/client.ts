@@ -1,20 +1,10 @@
-import type { ApiEnvelope } from '@freebbs-development/contracts';
+import { DEMO_USER_IDS, type DemoUserId, type ApiEnvelope } from '@freebbs-development/contracts';
+export { DEMO_USER_IDS, type DemoUserId } from '@freebbs-development/contracts';
 
 export const API_BASE_PATH = '/api/development/v1';
 export const AUTH_TOKEN_STORAGE_KEY = 'free_bbs_auth_token';
-export const DEMO_USER_IDS = [
-  'demo-student',
-  'demo-admin',
-  'demo-rights-member',
-  'demo-liaison-member',
-  'demo-sports-lead',
-  'demo-sports-director',
-  'demo-captain',
-  'demo-tuanwei-lead',
-] as const;
 
 export type AuthMode = 'main' | 'demo';
-export type DemoUserId = (typeof DEMO_USER_IDS)[number];
 
 interface ApiErrorData {
   error?: { code?: unknown; message?: unknown };
@@ -91,7 +81,7 @@ export class ApiClient {
     this.selectedDemoUserId = requireDemoUserId(userId);
   }
 
-  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+  private async fetchResponse(path: string, init: RequestInit): Promise<Response> {
     const headers = new Headers(init.headers);
     headers.set('Accept', 'application/json');
 
@@ -104,11 +94,34 @@ export class ApiClient {
       if (token) headers.set('Authorization', `Bearer ${token}`);
     }
 
-    const response = await this.fetchImplementation(requestPath(path), {
+    return this.fetchImplementation(requestPath(path), {
       ...init,
       method: init.method ?? 'GET',
       headers,
     });
+  }
+
+  async download(path: string, init: RequestInit = {}): Promise<Blob> {
+    const response = await this.fetchResponse(path, { ...init, cache: 'no-store' });
+    if (!response.ok) {
+      let envelope: ApiEnvelope<ApiErrorData> | null = null;
+      try {
+        envelope = (await response.json()) as ApiEnvelope<ApiErrorData>;
+      } catch {
+        /* Non-JSON proxy errors retain a useful fallback. */
+      }
+      throw new ApiError(
+        response.status,
+        stringOr(envelope?.data?.error?.code, 'media_unavailable'),
+        stringOr(envelope?.data?.error?.message, '视频暂时无法加载，请重试。'),
+        envelope?.requestId ?? null,
+      );
+    }
+    return response.blob();
+  }
+
+  async request<T>(path: string, init: RequestInit = {}): Promise<T> {
+    const response = await this.fetchResponse(path, init);
 
     if (response.status === 204) return undefined as T;
 

@@ -123,8 +123,11 @@ describe('EventsPage', () => {
 
     renderPage({ request: request as DevelopmentApi['request'] });
     let card = await screen.findByRole('article', { name: '校园夜跑' });
+    expect(within(card).getByText('管理活动').closest('details')).not.toHaveAttribute('open');
+    expect(within(card).getByText('报名与联系信息').closest('details')).not.toHaveAttribute('open');
     expect(within(card).getByText('常设活动')).toBeInTheDocument();
-    expect(within(card).getByText('活动简介')).toBeInTheDocument();
+    expect(within(card).getByLabelText('完整活动介绍：五公里轻松跑。')).toBeInTheDocument();
+    await user.click(within(card).getByText('报名与联系信息'));
     expect(within(card).getByText('地点：紫荆操场')).toBeInTheDocument();
     expect(within(card).getByText(/结束时间：/)).toBeInTheDocument();
     expect(within(card).getByText(/报名截止：/)).toBeInTheDocument();
@@ -139,6 +142,7 @@ describe('EventsPage', () => {
       '/development/events/activity-workflow',
     );
 
+    await user.click(within(card).getByText('管理活动'));
     await user.click(within(card).getByRole('button', { name: '编辑校园夜跑' }));
     const editor = screen.getByRole('dialog', { name: '编辑活动' });
     await user.clear(within(editor).getByLabelText('活动名称'));

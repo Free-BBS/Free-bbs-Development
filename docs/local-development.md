@@ -40,16 +40,18 @@ npm run dev
 - `AUTH_MODE=demo`；
 - 前端开发代理把 `/api/development/v1` 转发到 `127.0.0.1:3100`。
 
-打开 `http://localhost:5173/development/`。演示模式可切换八个固定身份：
+打开 `http://localhost:5173/development/`。演示模式可切换十六个固定身份，四个中心各有部员、部长、负责人三个层级：
 
 - `demo-student`：普通同学；
 - `demo-admin`：最高权限；
-- `demo-rights-member`：权益发展中心部员；
-- `demo-liaison-member`：联络中心部员；
-- `demo-sports-lead`：体育负责人；
-- `demo-sports-director`：体育中心部长；
+- `demo-arts-member`、`demo-arts-director`、`demo-arts-lead`：文艺中心部员、部长、负责人；
+- `demo-sports-member`、`demo-sports-director`、`demo-sports-lead`：体育中心部员、部长、负责人；
+- `demo-liaison-member`、`demo-liaison-director`、`demo-liaison-lead`：联络中心部员、部长、负责人；
+- `demo-rights-member`、`demo-rights-director`、`demo-rights-lead`：权发中心部员、部长、负责人；
 - `demo-captain`：篮球队范围内的代表队队长；
 - `demo-tuanwei-lead`：团委负责人和财务审核人。
+
+学生节特别栏目在文艺中心三个层级、团委负责人和平台管理员身份下显示顶部「审核投稿」按钮。其他中心身份不自动获得私密作品权限。身份目录集中定义在 `packages/contracts/src/demo.ts`，实际角色和组织标签由服务端授权存储加载。
 
 可用下面的命令检查 API：
 

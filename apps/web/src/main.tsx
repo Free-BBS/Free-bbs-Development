@@ -8,6 +8,9 @@ import './styles/theme.css';
 import './styles/shell.css';
 import './styles/components.css';
 import './styles/activity.css';
+import './styles/knowledge.css';
+import './styles/discovery.css';
+import './styles/festival.css';
 
 const rootElement = document.getElementById('root');
 

@@ -62,7 +62,7 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
     ownerTeam: '联络中心',
     status: 'enabled',
     requiredPermissions: [],
-    order: 4,
+    order: 7,
   },
   {
     id: 'events',
@@ -73,18 +73,18 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
     ownerTeam: '活动团队',
     status: 'enabled',
     requiredPermissions: [],
-    order: 5,
+    order: 6,
   },
   {
     id: 'liaison',
-    name: '联络资源',
+    name: '资源',
     description: '课题组与企业发布真实问题，同学组队协作并沉淀成果。',
     route: '/liaison',
     icon: liaisonIcon,
     ownerTeam: '联络团队',
     status: 'enabled',
     requiredPermissions: [],
-    order: 6,
+    order: 4,
   },
   {
     id: 'sports',
@@ -95,7 +95,7 @@ export const MODULE_MANIFESTS: readonly ModuleManifest[] = [
     ownerTeam: '体育团队',
     status: 'enabled',
     requiredPermissions: [],
-    order: 7,
+    order: 5,
   },
   {
     id: 'finance',
@@ -150,5 +150,5 @@ export function visibleModuleManifests(
       manifest.requiredPermissions.every((permission) =>
         hasPresentationPermission(user, permission),
       ),
-  );
+  ).sort((left, right) => left.order - right.order);
 }

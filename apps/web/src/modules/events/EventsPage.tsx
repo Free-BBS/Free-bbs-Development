@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 
 import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
 import { EditorDrawer } from '../../components/EditorDrawer.js';
+import { ModulePageHeader } from '../../components/ModulePageHeader.js';
 import { createApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
+import { DailyDiscovery } from '../discovery/DailyDiscovery.js';
+import { FreeBbsMapAction } from '../discovery/FreeBbsMapAction.js';
 
 export interface DevelopmentApi {
   request<T>(path: string, init?: RequestInit): Promise<T>;
@@ -360,9 +363,34 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
   const canCreate = permitted(user, 'events.create', 'activity', publicScope);
 
   return (
-    <section className="module-page" aria-labelledby="events-title">
-      <h2 id="events-title">活动</h2>
-      <p>从活动草稿、审核、发布到报名和归档，全程使用服务器确认的状态。</p>
+    <section className="module-page" aria-label="活动">
+      <ModulePageHeader
+        title="活动"
+        description="发现近期活动，查看安排与报名信息。"
+        actions={
+          <>
+            <FreeBbsMapAction />
+            {canCreate ? (
+              <button type="button" onClick={() => setCreateDrawerOpen(true)}>
+                创建活动
+              </button>
+            ) : null}
+          </>
+        }
+      />
+
+      <Link className="festival-entrance" to="/events/student-festival">
+        <div>
+          <span className="festival-eyebrow">置顶 · 学生节特别企划</span>
+          <strong>「我要上学生节」特别栏目</strong>
+          <p>分享你的节目与创意，让热爱走上舞台。</p>
+        </div>
+        <span className="festival-entrance-arrow" aria-hidden="true">
+          ↗
+        </span>
+      </Link>
+
+      <DailyDiscovery client={activeClient} uid={user?.uid ?? 'guest'} activities={activities} />
 
       {feedback !== null && <p role="status">{feedback}</p>}
       {actionError !== null && <p role="alert">{actionError}</p>}
@@ -404,191 +432,234 @@ export function EventsPage({ client, user: suppliedUser }: EventsPageProps) {
             const headingId = `activity-${activity.id}-title`;
 
             return (
-              <article className="workbench-card" aria-labelledby={headingId} key={activity.id}>
-                <span
-                  className="status-badge"
-                  data-status={activity.status === 'published' ? 'success' : 'warning'}
-                >
-                  {statusLabels[activity.status]}
-                </span>
-                {activity.standingActivity ? <span className="status-badge">常设活动</span> : null}
-                <h3 id={headingId}>{activity.title}</h3>
+              <article
+                className="workbench-card event-card"
+                aria-labelledby={headingId}
+                key={activity.id}
+              >
+                <header className="event-card-top">
+                  <time
+                    className="event-date-stamp"
+                    dateTime={activity.startsAt ?? undefined}
+                    aria-label={formatStart(activity.startsAt)}
+                  >
+                    <span>
+                      {activity.startsAt
+                        ? new Date(activity.startsAt).getMonth() + 1 + '月'
+                        : '日期'}
+                    </span>
+                    <strong>
+                      {activity.startsAt
+                        ? String(new Date(activity.startsAt).getDate()).padStart(2, '0')
+                        : '待定'}
+                    </strong>
+                  </time>
+                  <div className="event-card-heading">
+                    <div className="event-card-labels">
+                      <span
+                        className="status-badge"
+                        data-status={activity.status === 'published' ? 'success' : 'warning'}
+                      >
+                        {statusLabels[activity.status]}
+                      </span>
+                      {activity.standingActivity ? (
+                        <span className="event-standing-label">常设活动</span>
+                      ) : null}
+                    </div>
+                    <h3 id={headingId}>
+                      <Link to={'/events/' + encodeURIComponent(activity.id)}>
+                        {activity.title}
+                      </Link>
+                    </h3>
+                  </div>
+                </header>
                 <p
                   className="activity-summary"
-                  aria-label={`完整活动介绍：${activity.description}`}
+                  aria-label={'完整活动介绍：' + activity.description}
                 >
-                  <strong>活动简介</strong>
                   {conciseActivitySummary(activity.description)}
                 </p>
-                <p>开始时间：{formatStart(activity.startsAt)}</p>
-                <p>结束时间：{formatStart(activity.endsAt ?? null)}</p>
-                <p>地点：{activity.location || '待定'}</p>
-                <p>报名截止：{formatStart(activity.registrationDeadline ?? null)}</p>
-                <p>
-                  容量：
-                  {activity.capacity === null || activity.capacity === undefined
-                    ? '不限'
-                    : `${activity.capacity} 人`}
-                </p>
-                <p>联系人：{activity.contact || '待公布'}</p>
-                <p>
-                  主办：
-                  {activity.organizationId
-                    ? (organizationLabels[activity.organizationId] ?? activity.organizationId)
-                    : '平台'}
-                </p>
-                <Link to={`/events/${encodeURIComponent(activity.id)}`}>查看详情与时间线</Link>
-                {activity.clubId !== null ? (
-                  <Link to="/interest-groups">查看所属趣缘群体</Link>
-                ) : null}
-
-                {canManageCreatorEdge &&
-                (activity.status === 'draft' || activity.status === 'rejected') ? (
-                  <button
-                    type="button"
-                    aria-label={`编辑${activity.title}`}
-                    onClick={() => beginEdit(activity)}
-                  >
-                    编辑
-                  </button>
-                ) : null}
-
-                <div className="action-row">
-                  {canManageCreatorEdge && activity.status === 'draft' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void transition(activity, 'pending', '活动已提交审核')}
-                    >
-                      提交审核
-                    </button>
-                  ) : null}
-                  {canApprove && activity.status === 'pending' ? (
-                    <>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void transition(activity, 'approved', '活动已批准')}
-                      >
-                        批准活动
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void transition(activity, 'rejected', '驳回活动')}
-                      >
-                        驳回活动
-                      </button>
-                    </>
-                  ) : null}
-                  {canManageCreatorEdge && activity.status === 'rejected' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void transition(activity, 'draft', '活动已转回草稿')}
-                    >
-                      修订为草稿
-                    </button>
-                  ) : null}
-                  {canUpdate && activity.status === 'approved' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void transition(activity, 'published', '活动已发布')}
-                    >
-                      发布活动
-                    </button>
-                  ) : null}
-                  {canUpdate && activity.status === 'published' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void transition(activity, 'finished', '活动已结束')}
-                    >
-                      结束活动
-                    </button>
-                  ) : null}
-                  {canUpdate && activity.status === 'finished' ? (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void transition(activity, 'archived', '归档活动')}
-                    >
-                      归档活动
-                    </button>
-                  ) : null}
+                <div className="event-card-facts">
+                  <p>开始时间：{formatStart(activity.startsAt)}</p>
+                  <p>地点：{activity.location || '待定'}</p>
+                  <p>
+                    主办：
+                    {activity.organizationId
+                      ? (organizationLabels[activity.organizationId] ?? activity.organizationId)
+                      : '平台'}
+                  </p>
                 </div>
-
-                {activity.status === 'published' && canRegister ? (
-                  registered && canCancel ? (
-                    <button type="button" disabled={busy} onClick={() => void cancel(activity)}>
-                      取消报名
-                    </button>
-                  ) : (
-                    <button type="button" disabled={busy} onClick={() => void register(activity)}>
-                      报名活动
-                    </button>
-                  )
-                ) : null}
-
-                {canUpdate || canSupport ? (
-                  <section aria-label={`${activity.title}技术支持`}>
-                    <h4>技术支持</h4>
+                <details className="event-card-disclosure">
+                  <summary>报名与联系信息</summary>
+                  <div className="event-card-extra">
+                    <p>结束时间：{formatStart(activity.endsAt ?? null)}</p>
+                    <p>报名截止：{formatStart(activity.registrationDeadline ?? null)}</p>
                     <p>
-                      {activity.technicalSupportStatus === 'not_requested'
-                        ? '尚未申请'
-                        : activity.technicalSupportStatus === 'requested'
-                          ? '等待确认'
-                          : '已确认'}
+                      容量：
+                      {activity.capacity === null || activity.capacity === undefined
+                        ? '不限'
+                        : activity.capacity + ' 人'}
                     </p>
-                    {activity.technicalSupportStatus !== 'confirmed' ? (
-                      <label>
-                        支持说明
-                        <input
-                          value={supportNotes[activity.id] ?? activity.technicalSupportNote ?? ''}
-                          onChange={(event) =>
-                            setSupportNotes((current) => ({
-                              ...current,
-                              [activity.id]: event.target.value,
-                            }))
-                          }
-                        />
-                      </label>
+                    <p>联系人：{activity.contact || '待公布'}</p>
+                    {activity.clubId !== null ? (
+                      <Link to="/interest-groups">查看所属趣缘群体</Link>
                     ) : null}
-                    {canUpdate && activity.technicalSupportStatus === 'not_requested' ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void updateSupport(activity, 'requested')}
-                      >
-                        申请技术支持
+                  </div>
+                </details>
+                <footer className="event-card-footer">
+                  <Link
+                    className="event-detail-link"
+                    to={'/events/' + encodeURIComponent(activity.id)}
+                  >
+                    查看详情与时间线 <span aria-hidden="true">↗</span>
+                  </Link>
+                  {registered ? <span className="event-registration-state">已报名</span> : null}
+                  {activity.status === 'published' && canRegister ? (
+                    registered && canCancel ? (
+                      <button type="button" disabled={busy} onClick={() => void cancel(activity)}>
+                        取消报名
                       </button>
-                    ) : null}
-                    {canSupport && activity.technicalSupportStatus === 'requested' ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void updateSupport(activity, 'confirmed')}
-                      >
-                        确认技术支持
+                    ) : (
+                      <button type="button" disabled={busy} onClick={() => void register(activity)}>
+                        报名活动
                       </button>
-                    ) : null}
-                  </section>
+                    )
+                  ) : null}
+                </footer>
+                {canManageCreatorEdge || canApprove || canSupport ? (
+                  <details className="event-card-disclosure event-card-management">
+                    <summary>管理活动</summary>
+                    <div className="event-management-body">
+                      {canManageCreatorEdge &&
+                      (activity.status === 'draft' || activity.status === 'rejected') ? (
+                        <button
+                          type="button"
+                          aria-label={`编辑${activity.title}`}
+                          onClick={() => beginEdit(activity)}
+                        >
+                          编辑
+                        </button>
+                      ) : null}
+
+                      <div className="action-row">
+                        {canManageCreatorEdge && activity.status === 'draft' ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void transition(activity, 'pending', '活动已提交审核')}
+                          >
+                            提交审核
+                          </button>
+                        ) : null}
+                        {canApprove && activity.status === 'pending' ? (
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void transition(activity, 'approved', '活动已批准')}
+                            >
+                              批准活动
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void transition(activity, 'rejected', '驳回活动')}
+                            >
+                              驳回活动
+                            </button>
+                          </>
+                        ) : null}
+                        {canManageCreatorEdge && activity.status === 'rejected' ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void transition(activity, 'draft', '活动已转回草稿')}
+                          >
+                            修订为草稿
+                          </button>
+                        ) : null}
+                        {canUpdate && activity.status === 'approved' ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void transition(activity, 'published', '活动已发布')}
+                          >
+                            发布活动
+                          </button>
+                        ) : null}
+                        {canUpdate && activity.status === 'published' ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void transition(activity, 'finished', '活动已结束')}
+                          >
+                            结束活动
+                          </button>
+                        ) : null}
+                        {canUpdate && activity.status === 'finished' ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void transition(activity, 'archived', '归档活动')}
+                          >
+                            归档活动
+                          </button>
+                        ) : null}
+                      </div>
+
+                      {canUpdate || canSupport ? (
+                        <section aria-label={`${activity.title}技术支持`}>
+                          <h4>技术支持</h4>
+                          <p>
+                            {activity.technicalSupportStatus === 'not_requested'
+                              ? '尚未申请'
+                              : activity.technicalSupportStatus === 'requested'
+                                ? '等待确认'
+                                : '已确认'}
+                          </p>
+                          {activity.technicalSupportStatus !== 'confirmed' ? (
+                            <label>
+                              支持说明
+                              <input
+                                value={
+                                  supportNotes[activity.id] ?? activity.technicalSupportNote ?? ''
+                                }
+                                onChange={(event) =>
+                                  setSupportNotes((current) => ({
+                                    ...current,
+                                    [activity.id]: event.target.value,
+                                  }))
+                                }
+                              />
+                            </label>
+                          ) : null}
+                          {canUpdate && activity.technicalSupportStatus === 'not_requested' ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void updateSupport(activity, 'requested')}
+                            >
+                              申请技术支持
+                            </button>
+                          ) : null}
+                          {canSupport && activity.technicalSupportStatus === 'requested' ? (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void updateSupport(activity, 'confirmed')}
+                            >
+                              确认技术支持
+                            </button>
+                          ) : null}
+                        </section>
+                      ) : null}
+                    </div>
+                  </details>
                 ) : null}
               </article>
             );
           })}
         </div>
-      ) : null}
-
-      {canCreate ? (
-        <section aria-labelledby="event-create-title">
-          <h2 id="event-create-title">创建活动草稿</h2>
-          <p>在编辑器中补全时间、报名与联系信息，再保存为草稿。</p>
-          <button type="button" onClick={() => setCreateDrawerOpen(true)}>
-            创建活动
-          </button>
-        </section>
       ) : null}
 
       <EditorDrawer

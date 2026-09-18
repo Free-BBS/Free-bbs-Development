@@ -24,7 +24,7 @@ test('events covers approval, registration, support and archive lifecycles', asy
   request,
 }, testInfo) => {
   test.setTimeout(90_000);
-  const suffix = `${testInfo.workerIndex}-${testInfo.retry}`;
+  const suffix = `${testInfo.workerIndex}-${testInfo.retry}-${Date.now()}`;
   const title = `E2E 活动 ${suffix}`;
   const editedTitle = `${title} 已编辑`;
   page.on('dialog', (dialog) => dialog.accept());
@@ -39,6 +39,7 @@ test('events covers approval, registration, support and archive lifecycles', asy
   await expect(page.getByRole('status')).toHaveText('活动草稿已创建');
 
   const card = page.locator('.workbench-card').filter({ hasText: title });
+  await card.getByText('管理活动', { exact: true }).click();
   await card.getByRole('button', { name: `编辑${title}` }).click();
   const editor = page.getByRole('dialog', { name: '编辑活动' });
   await editor.getByLabel('活动名称').fill(editedTitle);

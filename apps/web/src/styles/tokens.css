@@ -1,24 +1,24 @@
 :root {
   color-scheme: light;
 
-  --surface-page: #f4f6f5;
+  --surface-page: #f4f6f8;
   --surface-raised: #ffffff;
-  --surface-muted: #edf1ef;
-  --border-subtle: #d8e0dd;
-  --action-primary: #155e59;
+  --surface-muted: #eef3f4;
+  --border-subtle: #d8e2e5;
+  --action-primary: #075d68;
   --action-primary-text: #ffffff;
-  --nav-link-hover-background: #24504f;
+  --nav-link-hover-background: #175267;
   --nav-link-hover-text: #ffffff;
-  --nav-link-active-background: #155e59;
+  --nav-link-active-background: #075d68;
   --nav-link-active-text: #ffffff;
-  --color-sidebar: #173a3a;
-  --color-sidebar-deep: #103232;
-  --color-active: #155e59;
+  --color-sidebar: #103744;
+  --color-sidebar-deep: #0b2934;
+  --color-active: #075d68;
   --color-accent: #d59a25;
   --color-page: var(--surface-page);
   --color-line: var(--border-subtle);
-  --color-text: #172220;
-  --color-muted: #63716d;
+  --color-text: #14242b;
+  --color-muted: #617178;
   --color-sidebar-text: #f7fbf9;
   --color-paper: var(--surface-raised);
   --color-paper-muted: var(--surface-muted);
@@ -38,9 +38,9 @@
     'Segoe UI', sans-serif;
   --font-serif: 'Noto Serif SC', 'Songti SC', SimSun, serif;
 
-  --sidebar-width: 300px;
-  --titlebar-height: 92px;
-  --content-max-width: 1440px;
+  --sidebar-width: 232px;
+  --titlebar-height: 68px;
+  --content-max-width: 1240px;
   --mobile-nav-height: 76px;
 
   --space-1: 4px;
@@ -56,7 +56,7 @@
   --radius-sm: 12px;
   --radius-md: 14px;
   --radius-lg: 18px;
-  --shadow-card: 0 1px 2px rgba(23, 34, 32, 0.06), 0 8px 20px rgba(23, 34, 32, 0.06);
+  --shadow-card: 0 1px 2px rgba(23, 34, 32, 0.04);
   --shadow-raised: 0 16px 36px rgba(23, 34, 32, 0.16);
   --transition-fast: 140ms ease;
 }

@@ -8,7 +8,7 @@ Web 统一挂载在 `/development/`，API 统一挂载在 `/api/development/v1/`
 
 | 模块       | 列表或默认路由               | 详情与子路由                                                                                                        |
 | ---------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| 经验库     | `/knowledge`                 | 单页筛选与编辑抽屉                                                                                                  |
+| 经验库     | `/knowledge`                 | `/knowledge/:entryId` 阅读页；卡片筛选与编辑抽屉；社工分区通过 `audience=social_org` 保留                           |
 | 信息与咨询 | `/information/announcements` | `/information/consultations`、`/information/triage`、`/information/proposals`、`/information/proposals/:proposalId` |
 | 趣缘群体   | `/interest-groups`           | 旧地址 `/clubs` 永久在前端兼容跳转                                                                                  |
 | 活动       | `/events`                    | `/events/:activityId`                                                                                               |

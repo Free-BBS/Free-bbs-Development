@@ -1,6 +1,6 @@
 import type { ModuleManifest } from '@freebbs-development/contracts';
 import { Navigate, RouterProvider, createBrowserRouter, useLoaderData } from 'react-router-dom';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 
 import { createApiClient } from '../core/api/client.js';
 import { useAuth } from '../core/auth/AuthProvider.js';
@@ -11,6 +11,7 @@ import { ClubsPage } from '../modules/clubs/ClubsPage.js';
 import { DashboardPage } from '../modules/dashboard/DashboardPage.js';
 import { ActivityDetailPage } from '../modules/events/ActivityDetailPage.js';
 import { EventsPage } from '../modules/events/EventsPage.js';
+import { FestivalPage } from '../modules/festival/FestivalPage.js';
 import { FinancePage } from '../modules/finance/FinancePage.js';
 import { AnnouncementsPage } from '../modules/information/AnnouncementsPage.js';
 import { ConsultationsPage } from '../modules/information/ConsultationsPage.js';
@@ -19,6 +20,7 @@ import { ProposalDetailPage } from '../modules/information/ProposalDetailPage.js
 import { ProposalPool } from '../modules/information/ProposalPool.js';
 import { TriagePage } from '../modules/information/TriagePage.js';
 import { KnowledgePage } from '../modules/knowledge/KnowledgePage.js';
+import { KnowledgeDetailPage } from '../modules/knowledge/KnowledgeDetailPage.js';
 import { LiaisonPage } from '../modules/liaison/LiaisonPage.js';
 import { ProblemDetailPage } from '../modules/liaison/ProblemDetailPage.js';
 import { SportsPage } from '../modules/sports/SportsPage.js';
@@ -54,7 +56,26 @@ function DashboardRoute() {
 
 function KnowledgeRoute() {
   const auth = useAuth();
-  return <KnowledgePage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+  const [search] = useSearchParams();
+  const audience = search.get('audience') === 'social_org' ? 'social_org' : 'general';
+  return (
+    <KnowledgePage key={`${auth.demoUser ?? auth.user?.uid}:${audience}`} client={auth.client} />
+  );
+}
+
+function KnowledgeDetailRoute() {
+  const auth = useAuth();
+  const { entryId = '' } = useParams();
+  const [search] = useSearchParams();
+  const audience = search.get('audience') === 'social_org' ? 'social_org' : 'general';
+  return (
+    <KnowledgeDetailPage
+      key={`${auth.demoUser ?? auth.user?.uid}:${entryId}:${audience}`}
+      client={auth.client}
+      entryId={entryId}
+      audience={audience}
+    />
+  );
 }
 
 function AnnouncementsRoute() {
@@ -125,6 +146,11 @@ function ActivityDetailRoute() {
   );
 }
 
+function FestivalRoute() {
+  const auth = useAuth();
+  return <FestivalPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
+}
+
 function LiaisonRoute() {
   const auth = useAuth();
   return <LiaisonPage key={auth.demoUser ?? auth.user?.uid} client={auth.client} />;
@@ -177,6 +203,7 @@ export const appRouter = createBrowserRouter(
         { index: true, element: <Navigate to="/dashboard" replace /> },
         { path: 'dashboard', element: <DashboardRoute /> },
         { path: 'knowledge', element: <KnowledgeRoute /> },
+        { path: 'knowledge/:entryId', element: <KnowledgeDetailRoute /> },
         { path: 'information', element: <Navigate to="/information/announcements" replace /> },
         { path: 'information/announcements', element: <AnnouncementsRoute /> },
         { path: 'information/consultations', element: <ConsultationsRoute /> },
@@ -186,6 +213,7 @@ export const appRouter = createBrowserRouter(
         { path: 'interest-groups', element: <ClubsRoute /> },
         { path: 'clubs', element: <Navigate to="/interest-groups" replace /> },
         { path: 'events', element: <EventsRoute /> },
+        { path: 'events/student-festival', element: <FestivalRoute /> },
         { path: 'liaison', element: <LiaisonRoute /> },
         { path: 'liaison/problems/:problemId', element: <ProblemDetailRoute /> },
         { path: 'events/:activityId', element: <ActivityDetailRoute /> },

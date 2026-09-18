@@ -242,7 +242,7 @@ test('governs subjects, expiring grants, binding replacement and audit filters',
 
     await openAdmin(page);
     const directory = page.getByRole('tabpanel', { name: '用户与授权' });
-    await expect(directory).toContainText('共 8 位用户');
+    await expect(directory).toContainText('共 16 位用户');
     await directory.getByLabel('搜索用户').fill('demo-student');
     await directory.getByRole('button', { name: '筛选用户' }).click();
     await expect(directory).toContainText('共 1 位用户');

@@ -1,4 +1,5 @@
 import type {
+  FestivalSubmissionStatus,
   ModuleId,
   PermissionAction,
   RoleKey,
@@ -33,6 +34,7 @@ type DefaultedContentKeys<T> = Extract<
   | (T extends LiaisonProblemRecord
       ? 'startsAt' | 'deadline' | 'reviewerUid' | 'reviewedAt' | 'reviewNote'
       : never)
+  | (T extends FestivalSubmissionRecord ? 'reviewerUid' | 'reviewedAt' | 'reviewNote' : never)
   | (T extends LiaisonPostRecord ? 'teamId' | 'hiddenAt' | 'hiddenByUid' : never)
   | (T extends LiaisonOutcomeRecord
       ? 'linkUrl' | 'attachmentRef' | 'adoptedAt' | 'adoptedByUid'
@@ -285,6 +287,20 @@ export interface ActivityRegistrationRecord extends StoredRecord {
   participantUid: string;
 }
 
+export interface FestivalSubmissionRecord extends StoredRecord {
+  title: string;
+  description: string;
+  authorName: string;
+  status: FestivalSubmissionStatus;
+  displayConsent: boolean;
+  mimeType: string;
+  sizeBytes: number;
+  storageKey: string;
+  reviewerUid: string | null;
+  reviewedAt: string | null;
+  reviewNote: string;
+}
+
 export interface SportsTeamRecord extends StoredRecord {
   season: string;
   trainingSchedule: string;
@@ -406,6 +422,7 @@ export interface DevelopmentStore {
   activityMilestones: RecordRepository<ActivityMilestoneRecord>;
   competitionFixtures: RecordRepository<CompetitionFixtureRecord>;
   activityRegistrations: RecordRepository<ActivityRegistrationRecord>;
+  festivalSubmissions: RecordRepository<FestivalSubmissionRecord>;
   sportsTeams: RecordRepository<SportsTeamRecord>;
   sportsTeamMembers: RecordRepository<SportsTeamMemberRecord>;
   sportsCheckins: RecordRepository<SportsCheckinRecord>;

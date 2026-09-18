@@ -20,6 +20,7 @@ describe('database migrations', () => {
       '007_platform_content_update.sql',
       '008_module_readability_fields.sql',
       '009_liaison_problem_board.sql',
+      '010_student_festival.sql',
     ]);
 
     const sql = (await Promise.all(migrations.map(({ path }) => readFile(path, 'utf8')))).join(
@@ -58,6 +59,7 @@ describe('database migrations', () => {
       'liaison_posts',
       'liaison_outcomes',
       'finance_records',
+      'festival_submissions',
     ];
 
     for (const table of requiredTables) {

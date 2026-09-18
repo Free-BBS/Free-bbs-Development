@@ -49,6 +49,7 @@ describe('application routes', () => {
   });
 
   it.each([
+    ['/knowledge/entry-1', 'knowledge/:entryId'],
     ['/information/announcements', 'information/announcements'],
     ['/information/consultations', 'information/consultations'],
     ['/information/triage', 'information/triage'],

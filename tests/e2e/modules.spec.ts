@@ -41,6 +41,8 @@ test('navigates to every development module from the shell', async ({ page }) =>
     await expect(page).toHaveURL(new RegExp(`/development${destination}$`));
     await expect(page.getByRole('heading', { name: heading, exact: true }).first()).toBeVisible();
   }
+
+  await expect(page.locator('.sidebar .module-nav a[href="/world"]')).toHaveText('返回学习端');
 });
 
 test('keeps the dashboard as the default landing page without a duplicate module card menu', async ({
@@ -64,7 +66,7 @@ test('keeps nested module routes inside the correct active shell', async ({ page
   const nestedRoutes = [
     ['/information/proposals/proposal-night-lighting', '信息与咨询', '/development/information'],
     ['/events/activity-ma-john-cup', '活动', '/development/events'],
-    ['/liaison/problems/liaison-problem-lab-energy', '联络资源', '/development/liaison'],
+    ['/liaison/problems/liaison-problem-lab-energy', '资源', '/development/liaison'],
     ['/sports/team-basketball', '体育代表队', '/development/sports'],
   ] as const;
 

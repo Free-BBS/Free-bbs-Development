@@ -43,9 +43,7 @@ describe('DashboardPage', () => {
 
     expect(screen.getByRole('heading', { name: '发展端工作台' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: '发展端工作台' })).toBeInTheDocument();
-    expect(
-      screen.getByText(/把组织经验、公共信息与协作进展放在同一个可靠入口/),
-    ).toBeInTheDocument();
+    expect(screen.getByText('了解校园近况，让想法与伙伴在这里相遇。')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '查看近期活动' })).toHaveAttribute('href', '/events');
     expect(screen.getByRole('link', { name: '查看近期活动' })).toHaveClass('primary-action-link');
     expect(await screen.findByText('秋季场地开放安排')).toBeInTheDocument();

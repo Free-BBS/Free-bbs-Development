@@ -16,6 +16,9 @@ Restart=on-failure
 RestartSec=5s
 TimeoutStopSec=20s
 UMask=0027
+StateDirectory=freebbs-development
+StateDirectoryMode=0700
+Environment=FESTIVAL_UPLOAD_DIR=/var/lib/freebbs-development/festival
 
 NoNewPrivileges=true
 PrivateTmp=true

@@ -4,25 +4,25 @@
 
 body.theme-dark,
 body:not(.theme-light) {
-  --surface-page: #17211f;
-  --surface-raised: #21302c;
-  --surface-muted: #1b2824;
-  --border-subtle: #40514c;
-  --action-primary: #4ca99a;
-  --action-primary-text: #092522;
-  --nav-link-hover-background: #24504f;
+  --surface-page: #101b23;
+  --surface-raised: #192a34;
+  --surface-muted: #20343e;
+  --border-subtle: #3b505a;
+  --action-primary: #78d9c6;
+  --action-primary-text: #0b2934;
+  --nav-link-hover-background: #175267;
   --nav-link-hover-text: #ffffff;
-  --nav-link-active-background: #2f776f;
+  --nav-link-active-background: #287a8b;
   --nav-link-active-text: #ffffff;
-  --color-sidebar: #102b2a;
-  --color-sidebar-deep: #0b2221;
+  --color-sidebar: #0e3440;
+  --color-sidebar-deep: #0a2833;
   --color-active: var(--action-primary);
   --color-accent: #ffd36d;
   --color-page: var(--surface-page);
   --color-line: var(--border-subtle);
-  --color-text: #edf5f1;
-  --color-muted: #afbeb8;
-  --color-sidebar-text: #edf5f1;
+  --color-text: #f4efe7;
+  --color-muted: #b5c5c9;
+  --color-sidebar-text: #f4efe7;
   --color-paper: var(--surface-raised);
   --color-paper-muted: var(--surface-muted);
   --color-focus: #78d9c6;
@@ -35,30 +35,30 @@ body:not(.theme-light) {
   --gradient-deep: var(--color-sidebar);
   --gradient-page: var(--surface-page);
   --grid-line: rgba(244, 240, 223, 0.028);
-  --shadow-card: 0 1px 0 rgba(244, 240, 223, 0.04), 0 18px 44px rgba(0, 0, 0, 0.2);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.08);
   --shadow-raised: 0 24px 70px rgba(0, 0, 0, 0.34);
 }
 
 body.theme-light {
   color-scheme: light;
-  --surface-page: #f4f6f5;
+  --surface-page: #f4f6f8;
   --surface-raised: #ffffff;
-  --surface-muted: #edf1ef;
-  --border-subtle: #d8e0dd;
-  --action-primary: #155e59;
+  --surface-muted: #eef3f4;
+  --border-subtle: #d8e2e5;
+  --action-primary: #075d68;
   --action-primary-text: #ffffff;
-  --nav-link-hover-background: #24504f;
+  --nav-link-hover-background: #175267;
   --nav-link-hover-text: #ffffff;
-  --nav-link-active-background: #155e59;
+  --nav-link-active-background: #075d68;
   --nav-link-active-text: #ffffff;
-  --color-sidebar: #173a3a;
-  --color-sidebar-deep: #103232;
+  --color-sidebar: #103744;
+  --color-sidebar-deep: #0b2934;
   --color-active: var(--action-primary);
   --color-accent: #a66f11;
   --color-page: var(--surface-page);
   --color-line: var(--border-subtle);
-  --color-text: #172220;
-  --color-muted: #63716d;
+  --color-text: #14242b;
+  --color-muted: #617178;
   --color-sidebar-text: #f7fbf9;
   --color-paper: var(--surface-raised);
   --color-paper-muted: var(--surface-muted);
@@ -71,18 +71,18 @@ body.theme-light {
   --gradient-deep: var(--color-sidebar);
   --gradient-page: var(--surface-page);
   --grid-line: rgba(17, 19, 21, 0.035);
-  --shadow-card: 0 1px 1px rgba(12, 19, 32, 0.04), 0 16px 42px rgba(12, 19, 32, 0.1);
+  --shadow-card: 0 1px 2px rgba(12, 19, 32, 0.04);
   --shadow-raised: 0 24px 70px rgba(5, 10, 18, 0.22);
 }
 
 body.theme-dark .dialog-form,
 body:not(.theme-light) .dialog-form {
-  background: rgba(16, 25, 22, 0.97);
+  background: rgba(16, 27, 35, 0.97);
 }
 
 body.theme-dark .dialog-form-actions,
 body:not(.theme-light) .dialog-form-actions {
-  background: rgba(16, 25, 22, 0.94);
+  background: rgba(16, 27, 35, 0.94);
 }
 
 body.theme-dark .module-icon img,
@@ -99,7 +99,7 @@ body:not(.theme-light) .admin-governance-page {
   --admin-gold-soft: rgba(255, 211, 109, 0.12);
   --admin-red: #ff9b8f;
   --admin-surface-end: rgba(244, 240, 223, 0.12);
-  --admin-tab-surface: rgba(16, 25, 22, 0.94);
+  --admin-tab-surface: rgba(16, 27, 35, 0.94);
   --admin-tab-ink: rgba(244, 240, 223, 0.72);
   --admin-hover-surface: rgba(244, 240, 223, 0.1);
   --admin-action-ink: #ffd36d;

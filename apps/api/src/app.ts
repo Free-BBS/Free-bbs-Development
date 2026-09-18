@@ -18,6 +18,7 @@ import { createAdminRouter } from './modules/admin/router.js';
 import { createClubsRouter } from './modules/clubs/router.js';
 import { createEventsRouter } from './modules/events/router.js';
 import { createFinanceRouter } from './modules/finance/router.js';
+import { createFestivalRouter } from './modules/festival/router.js';
 import { createInformationRouter } from './modules/information/router.js';
 import { createKnowledgeRouter } from './modules/knowledge/router.js';
 import { createLiaisonRouter } from './modules/liaison/router.js';
@@ -55,8 +56,11 @@ export interface CreateAppOptions {
   checkReadiness?: ReadinessCheck;
   authMode?: AuthMode;
   authClient?: AuthClient;
+  previewAllowedUids?: readonly string[];
   allowedOrigins?: readonly string[];
   version?: string;
+  festivalUploadDirectory?: string;
+  festivalMaxUploadBytes?: number;
 }
 
 function requestId(response: Response): string {
@@ -112,6 +116,7 @@ export function createApp(options: CreateAppOptions = {}) {
     authClient: resolveAuthClient(authMode, options),
     mode: authMode,
     store,
+    allowedUids: options.previewAllowedUids ?? environment.previewAllowedUids,
   });
   const allowedOrigins = new Set(
     options.allowedOrigins ?? parseAllowedOrigins(process.env.ALLOWED_ORIGINS),
@@ -169,8 +174,17 @@ export function createApp(options: CreateAppOptions = {}) {
       });
     }
   });
-  app.get(`${API_BASE_PATH}/modules`, async (_request, response, next) => {
+  app.get(`${API_BASE_PATH}/modules`, async (request, response, next) => {
     try {
+      if (authMode === 'main') {
+        const result = await authenticate(request.headers);
+        if (result.status !== 200) {
+          sendEnvelope<ApiErrorData>(response, result.status, {
+            error: { code: result.code, message: result.message },
+          });
+          return;
+        }
+      }
       sendEnvelope(response, 200, await listModuleManifests(store));
     } catch (error) {
       next(error);
@@ -204,6 +218,17 @@ export function createApp(options: CreateAppOptions = {}) {
   const interestGroupsRouter = createClubsRouter({ store, authenticate });
   app.use(`${API_BASE_PATH}/interest-groups`, interestGroupsRouter);
   app.use(`${API_BASE_PATH}/clubs`, interestGroupsRouter);
+  app.use(
+    `${API_BASE_PATH}/events/festival`,
+    createFestivalRouter({
+      store,
+      authenticate,
+      ...(options.festivalUploadDirectory
+        ? { uploadDirectory: options.festivalUploadDirectory }
+        : {}),
+      ...(options.festivalMaxUploadBytes ? { maxUploadBytes: options.festivalMaxUploadBytes } : {}),
+    }),
+  );
   app.use(`${API_BASE_PATH}/events`, createEventsRouter({ store, authenticate }));
   app.use(`${API_BASE_PATH}/finance`, createFinanceRouter({ store, authenticate }));
   app.use(`${API_BASE_PATH}/knowledge`, createKnowledgeRouter({ store, authenticate }));

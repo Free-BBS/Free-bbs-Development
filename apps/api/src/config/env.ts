@@ -1,4 +1,5 @@
 import { isIP } from 'node:net';
+import { DEMO_USER_IDS as deterministicDemoUserIds } from '@freebbs-development/contracts';
 
 export type AuthMode = 'main' | 'demo';
 export type NodeEnvironment = 'development' | 'test' | 'production';
@@ -11,18 +12,8 @@ export interface Environment {
   mainSiteApiBaseUrl: string;
   authTimeoutMs: number;
   demoUserIds: string[];
+  previewAllowedUids: string[];
 }
-
-const deterministicDemoUserIds = [
-  'demo-student',
-  'demo-admin',
-  'demo-rights-member',
-  'demo-liaison-member',
-  'demo-sports-lead',
-  'demo-sports-director',
-  'demo-captain',
-  'demo-tuanwei-lead',
-] as const;
 
 function readNodeEnvironment(value: string | undefined): NodeEnvironment {
   if (value === undefined || value.trim() === '') return 'development';
@@ -73,6 +64,14 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Enviro
   const demoUserIds = [...new Set(requestedDemoIds)].filter((uid) =>
     deterministicDemoUserIds.includes(uid as (typeof deterministicDemoUserIds)[number]),
   );
+  const previewAllowedUids = [
+    ...new Set(
+      (source.DEVELOPMENT_PREVIEW_UIDS ?? '')
+        .split(',')
+        .map((uid) => uid.trim())
+        .filter(Boolean),
+    ),
+  ];
 
   return {
     nodeEnv,
@@ -85,5 +84,6 @@ export function loadEnvironment(source: NodeJS.ProcessEnv = process.env): Enviro
     ),
     authTimeoutMs: readPositiveInteger(source.AUTH_TIMEOUT_MS, 3_000),
     demoUserIds,
+    previewAllowedUids,
   };
 }

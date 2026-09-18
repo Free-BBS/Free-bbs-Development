@@ -533,11 +533,7 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
   if (error !== null && statusOf(error) === 403) {
     return (
       <section className="module-page" aria-label="财务治理">
-        <ModulePageHeader
-          kicker="FINANCE"
-          title="财务治理"
-          description="金额始终以整数分存储，预算、结算和审批记录可追溯。"
-        />
+        <ModulePageHeader title="财务治理" description="查看组织预算、结算与审批进展。" />
         <AsyncState
           state="error"
           title="暂无财务访问权限"
@@ -549,11 +545,7 @@ export function FinancePage({ client: suppliedClient, user: suppliedUser }: Fina
 
   return (
     <section className="module-page" aria-label="财务治理">
-      <ModulePageHeader
-        kicker="FINANCE"
-        title="财务治理"
-        description="金额始终以整数分存储，预算、结算和审批记录可追溯。"
-      />
+      <ModulePageHeader title="财务治理" description="查看组织预算、结算与审批进展。" />
 
       <FilterBar ariaLabel="筛选财务记录" onSubmit={(event) => event.preventDefault()}>
         <label>

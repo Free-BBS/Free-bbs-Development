@@ -208,7 +208,7 @@ test('mobile nested routes preserve their module shell without horizontal page o
   const nestedRoutes = [
     ['/information/proposals/proposal-night-lighting', '信息与咨询'],
     ['/events/activity-ma-john-cup', '活动'],
-    ['/liaison/problems/liaison-problem-lab-energy', '联络资源'],
+    ['/liaison/problems/liaison-problem-lab-energy', '资源'],
     ['/sports/team-basketball', '体育代表队'],
   ] as const;
 

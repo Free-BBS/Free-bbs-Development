@@ -213,11 +213,11 @@ sudo systemd-run --wait --pipe --collect \
 
 随后用真实主站账号完成：
 
-1. 登录后打开 `/development/` 和一个深层链接；
-2. 普通同学只能看到获授权数据，敏感写操作返回 403；
-3. 最高管理员能打开 `/development/admin`，但不在日志中出现 Bearer Token；
-4. 检查一次角色/Tag/模块审计记录；
-5. 记录健康、静态入口、身份和权限 smoke 结果。
+1. 确认 `DEVELOPMENT_PREVIEW_UIDS` 已填入真实主站 UID；白名单账号从主站 `/development` 进入 `/development/`，登录后深层链接也可返回；
+2. 非白名单账号打开主站 `/development` 仍看到原施工页，直接请求发展端 API 返回 403；
+3. 普通同学只能看到获授权数据，敏感写操作返回 403；
+4. 最高管理员能打开 `/development/admin`，但不在日志中出现 Bearer Token；
+5. 检查一次角色/Tag/模块审计记录，并记录健康、静态入口、身份和权限 smoke 结果。
 
 全部通过后才允许发布主站“发展端”入口。
 

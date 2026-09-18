@@ -183,3 +183,56 @@ INSERT INTO finance_records
 VALUES
   ('finance-orientation-budget', '新生见面会预算', 'budget', 150000, 'activity-orientation', 'liaison_center', 'demo-tuanwei-lead', '2026-07-22 08:00:00.000', 'approved', 'approved', 'demo-liaison-member', 'activity', 'activity-orientation', NOW(3), NOW(3)),
   ('finance-night-run-settlement', '校园夜跑物资结算', 'settlement', 48600, 'activity-night-run', 'sports_center', NULL, NULL, NULL, 'submitted', 'demo-sports-lead', 'activity', 'activity-night-run', NOW(3), NOW(3));
+
+INSERT INTO subjects
+  (id, uid, display_name, avatar_url, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('subject-arts-member', 'demo-arts-member', '文艺中心部员', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('subject-arts-director', 'demo-arts-director', '文艺中心部长', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('subject-arts-lead', 'demo-arts-lead', '文艺中心负责人', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('subject-sports-member', 'demo-sports-member', '体育中心部员', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('subject-liaison-director', 'demo-liaison-director', '联络中心部长', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('subject-liaison-lead', 'demo-liaison-lead', '联络中心负责人', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('subject-rights-director', 'demo-rights-director', '权发中心部长', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('subject-rights-lead', 'demo-rights-lead', '权发中心负责人', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3));
+
+INSERT INTO roles
+  (id, role_key, name, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('role-arts-member', 'department.arts_member', '文艺中心部员', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('role-arts-director', 'department.arts_director', '文艺中心部长', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('role-arts-lead', 'domain.arts_lead', '文艺中心负责人', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('role-sports-member', 'department.sports_member', '体育中心部员', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('role-liaison-director', 'department.liaison_director', '联络中心部长', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('role-liaison-lead', 'domain.liaison_lead', '联络中心负责人', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('role-rights-director', 'department.rights_development_director', '权发中心部长', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('role-rights-lead', 'domain.rights_development_lead', '权发中心负责人', 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3));
+
+INSERT INTO role_assignments
+  (id, subject_uid, role_key, expires_at, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('assignment-arts-member', 'demo-arts-member', 'department.arts_member', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('assignment-arts-director', 'demo-arts-director', 'department.arts_director', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('assignment-arts-lead', 'demo-arts-lead', 'domain.arts_lead', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('assignment-sports-member', 'demo-sports-member', 'department.sports_member', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('assignment-liaison-director', 'demo-liaison-director', 'department.liaison_director', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('assignment-liaison-lead', 'demo-liaison-lead', 'domain.liaison_lead', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('assignment-rights-director', 'demo-rights-director', 'department.rights_development_director', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3)),
+  ('assignment-rights-lead', 'demo-rights-lead', 'domain.rights_development_lead', NULL, 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3));
+
+INSERT INTO tag_definitions
+  (id, tag_key, name, description, required_scope_type, metadata, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('tag-arts-center', 'social_org.arts_center', '文艺中心', '文艺中心组织身份。', 'social_organization', JSON_OBJECT('resourceTypes', JSON_ARRAY()), 'active', 'demo-admin', 'public', '*', NOW(3), NOW(3));
+
+INSERT INTO tag_assignments
+  (id, subject_uid, tag_key, expires_at, status, owner_uid, scope_type, scope_id, created_at, updated_at)
+VALUES
+  ('tag-arts-member-organization', 'demo-arts-member', 'social_org.arts_center', NULL, 'active', 'demo-admin', 'social_organization', 'arts_center', NOW(3), NOW(3)),
+  ('tag-arts-director-organization', 'demo-arts-director', 'social_org.arts_center', NULL, 'active', 'demo-admin', 'social_organization', 'arts_center', NOW(3), NOW(3)),
+  ('tag-arts-lead-organization', 'demo-arts-lead', 'social_org.arts_center', NULL, 'active', 'demo-admin', 'social_organization', 'arts_center', NOW(3), NOW(3)),
+  ('tag-sports-member-organization', 'demo-sports-member', 'social_org.sports_center', NULL, 'active', 'demo-admin', 'social_organization', 'sports_center', NOW(3), NOW(3)),
+  ('tag-liaison-director-organization', 'demo-liaison-director', 'social_org.liaison_center', NULL, 'active', 'demo-admin', 'social_organization', 'liaison_center', NOW(3), NOW(3)),
+  ('tag-liaison-lead-organization', 'demo-liaison-lead', 'social_org.liaison_center', NULL, 'active', 'demo-admin', 'social_organization', 'liaison_center', NOW(3), NOW(3)),
+  ('tag-rights-director-organization', 'demo-rights-director', 'social_org.rights_development_center', NULL, 'active', 'demo-admin', 'social_organization', 'rights_development_center', NOW(3), NOW(3)),
+  ('tag-rights-lead-organization', 'demo-rights-lead', 'social_org.rights_development_center', NULL, 'active', 'demo-admin', 'social_organization', 'rights_development_center', NOW(3), NOW(3));

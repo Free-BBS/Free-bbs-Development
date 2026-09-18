@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import type { ScopeRef, UserContext } from '@freebbs-development/contracts';
 import { EditorDrawer } from '../../components/EditorDrawer.js';
@@ -92,6 +92,8 @@ function permitted(
 }
 
 export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const selectedGroup = searchParams.get('group');
   const defaultClient = useMemo(createApiClient, []);
   const activeClient = client ?? defaultClient;
   const auth = useOptionalAuth();
@@ -297,7 +299,7 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
     <section className="module-page" aria-label="趣缘群体">
       <ModulePageHeader
         title="趣缘群体"
-        description="发现伙伴、查看公开活动；联络中心按授权维护群体资料。"
+        description="找到志趣相投的伙伴，一起参与校园活动。"
         actions={
           canCreate ? (
             <button type="button" onClick={() => openDrawer('create')}>
@@ -306,11 +308,27 @@ export function ClubsPage({ client, user: suppliedUser }: ClubsPageProps) {
           ) : undefined
         }
       />
+      {selectedGroup && (
+        <p className="group-filter-notice">
+          正在查看推荐群体。
+          <button
+            type="button"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('group');
+              setSearchParams(next);
+            }}
+          >
+            查看全部趣缘群体
+          </button>
+        </p>
+      )}
       {feedback ? <p role="status">{feedback}</p> : null}
       {actionError ? <p role="alert">{actionError}</p> : null}
       <ResponsiveRecordList
         ariaLabel="趣缘群体列表"
-        records={clubs}
+        className="group-card-grid"
+        records={selectedGroup ? clubs.filter((club) => club.id === selectedGroup) : clubs}
         state={state}
         errorMessage={`趣缘群体加载失败：${loadError}`}
         emptyTitle="暂无可查看的趣缘群体"

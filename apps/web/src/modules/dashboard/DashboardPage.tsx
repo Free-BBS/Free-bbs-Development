@@ -95,11 +95,10 @@ export function DashboardPage({ client }: DashboardPageProps) {
   }, [api]);
 
   return (
-    <section className="module-page" aria-label="发展端工作台">
+    <section className="module-page dashboard-page" aria-label="发展端工作台">
       <ModulePageHeader
         title="发展端工作台"
-        description="把组织经验、公共信息与协作进展放在同一个可靠入口；完整模块导航保留在侧栏。"
-        kicker="OVERVIEW"
+        description="了解校园近况，让想法与伙伴在这里相遇。"
         actions={
           <Link className="primary-action-link" to="/events">
             查看近期活动
@@ -107,16 +106,16 @@ export function DashboardPage({ client }: DashboardPageProps) {
         }
       />
 
-      <div className="workbench-grid">
-        <DetailSection title="行动提示" description="只保留当前阶段最需要关注的协作动作。">
+      <div className="workbench-grid dashboard-grid">
+        <DetailSection title="行动提示">
           <ul>
-            <li>组织活动前先核对时间、地点、报名信息与筹备时间线。</li>
-            <li>遇到校园问题可提交咨询；真实课题通过联络中心代录后进入审核。</li>
-            <li>维护组织资料时写清负责人、适用范围和最近更新时间。</li>
+            <li>组织活动：完善时间、地点与报名信息。</li>
+            <li>遇到问题：提交咨询，或参与联络揭榜。</li>
+            <li>分享经验：留下清晰流程和最新联系方式。</li>
           </ul>
         </DetailSection>
 
-        <DetailSection title="最近内容" description="来自公开公告和已发布活动。">
+        <DetailSection title="最近内容">
           {state === 'loading' ? <p role="status">正在同步最近内容…</p> : null}
           {state === 'error' ? <p role="alert">最近内容暂时无法同步，请稍后刷新。</p> : null}
           {state === 'ready' && recentItems.length === 0 ? <p>暂时没有新的公开内容。</p> : null}

@@ -12,7 +12,8 @@ https://<主站域名>/development/          -> 发展端 Web 静态文件
 https://<主站域名>/api/development/v1/  -> 发展端 API（Nginx 转发到 127.0.0.1:3100）
 ```
 
-访问 `/development` 时，Nginx 应以 308 跳转到 `/development/`。浏览器不应直接访问 API
+主站的 `/development` 保留原施工页。白名单用户登录后，施工页会校验发展端 API，成功才跳转到
+`/development/`；非白名单用户仍看到施工页，直接打开发展端深层链接也会被 API 拒绝。浏览器不应直接访问 API
 容器、MySQL 或 Adminer。主站和发展端同源时，`ALLOWED_ORIGINS` 保持为空。API 支持 `HOST`；
 生产 systemd unit 固定监听 `127.0.0.1:3100`，并继续用主机防火墙/安全组阻止公网访问 3100，
 只允许本机 Nginx 连接。
@@ -77,6 +78,8 @@ sudoedit /etc/freebbs-development/backup.env
 
 - 不得在生产设置 `AUTH_MODE=demo` 或 `VITE_AUTH_MODE=demo`；API 也会拒绝这种组合。
 - `MAIN_SITE_API_BASE_URL` 是根地址，API 会追加 `/api/auth/me`。
+- `DEVELOPMENT_PREVIEW_UIDS` 填写允许预览的主站 UID，以英文逗号分隔；留空时所有真实账号都被拒绝。
+  该白名单只控制发展端准入，进入后的部门和业务权限仍由发展端服务端判断。
 - 不把 `.env`、Token、数据库密码、TLS 私钥提交到 Git 或输出到日志。
 - 若 Web 在构建时读取 `VITE_AUTH_MODE`，应明确设为 `main` 或不设置；Vite 变量会进入客户端产物，
   所以其中绝不能放秘密。
@@ -120,9 +123,9 @@ API 单元固定使用用户/组 `freebbs-development`、工作目录 `/opt/free
 - `deploy/nginx/freebbs-development.locations.conf` 只包含宿主机路由，应通过 `include` 嵌入主站现有的
   HTTPS `server` 块。
 
-宿主机路由片段负责 `/development` 的 308 跳转、`/development/` 静态 SPA fallback，以及
+宿主机路由片段只负责 `/development/` 静态 SPA fallback，以及
 `/api/development/v1/` 到 `127.0.0.1:3100` 的代理。它转发 Authorization header，以便 API 向主站核验
-登录身份。片段不包含生产域名和 TLS 配置。
+登录身份。主站原有的 `/development` 路由继续提供施工页，不能把它重定向到 `/development/`。片段不包含生产域名和 TLS 配置。
 
 Nginx 片段只由 `sudo scripts/install-server.sh` 安装；Web 产物只由 root-owned release hook 指向不可变
 release。不得手工把构建目录同步到 `/usr/share/nginx/html/development`，否则会绕过归档校验、部署锁和

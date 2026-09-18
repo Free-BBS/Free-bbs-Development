@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DEMO_CENTER_USERS, organizationById } from '@freebbs-development/contracts';
 
 import { queryMemoryAuditLogs } from './audit-query.js';
 import { encodeDateOnly, encodeUtcDateTime } from './date-codec.js';
@@ -24,6 +25,7 @@ import type {
   ConsultationRecord,
   DevelopmentStore,
   FinanceRecord,
+  FestivalSubmissionRecord,
   KnowledgeEntryRecord,
   LiaisonOutcomeRecord,
   LiaisonPostRecord,
@@ -76,6 +78,7 @@ interface MemoryState {
   activityMilestones: ActivityMilestoneRecord[];
   competitionFixtures: CompetitionFixtureRecord[];
   activityRegistrations: ActivityRegistrationRecord[];
+  festivalSubmissions: FestivalSubmissionRecord[];
   sportsTeams: SportsTeamRecord[];
   sportsTeamMembers: SportsTeamMemberRecord[];
   sportsCheckins: SportsCheckinRecord[];
@@ -151,6 +154,7 @@ const searchFields: Record<CollectionName, string[]> = {
   activityMilestones: ['activityId', 'title', 'type', 'description'],
   competitionFixtures: ['activityId', 'round', 'participantA', 'participantB', 'location'],
   activityRegistrations: ['activityId', 'participantUid'],
+  festivalSubmissions: ['title', 'description', 'authorName'],
   sportsTeams: ['name', 'description', 'season', 'trainingSchedule'],
   sportsTeamMembers: ['teamId', 'memberUid'],
   sportsCheckins: ['teamId', 'memberUid'],
@@ -173,6 +177,8 @@ const searchFields: Record<CollectionName, string[]> = {
 
 function collectionDefaults(collection: CollectionName): Record<string, unknown> {
   switch (collection) {
+    case 'festivalSubmissions':
+      return { reviewerUid: null, reviewedAt: null, reviewNote: '' };
     case 'knowledge':
       return {
         audience: 'general',
@@ -256,6 +262,12 @@ function normalizedValues<T extends object>(value: T): T {
   if (typeof result.checkinDate === 'string')
     result.checkinDate = encodeDateOnly(result.checkinDate);
   if (
+    Object.hasOwn(result, 'sizeBytes') &&
+    (!Number.isSafeInteger(result.sizeBytes) || (result.sizeBytes as number) < 1)
+  ) {
+    throw new TypeError('sizeBytes must be a positive safe integer');
+  }
+  if (
     typeof result.amountCents === 'number' &&
     (!Number.isSafeInteger(result.amountCents) || result.amountCents < 0)
   ) {
@@ -302,6 +314,7 @@ function createEmptyState(): MemoryState {
     activityMilestones: [],
     competitionFixtures: [],
     activityRegistrations: [],
+    festivalSubmissions: [],
     sportsTeams: [],
     sportsTeamMembers: [],
     sportsCheckins: [],
@@ -537,6 +550,55 @@ function createDemoState(): MemoryState {
       scope: { type: 'social_organization', id: 'tuanwei' },
     }),
   ];
+  for (const profile of DEMO_CENTER_USERS) {
+    const suffix = profile.uid.slice('demo-'.length);
+    const existing = state.subjects.find(({ uid }) => uid === profile.uid);
+    if (existing) existing.displayName = profile.displayName;
+    else
+      state.subjects.push(
+        stored(`subject-${suffix}`, {
+          uid: profile.uid,
+          displayName: profile.displayName,
+          avatarUrl: null,
+          status: 'active',
+          ownerUid: 'demo-admin',
+          scope: publicScope,
+        }),
+      );
+    if (
+      !state.roleAssignments.some(
+        ({ subjectUid, roleKey }) => subjectUid === profile.uid && roleKey === profile.role,
+      )
+    ) {
+      state.roleAssignments.push(
+        stored(`assignment-${suffix}`, {
+          subjectUid: profile.uid,
+          roleKey: profile.role,
+          expiresAt: null,
+          status: 'active',
+          ownerUid: 'demo-admin',
+          scope: publicScope,
+        }),
+      );
+    }
+    const organization = organizationById(profile.organizationId);
+    if (
+      !state.tagAssignments.some(
+        ({ subjectUid, tagKey }) => subjectUid === profile.uid && tagKey === organization.tagKey,
+      )
+    ) {
+      state.tagAssignments.push(
+        stored(`tag-${suffix}-organization`, {
+          subjectUid: profile.uid,
+          tagKey: organization.tagKey,
+          expiresAt: null,
+          status: 'active',
+          ownerUid: 'demo-admin',
+          scope: { type: 'social_organization', id: profile.organizationId },
+        }),
+      );
+    }
+  }
   state.tagPermissions = BUILT_IN_TAG_PERMISSIONS.map((definition, index) =>
     stored<TagPermissionRecord>(`tag-permission-governance-${index}`, {
       ...definition,
@@ -1585,6 +1647,7 @@ function buildStore(holder: StateHolder, inTransaction = false): DevelopmentStor
     activityMilestones: repository('activityMilestones'),
     competitionFixtures: repository('competitionFixtures'),
     activityRegistrations: repository('activityRegistrations'),
+    festivalSubmissions: repository('festivalSubmissions'),
     sportsTeams: repository('sportsTeams'),
     sportsTeamMembers: repository('sportsTeamMembers'),
     sportsCheckins: repository('sportsCheckins'),

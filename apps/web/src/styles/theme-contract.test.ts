@@ -53,15 +53,15 @@ describe('dark-theme contrast contract', () => {
   });
 
   it('keeps sidebar hover and active navigation text above the normal-text contrast threshold', () => {
-    expect(tokensCss).toContain('--nav-link-hover-background: #24504f;');
+    expect(tokensCss).toContain('--nav-link-hover-background: #175267;');
     expect(tokensCss).toContain('--nav-link-hover-text: #ffffff;');
-    expect(tokensCss).toContain('--nav-link-active-background: #155e59;');
+    expect(tokensCss).toContain('--nav-link-active-background: #075d68;');
     expect(tokensCss).toContain('--nav-link-active-text: #ffffff;');
-    expect(themeCss).toContain('--nav-link-hover-background: #24504f;');
-    expect(themeCss).toContain('--nav-link-active-background: #2f776f;');
-    expect(contrastRatio('#ffffff', '#24504f')).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio('#ffffff', '#155e59')).toBeGreaterThanOrEqual(4.5);
-    expect(contrastRatio('#ffffff', '#2f776f')).toBeGreaterThanOrEqual(4.5);
+    expect(themeCss).toContain('--nav-link-hover-background: #175267;');
+    expect(themeCss).toContain('--nav-link-active-background: #287a8b;');
+    expect(contrastRatio('#ffffff', '#175267')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio('#ffffff', '#075d68')).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio('#ffffff', '#287a8b')).toBeGreaterThanOrEqual(4.5);
     expect(shellCss).toContain('background: var(--nav-link-hover-background);');
     expect(shellCss).toContain('color: var(--nav-link-hover-text);');
     expect(shellCss).toContain('background: var(--nav-link-active-background);');

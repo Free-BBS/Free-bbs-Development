@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import {
   SOCIAL_ORGANIZATIONS,
@@ -15,25 +16,17 @@ import { createApiClient, type ApiClient } from '../../core/api/client.js';
 import { useOptionalAuth } from '../../core/auth/AuthProvider.js';
 import { isSuperAdmin } from '../../core/permissions/Can.js';
 
-type KnowledgeType = 'workflow' | 'faq' | 'contact' | 'retrospective' | 'notice';
-type KnowledgeStatus = 'draft' | 'published' | 'archived';
-
-interface KnowledgeEntry {
-  id: string;
-  category?: string;
-  tags?: string[];
-  summary?: string;
-  maintainedAt?: string | null;
-  maintainerUid?: string | null;
-  type: KnowledgeType;
-  title: string;
-  body: string;
-  audience?: 'general' | 'social_org';
-  organizationId?: string | null;
-  status: KnowledgeStatus;
-  ownerUid: string;
-  scope: ScopeRef;
-}
+import {
+  knowledgeEntryPath,
+  knowledgePreview,
+  statusLabels,
+  tone,
+  typeLabels,
+  type KnowledgeAudience,
+  type KnowledgeEntry,
+  type KnowledgeStatus,
+  type KnowledgeType,
+} from './model.js';
 
 export interface KnowledgePageProps {
   client?: Pick<ApiClient, 'request'>;
@@ -47,20 +40,6 @@ interface PagePolicy {
 }
 type PageUser = UserContext & { policies?: readonly PagePolicy[] };
 
-const typeLabels: Record<KnowledgeType, string> = {
-  workflow: '工作流程',
-  faq: '常见问题',
-  contact: '联系人',
-  retrospective: '活动复盘',
-  notice: '注意事项',
-};
-const statusLabels: Record<KnowledgeStatus, string> = {
-  draft: '草稿',
-  published: '已发布',
-  archived: '已归档',
-};
-const tone = (status: KnowledgeStatus): 'success' | 'warning' | 'neutral' =>
-  status === 'published' ? 'success' : status === 'draft' ? 'warning' : 'neutral';
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message.trim() ? error.message : fallback;
 const splitTags = (value: string) => [
@@ -116,7 +95,18 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
     [managesAcrossOrganizations, user],
   );
   const canViewSocialOrganizations = organizations.length > 0;
-  const [audience, setAudience] = useState<'general' | 'social_org'>('general');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const audience: KnowledgeAudience =
+    canViewSocialOrganizations && searchParams.get('audience') === 'social_org'
+      ? 'social_org'
+      : 'general';
+  function setAudience(next: KnowledgeAudience) {
+    setState('loading');
+    const params = new URLSearchParams(searchParams);
+    if (next === 'social_org') params.set('audience', next);
+    else params.delete('audience');
+    setSearchParams(params, { replace: true });
+  }
   const [organizationId, setOrganizationId] = useState<string>(() => organizations[0]?.id ?? '');
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [state, setState] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -296,7 +286,11 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
           ) : undefined
         }
       />
-      <FilterBar ariaLabel="搜索经验库" onSubmit={(event) => event.preventDefault()}>
+      <FilterBar
+        ariaLabel="搜索经验库"
+        className="knowledge-filters"
+        onSubmit={(event) => event.preventDefault()}
+      >
         <label>
           搜索
           <input
@@ -328,6 +322,7 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
       {operationError ? <p role="alert">{operationError}</p> : null}
       <ResponsiveRecordList
         ariaLabel="经验条目列表"
+        className="knowledge-card-grid"
         records={visibleEntries}
         state={state}
         errorMessage="暂时无法加载经验库"
@@ -337,80 +332,94 @@ export function KnowledgePage({ client, user: suppliedUser }: KnowledgePageProps
         }
         getKey={(entry) => entry.id}
         renderRecord={(entry) => (
-          <article className="record-card" aria-labelledby={`knowledge-${entry.id}`}>
+          <article
+            className="record-card knowledge-record"
+            aria-labelledby={`knowledge-${entry.id}`}
+          >
             <header>
               <div>
                 <p className="record-eyebrow">
-                  {entry.category ?? typeLabels[entry.type]} · {typeLabels[entry.type]}
+                  {[entry.category, typeLabels[entry.type]].filter(Boolean).join(' · ')}
                 </p>
-                <h3 id={`knowledge-${entry.id}`}>{entry.title}</h3>
+                <h3 id={`knowledge-${entry.id}`}>
+                  <Link className="knowledge-card-link" to={knowledgeEntryPath(entry.id, audience)}>
+                    {entry.title}
+                  </Link>
+                </h3>
               </div>
               <StatusBadge status={tone(entry.status)}>{statusLabels[entry.status]}</StatusBadge>
             </header>
-            {entry.summary ? <p>{entry.summary}</p> : null}
-            <p>{entry.body}</p>
-            <p className="record-meta">
-              {(entry.tags ?? []).map((tag) => (
-                <span key={tag} className="record-tag">
-                  {tag}
-                </span>
-              ))}
-            </p>
-            {entry.maintainedAt ? (
-              <p className="record-meta">维护于 {entry.maintainedAt.slice(0, 10)}</p>
-            ) : null}
-            {entry.maintainerUid ? (
-              <p className="record-meta">维护人：{entry.maintainerUid}</p>
-            ) : null}
-            {permitted(user, 'knowledge.create', entry.scope) &&
-            entry.status !== 'archived' &&
-            (entry.status !== 'published' || permitted(user, 'knowledge.publish', entry.scope)) ? (
-              <button
-                type="button"
-                disabled={pending}
-                aria-label={`编辑 ${entry.title}`}
-                onClick={() => openDrawer(entry)}
-              >
-                编辑
-              </button>
-            ) : null}
-            {permitted(user, 'knowledge.publish', entry.scope) && entry.status === 'draft' ? (
-              <button
-                type="button"
-                disabled={pending}
-                aria-label={`发布 ${entry.title}`}
-                onClick={() => void transition(entry, 'published', '发布')}
-              >
-                发布
-              </button>
-            ) : null}
-            {permitted(user, 'knowledge.publish', entry.scope) && entry.status === 'published' ? (
-              <>
+            <p className="knowledge-card-preview">{knowledgePreview(entry)}</p>
+            <span className="knowledge-read-hint" aria-hidden="true">
+              阅读全文 <span>↗</span>
+            </span>
+            <div className="record-metadata">
+              <p className="record-meta">
+                {(entry.tags ?? []).map((tag) => (
+                  <span key={tag} className="record-tag">
+                    {tag}
+                  </span>
+                ))}
+              </p>
+              {entry.maintainedAt ? (
+                <p className="record-meta">维护于 {entry.maintainedAt.slice(0, 10)}</p>
+              ) : null}
+              {entry.maintainerUid ? (
+                <p className="record-meta">维护人：{entry.maintainerUid}</p>
+              ) : null}
+            </div>
+            <div className="record-actions">
+              {permitted(user, 'knowledge.create', entry.scope) &&
+              entry.status !== 'archived' &&
+              (entry.status !== 'published' ||
+                permitted(user, 'knowledge.publish', entry.scope)) ? (
                 <button
                   type="button"
                   disabled={pending}
-                  aria-label={`撤回 ${entry.title}`}
-                  onClick={() => void transition(entry, 'draft', '撤回')}
+                  aria-label={`编辑 ${entry.title}`}
+                  onClick={() => openDrawer(entry)}
                 >
-                  撤回
+                  编辑
                 </button>
+              ) : null}
+              {permitted(user, 'knowledge.publish', entry.scope) && entry.status === 'draft' ? (
                 <button
                   type="button"
                   disabled={pending}
-                  aria-label={`归档 ${entry.title}`}
-                  onClick={() => void transition(entry, 'archived', '归档')}
+                  aria-label={`发布 ${entry.title}`}
+                  onClick={() => void transition(entry, 'published', '发布')}
                 >
-                  归档
+                  发布
                 </button>
-              </>
-            ) : null}
+              ) : null}
+              {permitted(user, 'knowledge.publish', entry.scope) && entry.status === 'published' ? (
+                <>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    aria-label={`撤回 ${entry.title}`}
+                    onClick={() => void transition(entry, 'draft', '撤回')}
+                  >
+                    撤回
+                  </button>
+                  <button
+                    type="button"
+                    disabled={pending}
+                    aria-label={`归档 ${entry.title}`}
+                    onClick={() => void transition(entry, 'archived', '归档')}
+                  >
+                    归档
+                  </button>
+                </>
+              ) : null}
+            </div>
           </article>
         )}
       />
       <EditorDrawer
         open={drawerEntry !== null}
         title={drawerEntry === 'create' ? '新建经验' : '编辑经验'}
-        description="维护内容与可读性元数据。"
+        description="完善正文、摘要和分类，方便同学查阅。"
         onClose={() => setDrawerEntry(null)}
       >
         <form onSubmit={(event) => void save(event)} noValidate>

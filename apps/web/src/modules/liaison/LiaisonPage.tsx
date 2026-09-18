@@ -160,9 +160,8 @@ export function LiaisonPage({ client, user: suppliedUser }: LiaisonPageProps) {
   return (
     <section className="module-page liaison-board" aria-label="联络揭榜">
       <ModulePageHeader
-        kicker="联络揭榜"
         title="真实问题揭榜"
-        description="课题组与企业提出真实问题，联络中心代录审核，同学可以组队并行探索。"
+        description="发现真实课题，和伙伴一起探索、协作、分享成果。"
         actions={
           canCreate ? (
             <button

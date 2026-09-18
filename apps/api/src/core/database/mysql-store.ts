@@ -30,6 +30,7 @@ import type {
   ConsultationRecord,
   DevelopmentStore,
   FinanceRecord,
+  FestivalSubmissionRecord,
   KnowledgeEntryRecord,
   LiaisonOutcomeRecord,
   LiaisonPostRecord,
@@ -156,6 +157,22 @@ function positiveInteger(value: unknown, key: string): number {
 }
 
 const definitions = {
+  festivalSubmissions: {
+    table: 'festival_submissions',
+    fields: [
+      field('title', 'title'),
+      field('description', 'description'),
+      field('authorName', 'author_name'),
+      booleanField('displayConsent', 'display_consent'),
+      field('mimeType', 'mime_type'),
+      positiveIntegerField('sizeBytes', 'size_bytes'),
+      field('storageKey', 'storage_key'),
+      defaultedField('reviewerUid', 'reviewer_uid', null),
+      utcDateTimeField('reviewedAt', 'reviewed_at'),
+      defaultedField('reviewNote', 'review_note', ''),
+    ],
+    searchColumns: ['title', 'description', 'author_name'],
+  },
   subjects: {
     table: 'subjects',
     fields: [
@@ -907,6 +924,7 @@ function buildMySqlStore(executor: Executor, pool: Pool, inTransaction: boolean)
     clubs: repository<ClubRecord>(definitions.clubs),
     clubMemberships: repository<ClubMembershipRecord>(definitions.clubMemberships),
     activities: repository<ActivityRecord>(definitions.activities),
+    festivalSubmissions: repository<FestivalSubmissionRecord>(definitions.festivalSubmissions),
     activityMilestones: repository<ActivityMilestoneRecord>(definitions.activityMilestones),
     competitionFixtures: repository<CompetitionFixtureRecord>(definitions.competitionFixtures),
     activityRegistrations: repository<ActivityRegistrationRecord>(
