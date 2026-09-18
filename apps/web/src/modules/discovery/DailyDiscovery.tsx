@@ -67,7 +67,8 @@ function DiscoveryCard({ client, uid, config = DISCOVERY_CONFIG, activities }: P
       ({ kind }) =>
         config.allowedKinds.includes(kind) && !(kind === 'activity' && hasSharedActivities),
     );
-    if (!selected.length || hasSharedActivities) setState('ready');
+    let pending = selected.length;
+    if (pending === 0) setState('ready');
     const cleanups = selected.map(({ kind, field, path }) => {
       const controller = new AbortController();
       let timeout = 0;
@@ -90,7 +91,8 @@ function DiscoveryCard({ client, uid, config = DISCOVERY_CONFIG, activities }: P
         })
         .finally(() => {
           window.clearTimeout(timeout);
-          if (active) setState('ready');
+          pending -= 1;
+          if (active && pending === 0) setState('ready');
         });
       return () => {
         window.clearTimeout(timeout);

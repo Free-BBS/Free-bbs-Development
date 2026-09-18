@@ -82,17 +82,25 @@ describe('DailyDiscovery', () => {
     expect(request).not.toHaveBeenCalled();
     expect(screen.queryByRole('heading', { name: '今日随机发现' })).not.toBeInTheDocument();
   });
-  it('shows a successful source while another request never settles', async () => {
-    const stalled = {
+  it('waits for all sources before showing a stable daily choice', async () => {
+    let finishKnowledge: (value: unknown) => void = () => {};
+    const delayed = {
       request: vi.fn((path: string) =>
-        path.includes('knowledge') ? new Promise(() => {}) : request(path),
+        path.includes('knowledge')
+          ? new Promise((resolve) => {
+              finishKnowledge = resolve;
+            })
+          : request(path),
       ) as <T>(path: string) => Promise<T>,
     };
     render(
       <MemoryRouter>
-        <DailyDiscovery client={stalled} uid="alice" config={config} />
+        <DailyDiscovery client={delayed} uid="alice" config={config} />
       </MemoryRouter>,
     );
+    await screen.findByText('正在寻找今天的新发现…');
+    expect(screen.queryByRole('link', { name: '去看看' })).not.toBeInTheDocument();
+    finishKnowledge([]);
     expect(await screen.findByRole('heading', { name: '跑步伙伴' })).toBeInTheDocument();
   });
   it('uses the live activity list and removes a just-finished recommendation', async () => {
